@@ -2,6 +2,25 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.0.0] — 2026-11-23
+
+### Reingeniería Integral, Gestión Dinámica de Usuarios y Grupos, Exportaciones Multiformato y Preparación para Producción
+- **Validación formal 100% de migración `OT_PROV.mdb`**: informe reconciliado tabla por tabla (`docs/REPORTE_MIGRACION_OT_PROV.md`) contabilizando las 11 tablas, 5 consultas/vistas guardadas, 4 claves foráneas y las huellas SHA-256 de los `.mdb` originales intactos.
+- **Módulo `GESTIÓN DE GRUPOS` y 5 categorías iniciales**: tablas `Grupos` y `MovimientosGrupo`, semilla idempotente (`MECÁNICOS`, `ELÉCTRICOS`, `ELECTRÓNICOS`, `EXTERNOS`, `OPERADORES`), categorías personalizadas, asignación de responsable, protección ante borrado con dependencias históricas y visor `GroupHistoryDialog` con Date Pickers y exportación.
+- **Interfaz moderna de 3 Áreas en `GESTIÓN DE USUARIOS Y GRUPOS` (`UsersForm`)**:
+  - **Área 1**: Panel de grupos con íconos Lucide por especialidad, contadores vivos, acciones CRUD y zona destino **Drag & Drop**.
+  - **Área 2**: Grilla con columna de **CheckBoxes**, columna **Grupo**, filtros combinados + **Date Pickers (`dd-MM-yyyy`)**, orden cronológico descendente y origen **Drag & Drop**.
+  - **Área 3**: Barra de operaciones individuales y por lotes (`Activar`, `Desactivar`, `Eliminar`, `Mover`, `Cambiar Perfil`, `Exportar`, `Imprimir`, `Refrescar`) con confirmación previa detallada (`BatchConfirmDialog`) que resalta cuentas protegidas (sesión activa y último Administrador) y registra auditoría por cada ítem.
+- **Sincronización inmediata y concurrencia optimista**: bus reactivo `SisproSyncHub` disparado post-commit, detección de escrituras concurrentes entre sesiones vía `PRAGMA data_version` (cada 2,5 s) y control de conflictos `row_version` (`ConcurrencyConflictException`) en `Usuarios` y `Grupos`.
+- **Date Pickers estandarizados (`dd-MM-yyyy`) y orden descendente global**: nuevo control `DateRangeFilterControl` (`Todos`, `Hoy`, `Últ. Semana`, `Últ. Mes`, `Este Año`, `Rango`) con validación `Desde <= Hasta` y día final inclusivo (`23:59:59`) aplicado a Órdenes de Trabajo, Facturas/Guías, Mantención Industrial, Gestión de Usuarios, Historial de Grupos y Auditoría, con `ORDER BY fecha DESC, id DESC` desde SQLite.
+- **Motor corporativo de exportaciones multiformato (`DocumentExportService`)**:
+  - **Excel (`.xlsx`)**: banner Cambiaso con logotipo, filtros aplicados, formatos chilenos y fórmulas reales `=SUM(...)`.
+  - **PDF (`.pdf`)**: generador vectorial PDF 1.4 nativo multipágina con logo, totales, numeración `Página X de Y` y firmas de OT.
+  - **Word (`.docx`)**: documentos OpenXML estilizados con logo, tablas corporativas y pie numerado.
+  - **CSV (`.csv`)**: UTF-8 con BOM RFC-4180 sin elementos gráficos.
+- **Recursos gráficos e Instalador Inno Setup `v4.0.0`**: regeneración de `sispro.ico` multi-resolución (7 tamaños 16–256 px en 32-bit RGBA), `logo_cambiaso_badge.png`, `sispro_mark.svg`, `wizard_banner.bmp` (164×314) y `wizard_small.bmp` (55×58); `Setup_SISPRO.iss` con ruta predeterminada `C:\Temp` (editable), metadatos corporativos completos y pruebas reales verificadas de instalación, actualización y desinstalación.
+- **Calidad y pruebas**: compilaciones Debug y Release con **0 errores, 0 advertencias y 0 vulnerabilidades NuGet**, **44/44 pruebas automatizadas xUnit aprobadas** e Informe Final de Entrega (`docs/INFORME_FINAL_ENTREGA.md`, secciones A–S).
+
 ## [3.0.0] — 2026-11-23
 
 ### Migración Integral de Datos Industriales + Modernización Visual Analítica

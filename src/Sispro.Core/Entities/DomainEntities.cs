@@ -20,6 +20,9 @@ public sealed class User
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
     public DateTime FechaModificacion { get; set; } = DateTime.Now;
     public DateTime? UltimoAcceso { get; set; }
+    public int? IdGrupo { get; set; }
+    public string NombreGrupo { get; set; } = string.Empty;
+    public int RowVersion { get; set; } = 1;
     public UserPermissions Permisos { get; set; } = new();
 
     public string Apellidos =>
@@ -266,4 +269,36 @@ public sealed class AuditEntry
     public string Modulo { get; set; } = string.Empty;
     public string Accion { get; set; } = string.Empty;
     public string Detalle { get; set; } = string.Empty;
+}
+
+public sealed class UserGroup
+{
+    public int IdGrupo { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public string? IdResponsable { get; set; }
+    public string AliasResponsable { get; set; } = string.Empty;
+    public string NombreResponsable { get; set; } = string.Empty;
+    public bool Activo { get; set; } = true;
+    public int CantidadIntegrantes { get; set; }
+    public DateTime FechaCreacion { get; set; } = DateTime.Now;
+    public DateTime FechaModificacion { get; set; } = DateTime.Now;
+    public int RowVersion { get; set; } = 1;
+
+    public override string ToString() => Nombre;
+}
+
+public sealed class GroupMovementEntry
+{
+    public long IdMovimiento { get; set; }
+    public string IdUsuario { get; set; } = string.Empty;
+    public int CodigoUsuario { get; set; }
+    public string AliasUsuario { get; set; } = string.Empty;
+    public int? IdGrupoOrigen { get; set; }
+    public string NombreGrupoOrigen { get; set; } = "Sin grupo";
+    public int? IdGrupoDestino { get; set; }
+    public string NombreGrupoDestino { get; set; } = "Sin grupo";
+    public string EjecutadoPor { get; set; } = string.Empty;
+    public string Motivo { get; set; } = string.Empty;
+    public DateTime FechaMovimiento { get; set; } = DateTime.Now;
 }

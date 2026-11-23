@@ -104,7 +104,7 @@ public sealed class DatabaseIntegrationTests
             temp.Context.ConnectionFactory.BackupTo(backupPath);
             Assert.True(File.Exists(backupPath));
 
-            Sispro.Services.SisproApplicationContext restored = new(new AppSettings { DatabasePath = backupPath });
+            using Sispro.Services.SisproApplicationContext restored = new(new AppSettings { DatabasePath = backupPath });
             Assert.Equal(7284, restored.Audit.GetDashboardMetrics().TotalOrdenesTrabajo);
         }
         finally

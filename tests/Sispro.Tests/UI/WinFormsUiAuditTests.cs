@@ -91,8 +91,13 @@ public sealed class WinFormsUiAuditTests
             Assert.Equal("Limpiar", directUsers.BtnLimpiar.Text);
             Assert.Equal("Buscar", directUsers.BtnBuscar.Text);
             Assert.Equal("Refrescar", directUsers.BtnRefrescar.Text);
-            Assert.Equal(9, directUsers.GridUsers.Columns.Count);
+            Assert.Equal("Activar", directUsers.BtnActivar.Text);
+            Assert.Equal("Desactivar", directUsers.BtnDesactivar.Text);
+            Assert.Equal("Mover", directUsers.BtnMover.Text);
+            Assert.Equal("Exportar", directUsers.BtnExportar.Text);
+            Assert.Equal(11, directUsers.GridUsers.Columns.Count);
             Assert.True(directUsers.GridUsers.Rows.Count >= 3);
+            Assert.True(directUsers.ListGroups.Items.Count >= 7); // Todos + Sin grupo + 5 grupos base
 
             using SettingsDialog settingsDlg = new(temp.Context);
             AssertAllButtonsValid(settingsDlg, "SettingsDialog");
@@ -109,8 +114,20 @@ public sealed class WinFormsUiAuditTests
             using UserPermissionsDialog permsDlg = new(UserRoleLevel.Supervisor, PermissionPresets.CreateForRole(UserRoleLevel.Supervisor), readOnly: false);
             AssertAllButtonsValid(permsDlg, "UserPermissionsDialog");
 
-            using AuditLogDialog auditDlg = new(temp.Context.Audit);
+            using AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");
+
+            using GroupEditorDialog groupEditDlg = new(temp.Context.GroupManagementService, temp.Context.UserManagementService, admin);
+            AssertAllButtonsValid(groupEditDlg, "GroupEditorDialog");
+
+            using GroupMovementDialog groupMoveDlg = new([admin.Usuario], temp.Context.GroupManagementService.GetAll(admin));
+            AssertAllButtonsValid(groupMoveDlg, "GroupMovementDialog");
+
+            using GroupHistoryDialog groupHistDlg = new(temp.Context.GroupManagementService, temp.Context.DocumentExportService, admin);
+            AssertAllButtonsValid(groupHistDlg, "GroupHistoryDialog");
+
+            using BatchConfirmDialog batchDlg = new("Desactivar Usuarios", "Confirmación", 1, [admin.Usuario], [], requireRoleSelection: true, isDestructive: true);
+            AssertAllButtonsValid(batchDlg, "BatchConfirmDialog");
         });
     }
 

@@ -208,6 +208,18 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
             cmd.Parameters.AddWithValue("$prov", filter.IdProv.Value);
         }
 
+        if (filter.IdSol.HasValue && filter.IdSol.Value > 0)
+        {
+            where.Add("o.id_sol = $sol");
+            cmd.Parameters.AddWithValue("$sol", filter.IdSol.Value);
+        }
+
+        if (filter.Estado.HasValue)
+        {
+            where.Add("o.estado = $est");
+            cmd.Parameters.AddWithValue("$est", (int)filter.Estado.Value);
+        }
+
         if (filter.NumeroOt.HasValue && filter.NumeroOt.Value > 0)
         {
             where.Add("o.n_ot = $not");
@@ -251,7 +263,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
             LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
             INNER JOIN DetalleOT d ON d.id_ot = o.id_ot
             {whereSql}
-            ORDER BY o.fecha_ot DESC, o.n_ot DESC, d.id_det ASC
+            ORDER BY o.fecha_ot DESC, o.id_ot DESC, d.id_det ASC
             {limitSql};
             """;
 

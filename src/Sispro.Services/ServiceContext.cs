@@ -92,11 +92,13 @@ public sealed class AppSettingsStore
     }
 }
 
-public sealed class SisproApplicationContext
+public sealed class SisproApplicationContext : IDisposable
 {
     public AppSettings Settings { get; private set; }
     public SqliteConnectionFactory ConnectionFactory { get; private set; }
+    public SisproSyncHub SyncHub { get; private set; }
     public IUserRepository Users { get; private set; }
+    public IGroupRepository Groups { get; private set; }
     public IProviderRepository Providers { get; private set; }
     public IRequesterRepository Requesters { get; private set; }
     public IAssetTreeRepository AssetTree { get; private set; }
@@ -110,8 +112,13 @@ public sealed class SisproApplicationContext
     public InvoiceService InvoiceService { get; private set; }
     public MaintainerService MaintainerService { get; private set; }
     public UserManagementService UserManagementService { get; private set; }
+    public GroupManagementService GroupManagementService { get; private set; }
     public MaintenanceService MaintenanceService { get; private set; }
     public ExcelExportService ExcelExportService { get; private set; }
+    public PdfExportService PdfExportService { get; private set; }
+    public WordExportService WordExportService { get; private set; }
+    public CsvExportService CsvExportService { get; private set; }
+    public DocumentExportService DocumentExportService { get; private set; }
     public PrintService PrintService { get; private set; }
 
     public UserSession? CurrentSession { get; set; }
@@ -121,8 +128,10 @@ public sealed class SisproApplicationContext
         Settings = settings;
         ConnectionFactory = new SqliteConnectionFactory(settings.DatabasePath);
         SchemaInitializer.EnsureInitialized(ConnectionFactory, initialAdmin);
+        SyncHub = new SisproSyncHub(ConnectionFactory);
 
         Users = new UserRepository(ConnectionFactory);
+        Groups = new GroupRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);
         Requesters = new RequesterRepository(ConnectionFactory);
         AssetTree = new AssetTreeRepository(ConnectionFactory);
@@ -132,12 +141,17 @@ public sealed class SisproApplicationContext
         Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
-        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit);
-        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit);
-        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit);
-        UserManagementService = new UserManagementService(Users, Requesters, Audit);
+        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
+        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
+        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
+        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
+        GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(settings);
+        PdfExportService = new PdfExportService(settings);
+        WordExportService = new WordExportService(settings);
+        CsvExportService = new CsvExportService();
+        DocumentExportService = new DocumentExportService(ExcelExportService, PdfExportService, WordExportService, CsvExportService);
         PrintService = new PrintService(settings);
     }
 
@@ -148,8 +162,10 @@ public sealed class SisproApplicationContext
 
         ConnectionFactory = new SqliteConnectionFactory(newDatabasePath);
         SchemaInitializer.EnsureInitialized(ConnectionFactory);
+        SyncHub.AttachDatabase(ConnectionFactory);
 
         Users = new UserRepository(ConnectionFactory);
+        Groups = new GroupRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);
         Requesters = new RequesterRepository(ConnectionFactory);
         AssetTree = new AssetTreeRepository(ConnectionFactory);
@@ -159,12 +175,24 @@ public sealed class SisproApplicationContext
         Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
-        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit);
-        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit);
-        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit);
-        UserManagementService = new UserManagementService(Users, Requesters, Audit);
+        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
+        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
+        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
+        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
+        GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(Settings);
+        PdfExportService = new PdfExportService(Settings);
+        WordExportService = new WordExportService(Settings);
+        CsvExportService = new CsvExportService();
+        DocumentExportService = new DocumentExportService(ExcelExportService, PdfExportService, WordExportService, CsvExportService);
         PrintService = new PrintService(Settings);
+
+        SyncHub.Publish(Sispro.Core.Enums.DataChangeKind.All, "RECARGAR_BASE_DATOS");
+    }
+
+    public void Dispose()
+    {
+        SyncHub.Dispose();
     }
 }

@@ -23,20 +23,7 @@ internal static class Program
             }
         };
 
-        SisproApplicationContext context;
-        using (SplashForm splash = new())
-        {
-            splash.Show();
-            splash.SetProgress(25, "Cargando configuración corporativa...");
-            AppSettings settings = AppSettingsStore.Load();
-
-            splash.SetProgress(65, "Inicializando servicios y pool de base de datos SQLite...");
-            context = new SisproApplicationContext(settings);
-
-            splash.SetProgress(100, "Sistema listo.");
-            Thread.Sleep(250);
-            splash.Close();
-        }
+        using SisproApplicationContext context = InitializeContextWithSplash();
 
         while (true)
         {
@@ -56,5 +43,21 @@ internal static class Program
 
             context.CurrentSession = null;
         }
+    }
+
+    private static SisproApplicationContext InitializeContextWithSplash()
+    {
+        using SplashForm splash = new();
+        splash.Show();
+        splash.SetProgress(25, "Cargando configuración corporativa...");
+        AppSettings settings = AppSettingsStore.Load();
+
+        splash.SetProgress(65, "Inicializando servicios, grupos y motor SQLite WAL...");
+        SisproApplicationContext context = new(settings);
+
+        splash.SetProgress(100, "Sistema listo.");
+        Thread.Sleep(250);
+        splash.Close();
+        return context;
     }
 }

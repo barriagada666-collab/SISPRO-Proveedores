@@ -10,7 +10,8 @@ public sealed class WorkOrderService(
     IProviderRepository providers,
     IRequesterRepository requesters,
     IAssetTreeRepository assetTree,
-    IAuditRepository audit)
+    IAuditRepository audit,
+    SisproSyncHub? syncHub = null)
 {
     public int GetNextWorkOrderNumber() => workOrders.GetNextWorkOrderNumber();
 
@@ -44,6 +45,7 @@ public sealed class WorkOrderService(
         int id = workOrders.Create(order);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "CREAR_OT",
             $"OT N° {order.NumeroOt} creada ({order.Detalles.Count} ítems, Proveedor ID {order.IdProv}).");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "CREAR_OT");
         return id;
     }
 
@@ -62,6 +64,7 @@ public sealed class WorkOrderService(
         workOrders.Update(order);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "MODIFICAR_OT",
             $"OT N° {order.NumeroOt} (ID {order.IdOt}) actualizada ({order.Detalles.Count} ítems).");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "MODIFICAR_OT");
     }
 
     public void Delete(UserSession session, int idOt)
@@ -78,6 +81,7 @@ public sealed class WorkOrderService(
         workOrders.Delete(idOt);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "ELIMINAR_OT",
             $"OT N° {existing.NumeroOt} (ID {idOt}) eliminada.");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "ELIMINAR_OT");
     }
 
     public void SetApproval(UserSession session, int idOt, ApprovalType type, bool approved)
@@ -98,6 +102,7 @@ public sealed class WorkOrderService(
         string tag = type == ApprovalType.Supervisor ? "VBS" : "VBJ";
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", approved ? $"APROBAR_{tag}" : $"REVOCAR_{tag}",
             $"OT N° {order.NumeroOt}: {(approved ? "Aprobada" : "Revocada")} ({tag}).");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, approved ? $"APROBAR_{tag}" : $"REVOCAR_{tag}");
     }
 
     private void ValidateWorkOrder(WorkOrder order, bool isUpdate)

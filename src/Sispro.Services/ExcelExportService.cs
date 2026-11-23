@@ -7,13 +7,184 @@ using Sispro.Core.Enums;
 namespace Sispro.Services;
 
 /// <summary>
-/// Exportación profesional a Excel (.xlsx) usando ClosedXML (sin dependencia de Microsoft Office COM).
+/// Exportación profesional a Excel (.xlsx) usando ClosedXML (sin dependencia de Microsoft Office COM),
+/// con identidad corporativa Cambiaso Hnos S.A.C., logotipo, filtros, fórmulas de totales y pie de página.
 /// </summary>
 public sealed class ExcelExportService(AppSettings settings)
 {
+    private static readonly XLColor CambiasoNavy = XLColor.FromHtml("#0A263C");
     private static readonly XLColor CambiasoOlive = XLColor.FromHtml("#0E4163");
+    private static readonly XLColor CambiasoGold = XLColor.FromHtml("#C8A977");
     private static readonly XLColor CambiasoLight = XLColor.FromHtml("#EBF4FA");
+    private static readonly XLColor TotalFill = XLColor.FromHtml("#E0ECF5");
     private static readonly XLColor BorderGray = XLColor.FromHtml("#B8CEDE");
+
+    public void ExportTabularReport(
+        TabularReportData report,
+        string outputPath,
+        string? assetsDirectory = null,
+        IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        ArgumentException.ThrowIfNullOrWhiteSpace(outputPath);
+
+        string? dir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
+        string safeSheet = SanitizeSheetName(report.SheetName);
+
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.Worksheets.Add(safeSheet);
+        ws.PageSetup.PageOrientation = report.Landscape ? XLPageOrientation.Landscape : XLPageOrientation.Portrait;
+        ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
+        ws.PageSetup.FitToPages(1, 0);
+        ws.PageSetup.Footer.Left.AddText($"SISPRO — {settings.CompanyName} · {settings.CompanyDepartment}");
+        ws.PageSetup.Footer.Right.AddText("Página &P de &N");
+
+        int colCount = Math.Max(1, report.Columns.Count);
+
+        // Banner corporativo (Filas 1 a 3)
+        IXLRange banner = ws.Range(1, 1, 3, colCount);
+        banner.Style.Fill.BackgroundColor = CambiasoNavy;
+        banner.Style.Border.BottomBorder = XLBorderStyleValues.Thick;
+        banner.Style.Border.BottomBorderColor = CambiasoGold;
+        ws.Row(1).Height = 24;
+        ws.Row(2).Height = 19;
+        ws.Row(3).Height = 18;
+
+        int textStartCol = 1;
+        string logoPath = Path.Combine(assetsDir, "logo_cambiaso.png");
+        if (File.Exists(logoPath) && colCount >= 3)
+        {
+            ws.AddPicture(logoPath)
+              .MoveTo(ws.Cell(1, 1), 6, 6)
+              .WithSize(112, 52);
+            textStartCol = 2;
+        }
+
+        IXLRange titleRange = ws.Range(1, textStartCol, 1, colCount).Merge();
+        titleRange.Value = report.Title;
+        titleRange.Style.Font.FontName = "Segoe UI";
+        titleRange.Style.Font.Bold = true;
+        titleRange.Style.Font.FontSize = 13;
+        titleRange.Style.Font.FontColor = XLColor.White;
+        titleRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+
+        IXLRange subRange = ws.Range(2, textStartCol, 2, colCount).Merge();
+        subRange.Value = string.IsNullOrWhiteSpace(report.Subtitle)
+            ? $"{settings.CompanyName} — {settings.CompanyDepartment}"
+            : report.Subtitle;
+        subRange.Style.Font.FontName = "Segoe UI";
+        subRange.Style.Font.FontSize = 9.5;
+        subRange.Style.Font.FontColor = CambiasoGold;
+
+        IXLRange metaRange = ws.Range(3, textStartCol, 3, colCount).Merge();
+        metaRange.Value = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count:N0}  |  Filtros: {report.FilterSummary}";
+        metaRange.Style.Font.FontName = "Segoe UI";
+        metaRange.Style.Font.FontSize = 8.5;
+        metaRange.Style.Font.FontColor = XLColor.FromHtml("#D4E3EE");
+
+        // Fila 4: Separador fino
+        ws.Row(4).Height = 6;
+
+        // Fila 5: Encabezados de tabla
+        const int headerRow = 5;
+        for (int c = 0; c < report.Columns.Count; c++)
+        {
+            ws.Cell(headerRow, c + 1).Value = report.Columns[c].Header;
+        }
+
+        IXLRange tblHeader = ws.Range(headerRow, 1, headerRow, colCount);
+        tblHeader.Style.Fill.BackgroundColor = CambiasoOlive;
+        tblHeader.Style.Font.FontName = "Segoe UI";
+        tblHeader.Style.Font.FontColor = XLColor.White;
+        tblHeader.Style.Font.Bold = true;
+        tblHeader.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+        tblHeader.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+        ws.Row(headerRow).Height = 24;
+        ws.SheetView.FreezeRows(headerRow);
+        ws.PageSetup.SetRowsToRepeatAtTop(1, headerRow);
+
+        // Filas de datos
+        int total = Math.Max(1, report.Rows.Count);
+        int firstDataRow = headerRow + 1;
+        for (int i = 0; i < report.Rows.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            object?[] data = report.Rows[i];
+            int r = firstDataRow + i;
+
+            for (int c = 0; c < report.Columns.Count; c++)
+            {
+                object? val = c < data.Length ? data[c] : null;
+                IXLCell cell = ws.Cell(r, c + 1);
+                WriteTypedCell(cell, val, report.Columns[c].Kind);
+            }
+
+            if (i % 2 == 1)
+            {
+                ws.Range(r, 1, r, colCount).Style.Fill.BackgroundColor = CambiasoLight;
+            }
+
+            if (progress is not null && (i % 25 == 0 || i == report.Rows.Count - 1))
+            {
+                progress.Report((int)((i + 1) * 100.0 / total));
+            }
+        }
+
+        int lastDataRow = firstDataRow + report.Rows.Count - 1;
+        int lastTableRow = Math.Max(headerRow, lastDataRow);
+
+        // Fila de resumen con fórmulas Excel reales (=SUM / =COUNTA)
+        bool hasSums = report.Columns.Any(c => c.SumInFooter);
+        if (report.Rows.Count > 0 && hasSums)
+        {
+            int summaryRow = lastDataRow + 1;
+            ws.Cell(summaryRow, 1).Value = $"TOTAL ({report.Rows.Count:N0})";
+            for (int c = 0; c < report.Columns.Count; c++)
+            {
+                if (report.Columns[c].SumInFooter)
+                {
+                    string colLetter = XLHelper.GetColumnLetterFromNumber(c + 1);
+                    IXLCell sumCell = ws.Cell(summaryRow, c + 1);
+                    sumCell.FormulaA1 = $"SUM({colLetter}{firstDataRow}:{colLetter}{lastDataRow})";
+                    sumCell.Style.NumberFormat.Format = report.Columns[c].Kind == ExportColumnKind.Currency ? "$#,##0" : "#,##0.##";
+                }
+            }
+
+            IXLRange sumRange = ws.Range(summaryRow, 1, summaryRow, colCount);
+            sumRange.Style.Fill.BackgroundColor = TotalFill;
+            sumRange.Style.Font.Bold = true;
+            sumRange.Style.Font.FontColor = CambiasoNavy;
+            sumRange.Style.Border.TopBorder = XLBorderStyleValues.Medium;
+            sumRange.Style.Border.TopBorderColor = CambiasoOlive;
+            ws.Row(summaryRow).Height = 22;
+            lastTableRow = summaryRow;
+        }
+
+        // Bordes, AutoFilter y ajuste de anchos
+        IXLRange dataRange = ws.Range(headerRow, 1, lastTableRow, colCount);
+        dataRange.Style.Font.FontName = "Segoe UI";
+        dataRange.Style.Font.FontSize = 9.5;
+        dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
+        dataRange.Style.Border.OutsideBorderColor = CambiasoOlive;
+        dataRange.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
+        dataRange.Style.Border.InsideBorderColor = BorderGray;
+        ws.Range(headerRow, 1, Math.Max(headerRow, lastDataRow), colCount).SetAutoFilter();
+
+        ws.Columns(1, colCount).AdjustToContents(headerRow, Math.Min(lastTableRow, headerRow + 250), 11, 54);
+        if (File.Exists(logoPath) && colCount >= 3 && ws.Column(1).Width < 17)
+        {
+            ws.Column(1).Width = 17;
+        }
+
+        wb.SaveAs(outputPath);
+    }
 
     public void ExportWorkOrderDocument(
         WorkOrder order,
@@ -28,6 +199,8 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.PageSetup.PageOrientation = XLPageOrientation.Portrait;
         ws.PageSetup.PaperSize = XLPaperSize.LetterPaper;
         ws.PageSetup.FitToPages(1, 0);
+        ws.PageSetup.Footer.Left.AddText($"SISPRO — {settings.CompanyName} · {settings.CompanyDepartment}");
+        ws.PageSetup.Footer.Right.AddText("Página &P de &N");
 
         ws.Column(1).Width = 10;
         ws.Column(2).Width = 10;
@@ -158,7 +331,6 @@ public sealed class ExcelExportService(AppSettings settings)
             row++;
         }
 
-        // Minimum blank rows for clean physical form layout
         while (row < headerRow + 10)
         {
             ws.Range(row, 3, row, 4).Merge();
@@ -173,7 +345,6 @@ public sealed class ExcelExportService(AppSettings settings)
         itemsBox.Style.Border.OutsideBorderColor = CambiasoOlive;
         itemsBox.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
-        // Approval Status Banner
         int vbRow = row + 1;
         string vbsText = order.TieneVbs ? "VB Supervisor: APROBADO" : "VB Supervisor: Pendiente";
         string vbjText = order.TieneVbj ? "VB Jefatura: APROBADO" : "VB Jefatura: Pendiente";
@@ -182,7 +353,6 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.Range(vbRow, 1, vbRow, 6).Style.Font.Italic = true;
         ws.Range(vbRow, 1, vbRow, 6).Style.Font.FontColor = XLColor.DimGray;
 
-        // Signatures Area
         int sigStartRow = vbRow + 2;
         string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
         string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
@@ -212,225 +382,105 @@ public sealed class ExcelExportService(AppSettings settings)
         wb.SaveAs(outputPath);
     }
 
-    public async Task ExportWorkOrdersGridAsync(
+    public Task ExportWorkOrdersGridAsync(
         IReadOnlyList<WorkOrderSearchRow> rows,
         string outputPath,
         IProgress<int>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        ExportWorkOrdersGridAsync(rows, outputPath, filterSummary: null, progress, cancellationToken);
+
+    public async Task ExportWorkOrdersGridAsync(
+        IReadOnlyList<WorkOrderSearchRow> rows,
+        string outputPath,
+        string? filterSummary,
+        IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        await Task.Run(() =>
-        {
-            using XLWorkbook wb = new();
-            IXLWorksheet ws = wb.Worksheets.Add("Órdenes de Trabajo");
-
-            string[] headers =
-            [
-                "N° OT", "Fecha", "Proveedor", "Solicitante", "Cantidad",
-                "Detalle del Trabajo", "Ruta de Activo", "VB Sup.", "VB Jef.", "Facturado"
-            ];
-
-            WriteStyledHeader(ws, headers);
-
-            int total = Math.Max(1, rows.Count);
-            for (int i = 0; i < rows.Count; i++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                WorkOrderSearchRow item = rows[i];
-                int r = i + 2;
-
-                ws.Cell(r, 1).Value = item.NumeroOt;
-                ws.Cell(r, 2).Value = item.Fecha;
-                ws.Cell(r, 2).Style.DateFormat.Format = "dd-MM-yyyy";
-                ws.Cell(r, 3).Value = item.Proveedor;
-                ws.Cell(r, 4).Value = item.Solicitante;
-                ws.Cell(r, 5).Value = item.Cantidad;
-                ws.Cell(r, 6).Value = item.Detalle;
-                ws.Cell(r, 7).Value = item.RutaActivo;
-                ws.Cell(r, 8).Value = item.TieneVbs ? "Sí" : "No";
-                ws.Cell(r, 9).Value = item.TieneVbj ? "Sí" : "No";
-                ws.Cell(r, 10).Value = item.AsociadoAFactura ? "Sí" : "No";
-
-                if (r % 2 == 1)
-                {
-                    ws.Range(r, 1, r, headers.Length).Style.Fill.BackgroundColor = CambiasoLight;
-                }
-
-                if (progress is not null && (i % 25 == 0 || i == rows.Count - 1))
-                {
-                    progress.Report((int)((i + 1) * 100.0 / total));
-                }
-            }
-
-            FinalizeTable(ws, rows.Count + 1, headers.Length);
-            ws.Column(6).Width = 60;
-            ws.Column(7).Width = 36;
-            wb.SaveAs(outputPath);
-        }, cancellationToken);
+        TabularReportData report = DocumentExportService.BuildWorkOrdersReport(rows, filterSummary);
+        await Task.Run(() => ExportTabularReport(report, outputPath, progress: progress, cancellationToken: cancellationToken), cancellationToken);
     }
 
-    public void ExportInvoicesGrid(IReadOnlyList<InvoiceSearchRow> rows, string outputPath)
-    {
-        using XLWorkbook wb = new();
-        IXLWorksheet ws = wb.Worksheets.Add("Facturas y Guías");
-        string[] headers = ["N° Documento", "Fecha", "Proveedor", "Recibido Por", "Ítems", "Neto ($)", "IVA 19% ($)", "Total c/IVA ($)", "Detalle"];
-        WriteStyledHeader(ws, headers);
+    public void ExportInvoicesGrid(IReadOnlyList<InvoiceSearchRow> rows, string outputPath, string? filterSummary = null) =>
+        ExportTabularReport(DocumentExportService.BuildInvoicesReport(rows, filterSummary), outputPath);
 
-        for (int i = 0; i < rows.Count; i++)
+    public void ExportProvidersGrid(IReadOnlyList<Provider> providers, string outputPath, string? filterSummary = null) =>
+        ExportTabularReport(DocumentExportService.BuildProvidersReport(providers, filterSummary), outputPath);
+
+    public void ExportUsersGrid(IReadOnlyList<User> users, string outputPath, string? filterSummary = null) =>
+        ExportTabularReport(DocumentExportService.BuildUsersReport(users, filterSummary), outputPath);
+
+    public void ExportMaintenanceOrders(IReadOnlyList<MantWorkOrderRow> rows, string outputPath, string? filterSummary = null) =>
+        ExportTabularReport(DocumentExportService.BuildMaintenanceOrdersReport(rows, filterSummary), outputPath);
+
+    public void ExportSupplies(IReadOnlyList<MantSupplyRow> rows, string outputPath, string? filterSummary = null) =>
+        ExportTabularReport(DocumentExportService.BuildSuppliesReport(rows, filterSummary), outputPath);
+
+    private static void WriteTypedCell(IXLCell cell, object? val, ExportColumnKind kind)
+    {
+        if (val is null)
         {
-            InvoiceSearchRow item = rows[i];
-            int r = i + 2;
-            ws.Cell(r, 1).Value = item.NumeroDocumento;
-            ws.Cell(r, 2).Value = item.Fecha;
-            ws.Cell(r, 2).Style.DateFormat.Format = "dd-MM-yyyy";
-            ws.Cell(r, 3).Value = item.Proveedor;
-            ws.Cell(r, 4).Value = item.RecibidoPor;
-            ws.Cell(r, 5).Value = item.CantidadItems;
-            ws.Cell(r, 6).Value = item.TotalNeto;
-            ws.Cell(r, 7).Value = item.Iva;
-            ws.Cell(r, 8).Value = item.TotalConIva;
-            ws.Range(r, 6, r, 8).Style.NumberFormat.Format = "#,##0";
-            ws.Cell(r, 9).Value = item.Detalle;
+            cell.Value = string.Empty;
+            return;
         }
 
-        FinalizeTable(ws, rows.Count + 1, headers.Length);
-        wb.SaveAs(outputPath);
+        switch (kind)
+        {
+            case ExportColumnKind.Date when val is DateTime dt:
+                cell.Value = dt;
+                cell.Style.DateFormat.Format = "dd-MM-yyyy";
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                break;
+
+            case ExportColumnKind.DateTime when val is DateTime dt:
+                cell.Value = dt;
+                cell.Style.DateFormat.Format = "dd-MM-yyyy HH:mm";
+                cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                break;
+
+            case ExportColumnKind.Currency when val is decimal dec:
+                cell.Value = dec;
+                cell.Style.NumberFormat.Format = "$#,##0";
+                break;
+
+            case ExportColumnKind.Currency when val is double dbl:
+                cell.Value = dbl;
+                cell.Style.NumberFormat.Format = "$#,##0";
+                break;
+
+            case ExportColumnKind.Integer when val is int i:
+                cell.Value = i;
+                cell.Style.NumberFormat.Format = "#,##0";
+                break;
+
+            case ExportColumnKind.Integer when val is long l:
+                cell.Value = l;
+                cell.Style.NumberFormat.Format = "#,##0";
+                break;
+
+            case ExportColumnKind.Decimal when val is double dbl:
+                cell.Value = dbl;
+                cell.Style.NumberFormat.Format = "#,##0.##";
+                break;
+
+            case ExportColumnKind.Decimal when val is decimal dec:
+                cell.Value = dec;
+                cell.Style.NumberFormat.Format = "#,##0.##";
+                break;
+
+            default:
+                cell.Value = Convert.ToString(val, CultureInfo.InvariantCulture) ?? string.Empty;
+                break;
+        }
     }
 
-    public void ExportProvidersGrid(IReadOnlyList<Provider> providers, string outputPath)
+    private static string SanitizeSheetName(string name)
     {
-        using XLWorkbook wb = new();
-        IXLWorksheet ws = wb.Worksheets.Add("Proveedores");
-        string[] headers = ["ID", "Proveedor", "Dirección", "Teléfono", "Fax", "Correo", "Contacto", "Correo Contacto", "Estado"];
-        WriteStyledHeader(ws, headers);
-
-        for (int i = 0; i < providers.Count; i++)
+        string cleaned = new(name.Where(ch => !":\\/?*[]".Contains(ch)).ToArray());
+        if (string.IsNullOrWhiteSpace(cleaned))
         {
-            Provider p = providers[i];
-            int r = i + 2;
-            ws.Cell(r, 1).Value = p.IdProv;
-            ws.Cell(r, 2).Value = p.Nombre;
-            ws.Cell(r, 3).Value = p.Direccion;
-            ws.Cell(r, 4).Value = p.Telefono;
-            ws.Cell(r, 5).Value = p.Fax;
-            ws.Cell(r, 6).Value = p.Correo;
-            ws.Cell(r, 7).Value = p.Contacto;
-            ws.Cell(r, 8).Value = p.CorreoContacto;
-            ws.Cell(r, 9).Value = p.Activo ? "Activo" : "Inactivo";
+            cleaned = "Reporte";
         }
 
-        FinalizeTable(ws, providers.Count + 1, headers.Length);
-        wb.SaveAs(outputPath);
-    }
-
-    public void ExportUsersGrid(IReadOnlyList<User> users, string outputPath)
-    {
-        using XLWorkbook wb = new();
-        IXLWorksheet ws = wb.Worksheets.Add("Usuarios");
-        string[] headers = ["ID", "Usuario", "Nombre Completo", "Correo Electrónico", "Teléfono", "Perfil", "Estado", "Fecha Creación", "Último Acceso"];
-        WriteStyledHeader(ws, headers);
-
-        for (int i = 0; i < users.Count; i++)
-        {
-            User u = users[i];
-            int r = i + 2;
-            ws.Cell(r, 1).Value = u.CodigoId;
-            ws.Cell(r, 2).Value = u.AliasUsuario;
-            ws.Cell(r, 3).Value = u.NombreCompleto;
-            ws.Cell(r, 4).Value = u.MailUsuario;
-            ws.Cell(r, 5).Value = u.FonoUsuario;
-            ws.Cell(r, 6).Value = u.Nivel.ToString();
-            ws.Cell(r, 7).Value = u.Activo ? "Activo" : "Inactivo";
-            ws.Cell(r, 8).Value = u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture);
-            ws.Cell(r, 9).Value = u.UltimoAcceso.HasValue
-                ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture)
-                : "Sin accesos";
-        }
-
-        FinalizeTable(ws, users.Count + 1, headers.Length);
-        wb.SaveAs(outputPath);
-    }
-
-    public void ExportMaintenanceOrders(IReadOnlyList<MantWorkOrderRow> rows, string outputPath)
-    {
-        using XLWorkbook wb = new();
-        IXLWorksheet ws = wb.Worksheets.Add("OTs Mantención");
-        string[] headers = ["N° OT", "Fecha Inicio", "Fecha Fin", "Turno", "Oficio", "Motivo", "Planta", "Equipo", "Estado", "Detención", "Solicitada Por", "Descripción"];
-        WriteStyledHeader(ws, headers);
-
-        for (int i = 0; i < rows.Count; i++)
-        {
-            MantWorkOrderRow o = rows[i];
-            int r = i + 2;
-            ws.Cell(r, 1).Value = o.NumeroOt;
-            ws.Cell(r, 2).Value = o.FechaInicio;
-            ws.Cell(r, 3).Value = o.FechaFin;
-            ws.Cell(r, 4).Value = o.Turno;
-            ws.Cell(r, 5).Value = o.Oficio;
-            ws.Cell(r, 6).Value = o.Motivo;
-            ws.Cell(r, 7).Value = o.Planta;
-            ws.Cell(r, 8).Value = o.Equipo;
-            ws.Cell(r, 9).Value = o.Estado;
-            ws.Cell(r, 10).Value = o.Detencion;
-            ws.Cell(r, 11).Value = o.SolicitadaPor;
-            ws.Cell(r, 12).Value = o.DescripcionBreve;
-        }
-
-        FinalizeTable(ws, rows.Count + 1, headers.Length);
-        wb.SaveAs(outputPath);
-    }
-
-    public void ExportSupplies(IReadOnlyList<MantSupplyRow> rows, string outputPath)
-    {
-        using XLWorkbook wb = new();
-        IXLWorksheet ws = wb.Worksheets.Add("Insumos SAP");
-        string[] headers = ["ID", "Código SAP", "Cód. Proveedor", "Descripción", "Stock", "Días Entrega", "Prioridad", "Usos Históricos"];
-        WriteStyledHeader(ws, headers);
-
-        for (int i = 0; i < rows.Count; i++)
-        {
-            MantSupplyRow s = rows[i];
-            int r = i + 2;
-            ws.Cell(r, 1).Value = s.IdItem;
-            ws.Cell(r, 2).Value = s.CodSap;
-            ws.Cell(r, 3).Value = s.CodProveedor;
-            ws.Cell(r, 4).Value = s.Descripcion;
-            ws.Cell(r, 5).Value = s.StockUnidad;
-            ws.Cell(r, 6).Value = s.DiasEntrega;
-            ws.Cell(r, 7).Value = s.Prioridad;
-            ws.Cell(r, 8).Value = s.UsosHistoricos;
-        }
-
-        FinalizeTable(ws, rows.Count + 1, headers.Length);
-        wb.SaveAs(outputPath);
-    }
-
-    private static void WriteStyledHeader(IXLWorksheet ws, string[] headers)
-    {
-        for (int c = 0; c < headers.Length; c++)
-        {
-            ws.Cell(1, c + 1).Value = headers[c];
-        }
-
-        IXLRange header = ws.Range(1, 1, 1, headers.Length);
-        header.Style.Fill.BackgroundColor = CambiasoOlive;
-        header.Style.Font.FontColor = XLColor.White;
-        header.Style.Font.Bold = true;
-        header.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        ws.Row(1).Height = 24;
-        ws.SheetView.FreezeRows(1);
-    }
-
-    private static void FinalizeTable(IXLWorksheet ws, int lastRow, int lastCol)
-    {
-        if (lastRow >= 1)
-        {
-            IXLRange used = ws.Range(1, 1, Math.Max(1, lastRow), lastCol);
-            used.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
-            used.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
-            used.Style.Border.InsideBorderColor = BorderGray;
-            used.SetAutoFilter();
-        }
-
-        ws.Columns(1, lastCol).AdjustToContents(1, Math.Min(lastRow, 200), 10, 48);
+        return cleaned.Length > 31 ? cleaned[..31] : cleaned;
     }
 }

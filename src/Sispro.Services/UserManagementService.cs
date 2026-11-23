@@ -10,7 +10,9 @@ namespace Sispro.Services;
 public sealed class UserManagementService(
     IUserRepository users,
     IRequesterRepository requesters,
-    IAuditRepository audit)
+    IAuditRepository audit,
+    IGroupRepository? groups = null,
+    SisproSyncHub? syncHub = null)
 {
     public void EnsureCanAccessModule(UserSession? session) =>
         EnsureAdministrator(session, "Acceder al módulo Gestión de Usuarios");
@@ -21,13 +23,27 @@ public sealed class UserManagementService(
     public IReadOnlyList<User> Search(UserSession session, UserSearchFilter? filter = null)
     {
         EnsureAdministrator(session, "Consultar usuarios");
-        return users.Search(filter ?? new UserSearchFilter());
+        filter ??= new UserSearchFilter();
+
+        string? dateErr = DomainValidator.ValidateDateRange(filter.FechaCreacionInicio, filter.FechaCreacionFin);
+        if (dateErr is not null)
+        {
+            throw new ArgumentException(dateErr);
+        }
+
+        return users.Search(filter);
     }
 
     public User? GetById(UserSession session, string idUsuario)
     {
         EnsureAdministrator(session, "Consultar detalle de usuario");
         return users.GetById(idUsuario);
+    }
+
+    public int CountWithoutGroup(UserSession session)
+    {
+        EnsureAdministrator(session, "Consultar usuarios sin grupo");
+        return users.CountWithoutGroup();
     }
 
     public int CreateUser(UserSession session, User user, string plainPassword, string confirmPassword)
@@ -54,6 +70,7 @@ public sealed class UserManagementService(
         }
 
         ValidateCommonUserFields(user);
+        UserGroup? targetGroup = ResolveAndValidateGroup(user.IdGrupo, requireActive: true);
 
         string? pwdError = DomainValidator.ValidatePasswordPolicy(plainPassword, confirmPassword);
         if (pwdError is not null)
@@ -72,6 +89,7 @@ public sealed class UserManagementService(
         user.ApeMatUsuario = user.ApeMatUsuario.Trim();
         user.MailUsuario = user.MailUsuario.Trim();
         user.FonoUsuario = user.FonoUsuario.Trim();
+        user.NombreGrupo = targetGroup?.Nombre ?? string.Empty;
         user.PassHash = PasswordSecurity.HashPassword(plainPassword);
 
         EnforceRolePermissionBoundary(user);
@@ -82,16 +100,38 @@ public sealed class UserManagementService(
             requesters.EnsureFromUser(user);
         }
 
+        if (targetGroup is not null && groups is not null)
+        {
+            groups.RecordMovement(new GroupMovementEntry
+            {
+                IdUsuario = user.IdUsuario,
+                CodigoUsuario = codigoId,
+                AliasUsuario = user.AliasUsuario,
+                IdGrupoOrigen = null,
+                NombreGrupoOrigen = "Sin grupo",
+                IdGrupoDestino = targetGroup.IdGrupo,
+                NombreGrupoDestino = targetGroup.Nombre,
+                EjecutadoPor = session.Usuario.AliasUsuario,
+                Motivo = "Asignación inicial al crear usuario"
+            });
+        }
+
         audit.Log(
             session.Usuario.AliasUsuario,
             "Usuarios",
             "CREAR_USUARIO",
-            $"Usuario '{user.AliasUsuario}' (ID {codigoId}, Nombre '{user.NombreCompleto}', Perfil {user.Nivel}, Estado {(user.Activo ? "Activo" : "Inactivo")}) creado.");
+            $"Usuario '{user.AliasUsuario}' (ID {codigoId}, Nombre '{user.NombreCompleto}', Perfil {user.Nivel}, Grupo '{(targetGroup?.Nombre ?? "Sin grupo")}', Estado {(user.Activo ? "Activo" : "Inactivo")}) creado.");
 
+        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit, "CREAR_USUARIO");
         return codigoId;
     }
 
-    public void UpdateUser(UserSession session, User user, string? newPassword = null, string? confirmPassword = null)
+    public void UpdateUser(
+        UserSession session,
+        User user,
+        string? newPassword = null,
+        string? confirmPassword = null,
+        int? expectedRowVersion = null)
     {
         EnsureAdministrator(session, "Modificar usuario");
 
@@ -99,6 +139,8 @@ public sealed class UserManagementService(
             ?? throw new InvalidOperationException("El usuario seleccionado no existe.");
 
         ValidateCommonUserFields(user);
+        bool groupChanged = existing.IdGrupo != user.IdGrupo;
+        UserGroup? targetGroup = ResolveAndValidateGroup(user.IdGrupo, requireActive: groupChanged);
 
         string trimmedAlias = user.AliasUsuario.Trim();
         User? aliasConflict = users.GetByAlias(trimmedAlias);
@@ -150,13 +192,38 @@ public sealed class UserManagementService(
         user.ApeMatUsuario = user.ApeMatUsuario.Trim();
         user.MailUsuario = user.MailUsuario.Trim();
         user.FonoUsuario = user.FonoUsuario.Trim();
+        user.NombreGrupo = targetGroup?.Nombre ?? string.Empty;
         user.Permisos.IdUsuario = user.IdUsuario;
         EnforceRolePermissionBoundary(user);
 
-        users.Update(user, updatePwd);
+        users.Update(user, updatePwd, expectedRowVersion);
         if (user.EsSolicitante)
         {
             requesters.EnsureFromUser(user);
+        }
+
+        if (groupChanged && groups is not null)
+        {
+            string origenName = string.IsNullOrWhiteSpace(existing.NombreGrupo) ? "Sin grupo" : existing.NombreGrupo;
+            string destinoName = targetGroup?.Nombre ?? "Sin grupo";
+            groups.RecordMovement(new GroupMovementEntry
+            {
+                IdUsuario = user.IdUsuario,
+                CodigoUsuario = existing.CodigoId,
+                AliasUsuario = user.AliasUsuario,
+                IdGrupoOrigen = existing.IdGrupo,
+                NombreGrupoOrigen = origenName,
+                IdGrupoDestino = user.IdGrupo,
+                NombreGrupoDestino = destinoName,
+                EjecutadoPor = session.Usuario.AliasUsuario,
+                Motivo = "Cambio desde edición de usuario"
+            });
+
+            audit.Log(
+                session.Usuario.AliasUsuario,
+                "Grupos",
+                "MOVER_USUARIO_GRUPO",
+                $"Usuario '{user.AliasUsuario}' (ID {existing.CodigoId}) movido de '{origenName}' a '{destinoName}' (Resultado: OK).");
         }
 
         List<string> changedFields = CollectChangedFields(existing, user, updatePwd);
@@ -193,6 +260,8 @@ public sealed class UserManagementService(
                 "CAMBIO_CLAVE_ADMIN",
                 $"Contraseña de '{user.AliasUsuario}' (ID {existing.CodigoId}) actualizada por administrador.");
         }
+
+        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit, "MODIFICAR_USUARIO");
     }
 
     public void ChangeUserPassword(
@@ -221,6 +290,8 @@ public sealed class UserManagementService(
             "Seguridad",
             "CAMBIO_CLAVE_ADMIN",
             $"Contraseña del usuario '{existing.AliasUsuario}' (ID {existing.CodigoId}) restablecida por administrador (ForzarCambioPrimerAcceso={requireChangeOnNextLogin}).");
+
+        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Audit, "CAMBIO_CLAVE_ADMIN");
     }
 
     /// <summary>
@@ -255,6 +326,8 @@ public sealed class UserManagementService(
             "Usuarios",
             "DESACTIVAR_USUARIO",
             $"Eliminación lógica del usuario '{existing.AliasUsuario}' (ID {existing.CodigoId}, Perfil {existing.Nivel}).");
+
+        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Audit, "DESACTIVAR_USUARIO");
     }
 
     public void SetUserActive(UserSession session, string idUsuario, bool active)
@@ -282,7 +355,467 @@ public sealed class UserManagementService(
             "Usuarios",
             "ACTIVAR_USUARIO",
             $"Reactivación del usuario '{existing.AliasUsuario}' (ID {existing.CodigoId}, Perfil {existing.Nivel}).");
+
+        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Audit, "ACTIVAR_USUARIO");
     }
+
+    /// <summary>
+    /// Movimiento individual o masivo de usuarios hacia un grupo de destino (o 'Sin grupo' cuando targetGroupId es null).
+    /// Preserva la autoría histórica de órdenes de trabajo y registros previos.
+    /// </summary>
+    public BatchOperationResult MoveUsersToGroup(
+        UserSession session,
+        IReadOnlyList<string> userIds,
+        int? targetGroupId,
+        string motivo = "")
+    {
+        EnsureAdministrator(session, "Mover usuarios de grupo");
+        List<string> distinctIds = NormalizeIds(userIds);
+        if (distinctIds.Count == 0)
+        {
+            throw new ArgumentException("Debe seleccionar al menos un usuario para mover.");
+        }
+
+        UserGroup? targetGroup = ResolveAndValidateGroup(targetGroupId, requireActive: true);
+        string destinoNombre = targetGroup?.Nombre ?? "Sin grupo";
+        string cleanMotivo = string.IsNullOrWhiteSpace(motivo) ? "Reasignación administrativa de grupo" : motivo.Trim();
+
+        BatchOperationResult result = new()
+        {
+            OperationName = $"Mover usuarios a '{destinoNombre}'",
+            RequestedCount = distinctIds.Count
+        };
+
+        foreach (string id in distinctIds)
+        {
+            User? u = users.GetById(id);
+            if (u is null)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = id,
+                    TargetLabel = id,
+                    Succeeded = false,
+                    Message = "Usuario no encontrado."
+                });
+                continue;
+            }
+
+            if (u.IdGrupo == targetGroupId)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = $"{u.AliasUsuario} ({u.NombreCompleto})",
+                    Succeeded = true,
+                    Message = $"Ya pertenecía a '{destinoNombre}'."
+                });
+                continue;
+            }
+
+            string origenNombre = string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo;
+            users.SetGroup(u.IdUsuario, targetGroupId);
+
+            groups?.RecordMovement(new GroupMovementEntry
+            {
+                IdUsuario = u.IdUsuario,
+                CodigoUsuario = u.CodigoId,
+                AliasUsuario = u.AliasUsuario,
+                IdGrupoOrigen = u.IdGrupo,
+                NombreGrupoOrigen = origenNombre,
+                IdGrupoDestino = targetGroupId,
+                NombreGrupoDestino = destinoNombre,
+                EjecutadoPor = session.Usuario.AliasUsuario,
+                Motivo = cleanMotivo
+            });
+
+            audit.Log(
+                session.Usuario.AliasUsuario,
+                "Grupos",
+                "MOVER_USUARIO_GRUPO",
+                $"Usuario '{u.AliasUsuario}' (ID {u.CodigoId}) movido de '{origenNombre}' -> '{destinoNombre}' | Motivo: {cleanMotivo} | Resultado: OK.");
+
+            result.Items.Add(new BatchItemOutcome
+            {
+                TargetId = u.IdUsuario,
+                TargetLabel = $"{u.AliasUsuario} ({u.NombreCompleto})",
+                Succeeded = true,
+                Message = $"{origenNombre} → {destinoNombre}"
+            });
+        }
+
+        if (result.SucceededCount > 0)
+        {
+            syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit, "MOVER_USUARIO_GRUPO");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Activación o desactivación/eliminación lógica por lotes. Protege la sesión actual y al último Administrador activo.
+    /// </summary>
+    public BatchOperationResult BatchSetActive(
+        UserSession session,
+        IReadOnlyList<string> userIds,
+        bool active,
+        string motivo = "")
+    {
+        string opLabel = active ? "Activar usuarios por lotes" : "Desactivar / Eliminar lógicamente usuarios por lotes";
+        EnsureAdministrator(session, opLabel);
+
+        List<string> distinctIds = NormalizeIds(userIds);
+        if (distinctIds.Count == 0)
+        {
+            throw new ArgumentException("Debe seleccionar al menos un usuario.");
+        }
+
+        string cleanMotivo = string.IsNullOrWhiteSpace(motivo) ? "Operación masiva administrativa" : motivo.Trim();
+        int remainingActiveAdmins = users.CountActiveAdmins();
+
+        BatchOperationResult result = new()
+        {
+            OperationName = opLabel,
+            RequestedCount = distinctIds.Count
+        };
+
+        foreach (string id in distinctIds)
+        {
+            User? u = users.GetById(id);
+            if (u is null)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = id,
+                    TargetLabel = id,
+                    Succeeded = false,
+                    Message = "Usuario no encontrado."
+                });
+                continue;
+            }
+
+            string label = $"{u.AliasUsuario} ({u.NombreCompleto})";
+
+            if (!active)
+            {
+                if (string.Equals(session.Usuario.IdUsuario, u.IdUsuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    audit.Log(
+                        session.Usuario.AliasUsuario,
+                        "Seguridad",
+                        "PROTECCION_LOTE",
+                        $"Cuenta propia '{u.AliasUsuario}' omitida en desactivación masiva (Motivo: sesión activa).");
+                    result.Items.Add(new BatchItemOutcome
+                    {
+                        TargetId = u.IdUsuario,
+                        TargetLabel = label,
+                        Succeeded = false,
+                        ProtectedSkipped = true,
+                        Message = "Cuenta de la sesión activa (protegida)."
+                    });
+                    continue;
+                }
+
+                if (u.Activo && u.Nivel == UserRoleLevel.Administrador && remainingActiveAdmins <= 1)
+                {
+                    audit.Log(
+                        session.Usuario.AliasUsuario,
+                        "Seguridad",
+                        "PROTECCION_ULTIMO_ADMIN",
+                        $"Último Administrador activo '{u.AliasUsuario}' protegido contra desactivación masiva.");
+                    result.Items.Add(new BatchItemOutcome
+                    {
+                        TargetId = u.IdUsuario,
+                        TargetLabel = label,
+                        Succeeded = false,
+                        ProtectedSkipped = true,
+                        Message = "Último Administrador activo del sistema (protegido)."
+                    });
+                    continue;
+                }
+
+                if (!u.Activo)
+                {
+                    result.Items.Add(new BatchItemOutcome
+                    {
+                        TargetId = u.IdUsuario,
+                        TargetLabel = label,
+                        Succeeded = true,
+                        Message = "Ya se encontraba inactivo."
+                    });
+                    continue;
+                }
+
+                users.SetActive(u.IdUsuario, active: false);
+                if (u.Nivel == UserRoleLevel.Administrador)
+                {
+                    remainingActiveAdmins--;
+                }
+
+                audit.Log(
+                    session.Usuario.AliasUsuario,
+                    "Usuarios",
+                    "DESACTIVAR_USUARIO_LOTE",
+                    $"Eliminación lógica masiva de '{u.AliasUsuario}' (ID {u.CodigoId}, Grupo '{(string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo)}') | Motivo: {cleanMotivo} | Resultado: OK.");
+
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = label,
+                    Succeeded = true,
+                    Message = "Desactivado (eliminación lógica)."
+                });
+            }
+            else
+            {
+                if (u.Activo)
+                {
+                    result.Items.Add(new BatchItemOutcome
+                    {
+                        TargetId = u.IdUsuario,
+                        TargetLabel = label,
+                        Succeeded = true,
+                        Message = "Ya se encontraba activo."
+                    });
+                    continue;
+                }
+
+                users.SetActive(u.IdUsuario, active: true);
+                if (u.Nivel == UserRoleLevel.Administrador)
+                {
+                    remainingActiveAdmins++;
+                }
+
+                audit.Log(
+                    session.Usuario.AliasUsuario,
+                    "Usuarios",
+                    "ACTIVAR_USUARIO_LOTE",
+                    $"Activación masiva de '{u.AliasUsuario}' (ID {u.CodigoId}) | Motivo: {cleanMotivo} | Resultado: OK.");
+
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = label,
+                    Succeeded = true,
+                    Message = "Activado."
+                });
+            }
+        }
+
+        if (result.SucceededCount > 0)
+        {
+            syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Audit, active ? "ACTIVAR_USUARIO_LOTE" : "DESACTIVAR_USUARIO_LOTE");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Cambio masivo de perfil con protección de la sesión actual y del último Administrador activo.
+    /// </summary>
+    public BatchOperationResult BatchChangeRole(
+        UserSession session,
+        IReadOnlyList<string> userIds,
+        UserRoleLevel newRole,
+        string motivo = "")
+    {
+        EnsureAdministrator(session, "Cambiar perfil por lotes");
+
+        List<string> distinctIds = NormalizeIds(userIds);
+        if (distinctIds.Count == 0)
+        {
+            throw new ArgumentException("Debe seleccionar al menos un usuario.");
+        }
+
+        string cleanMotivo = string.IsNullOrWhiteSpace(motivo) ? "Cambio masivo de perfil administrativo" : motivo.Trim();
+        int remainingActiveAdmins = users.CountActiveAdmins();
+
+        BatchOperationResult result = new()
+        {
+            OperationName = $"Cambiar perfil a '{newRole}'",
+            RequestedCount = distinctIds.Count
+        };
+
+        foreach (string id in distinctIds)
+        {
+            User? u = users.GetById(id);
+            if (u is null)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = id,
+                    TargetLabel = id,
+                    Succeeded = false,
+                    Message = "Usuario no encontrado."
+                });
+                continue;
+            }
+
+            string label = $"{u.AliasUsuario} ({u.NombreCompleto})";
+            bool isSelf = string.Equals(session.Usuario.IdUsuario, u.IdUsuario, StringComparison.OrdinalIgnoreCase);
+
+            if (isSelf && newRole != UserRoleLevel.Administrador)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = label,
+                    Succeeded = false,
+                    ProtectedSkipped = true,
+                    Message = "No puede degradar el perfil de su propia sesión activa."
+                });
+                continue;
+            }
+
+            bool wasActiveAdmin = u.Activo && u.Nivel == UserRoleLevel.Administrador;
+            bool staysActiveAdmin = u.Activo && newRole == UserRoleLevel.Administrador;
+            if (wasActiveAdmin && !staysActiveAdmin && remainingActiveAdmins <= 1)
+            {
+                audit.Log(
+                    session.Usuario.AliasUsuario,
+                    "Seguridad",
+                    "PROTECCION_ULTIMO_ADMIN",
+                    $"Último Administrador activo '{u.AliasUsuario}' protegido contra degradación masiva de perfil.");
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = label,
+                    Succeeded = false,
+                    ProtectedSkipped = true,
+                    Message = "Último Administrador activo del sistema (protegido)."
+                });
+                continue;
+            }
+
+            if (u.Nivel == newRole)
+            {
+                result.Items.Add(new BatchItemOutcome
+                {
+                    TargetId = u.IdUsuario,
+                    TargetLabel = label,
+                    Succeeded = true,
+                    Message = $"Ya tenía perfil {newRole}."
+                });
+                continue;
+            }
+
+            UserRoleLevel previousRole = u.Nivel;
+            UserPermissions perms = PermissionPresets.CreateForRole(newRole, u.IdUsuario);
+            u.Nivel = newRole;
+            u.Permisos = perms;
+            EnforceRolePermissionBoundary(u);
+
+            users.SetRole(u.IdUsuario, newRole, u.Permisos);
+
+            if (wasActiveAdmin && !staysActiveAdmin)
+            {
+                remainingActiveAdmins--;
+            }
+            else if (!wasActiveAdmin && staysActiveAdmin)
+            {
+                remainingActiveAdmins++;
+            }
+
+            audit.Log(
+                session.Usuario.AliasUsuario,
+                "Usuarios",
+                "CAMBIO_PERFIL_LOTE",
+                $"Perfil de '{u.AliasUsuario}' (ID {u.CodigoId}) modificado de {previousRole} -> {newRole} | Motivo: {cleanMotivo} | Resultado: OK.");
+
+            result.Items.Add(new BatchItemOutcome
+            {
+                TargetId = u.IdUsuario,
+                TargetLabel = label,
+                Succeeded = true,
+                Message = $"{previousRole} → {newRole}"
+            });
+        }
+
+        if (result.SucceededCount > 0)
+        {
+            syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Audit, "CAMBIO_PERFIL_LOTE");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Analiza previamente un lote de usuarios para mostrar en el diálogo de confirmación
+    /// cuántos serán afectados y qué cuentas están protegidas (sesión activa / último Administrador).
+    /// </summary>
+    public (IReadOnlyList<User> Affected, IReadOnlyList<(User User, string Reason)> Protected) PreviewBatchImpact(
+        UserSession session,
+        IReadOnlyList<string> userIds,
+        bool checkAdminDeactivationOrDemotion)
+    {
+        EnsureAdministrator(session, "Previsualizar operación masiva");
+        List<string> distinctIds = NormalizeIds(userIds);
+        List<User> affected = [];
+        List<(User User, string Reason)> protectedList = [];
+        int remainingActiveAdmins = users.CountActiveAdmins();
+
+        foreach (string id in distinctIds)
+        {
+            User? u = users.GetById(id);
+            if (u is null)
+            {
+                continue;
+            }
+
+            if (checkAdminDeactivationOrDemotion)
+            {
+                if (string.Equals(session.Usuario.IdUsuario, u.IdUsuario, StringComparison.OrdinalIgnoreCase))
+                {
+                    protectedList.Add((u, "Sesión activa actual"));
+                    continue;
+                }
+
+                if (u.Activo && u.Nivel == UserRoleLevel.Administrador)
+                {
+                    if (remainingActiveAdmins <= 1)
+                    {
+                        protectedList.Add((u, "Último Administrador activo"));
+                        continue;
+                    }
+
+                    remainingActiveAdmins--;
+                }
+            }
+
+            affected.Add(u);
+        }
+
+        return (affected, protectedList);
+    }
+
+    private UserGroup? ResolveAndValidateGroup(int? idGrupo, bool requireActive)
+    {
+        if (!idGrupo.HasValue)
+        {
+            return null;
+        }
+
+        if (groups is null)
+        {
+            return null;
+        }
+
+        UserGroup group = groups.GetById(idGrupo.Value)
+            ?? throw new ArgumentException("El grupo seleccionado no existe.");
+
+        if (requireActive && !group.Activo)
+        {
+            throw new InvalidOperationException($"El grupo '{group.Nombre}' está inactivo y no admite nuevas asignaciones.");
+        }
+
+        return group;
+    }
+
+    private static List<string> NormalizeIds(IReadOnlyList<string> userIds) =>
+        userIds.Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private void EnsureAdministrator(UserSession? session, string actionDescription)
     {
@@ -317,13 +850,11 @@ public sealed class UserManagementService(
     {
         if (user.Nivel == UserRoleLevel.Administrador)
         {
-            // Garantizar acceso total para el perfil Administrador
             UserPermissions full = PermissionPresets.CreateForRole(UserRoleLevel.Administrador, user.IdUsuario);
             user.Permisos = full;
         }
         else
         {
-            // Ningún perfil no-administrador puede poseer permisos de Gestión de Usuarios
             user.Permisos.MenuUsuarios = false;
             user.Permisos.IngresoUsuarios = false;
             user.Permisos.ListadoUsuarios = false;
@@ -358,6 +889,12 @@ public sealed class UserManagementService(
         if (!string.Equals(before.MailUsuario, after.MailUsuario, StringComparison.Ordinal)) changes.Add("Correo");
         if (!string.Equals(before.FonoUsuario, after.FonoUsuario, StringComparison.Ordinal)) changes.Add("Teléfono");
         if (before.Nivel != after.Nivel) changes.Add($"Perfil({before.Nivel}->{after.Nivel})");
+        if (before.IdGrupo != after.IdGrupo)
+        {
+            string g1 = string.IsNullOrWhiteSpace(before.NombreGrupo) ? "Sin grupo" : before.NombreGrupo;
+            string g2 = string.IsNullOrWhiteSpace(after.NombreGrupo) ? "Sin grupo" : after.NombreGrupo;
+            changes.Add($"Grupo({g1}->{g2})");
+        }
         if (before.Activo != after.Activo) changes.Add($"Estado({(after.Activo ? "Activo" : "Inactivo")})");
         if (before.EsSolicitante != after.EsSolicitante) changes.Add("Solicitante");
         if (passwordChanged) changes.Add("Contraseña");

@@ -9,7 +9,8 @@ public sealed class InvoiceService(
     IInvoiceRepository invoices,
     IWorkOrderRepository workOrders,
     IProviderRepository providers,
-    IAuditRepository audit)
+    IAuditRepository audit,
+    SisproSyncHub? syncHub = null)
 {
     public Invoice? GetById(int idFactura) => invoices.GetById(idFactura);
 
@@ -96,6 +97,7 @@ public sealed class InvoiceService(
         int id = invoices.Create(invoice);
         audit.Log(session.Usuario.AliasUsuario, "Facturas y Guías", "REGISTRAR_FACTURA",
             $"Documento N° {invoice.NumeroDocumento} registrado (Neto: ${invoice.TotalNeto:N0}, Total c/IVA: ${invoice.TotalConIva:N0}, {invoice.Items.Count} ítems).");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Invoices | Sispro.Core.Enums.DataChangeKind.WorkOrders | Sispro.Core.Enums.DataChangeKind.Audit, "REGISTRAR_FACTURA");
         return id;
     }
 
@@ -108,5 +110,6 @@ public sealed class InvoiceService(
         invoices.Delete(idFactura);
         audit.Log(session.Usuario.AliasUsuario, "Facturas y Guías", "ELIMINAR_FACTURA",
             $"Documento N° {existing.NumeroDocumento} (Proveedor: {existing.NombreProveedor}) eliminado.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Invoices | Sispro.Core.Enums.DataChangeKind.WorkOrders | Sispro.Core.Enums.DataChangeKind.Audit, "ELIMINAR_FACTURA");
     }
 }

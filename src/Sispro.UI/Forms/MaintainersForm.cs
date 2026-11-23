@@ -161,8 +161,13 @@ public sealed class MaintainersForm : UserControl
         btnDel.Click += (_, _) => DeleteProvider();
         Button btnClear = CambiasoTheme.CreateButton("Nuevo / Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar ficha para nuevo proveedor", width: 144);
         btnClear.Click += (_, _) => ClearProviderForm();
-        Button btnExcel = CambiasoTheme.CreateButton("Exportar Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar catálogo de proveedores a Excel", width: 142);
-        btnExcel.Click += (_, _) => ExportProviders();
+        Button btnExcel = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar catálogo de proveedores a Excel, PDF, Word o CSV", width: 118);
+        btnExcel.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            btnExcel,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_Proveedores",
+            () => DocumentExportService.BuildProvidersReport(_providers, string.IsNullOrWhiteSpace(_txtProvSearch.Text) ? "Catálogo completo" : $"Filtro: {_txtProvSearch.Text}"));
 
         bar.Controls.AddRange([btnSave, btnDel, btnClear, btnExcel, Wrap("Buscar:", _txtProvSearch)]);
 
@@ -407,21 +412,6 @@ public sealed class MaintainersForm : UserControl
         _txtProvMailContacto.Clear();
         _txtProvObs.Clear();
         _chkProvActivo.Checked = true;
-    }
-
-    private void ExportProviders()
-    {
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar Proveedores a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"Proveedores_SISPRO_{DateTime.Now:yyyyMMdd}.xlsx"
-        };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-        {
-            _ctx.ExcelExportService.ExportProvidersGrid(_providers, dlg.FileName);
-            CambiasoTheme.ShowInfo(this, $"Catálogo exportado a:\n{dlg.FileName}");
-        }
     }
 
     private void LoadRequesters()

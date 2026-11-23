@@ -234,7 +234,7 @@ public sealed class InvoiceRepository(SqliteConnectionFactory factory) : IInvoic
             FROM Facturas f
             INNER JOIN Proveedores p ON p.id_prov = f.id_prov
             {clause}
-            ORDER BY f.fecha_fac DESC, f.n_fac DESC;
+            ORDER BY f.fecha_fac DESC, f.id_factura DESC;
             """;
 
         List<InvoiceSearchRow> rows = [];

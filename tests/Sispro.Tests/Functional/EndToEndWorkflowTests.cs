@@ -164,7 +164,8 @@ public sealed class EndToEndWorkflowTests
             Assert.True(File.Exists(gridExcelPath));
             using (XLWorkbook wb2 = new(gridExcelPath))
             {
-                Assert.Equal(5001, (int)wb2.Worksheet(1).Cell(2, 1).GetDouble());
+                // Fila 1..3 = Banner corporativo Cambiaso, Fila 5 = Encabezados, Fila 6 = Primer registro
+                Assert.Equal(5001, (int)wb2.Worksheet(1).Cell(6, 1).GetDouble());
             }
         }
         finally

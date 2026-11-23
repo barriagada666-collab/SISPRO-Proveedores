@@ -14,6 +14,19 @@ public static class SchemaInitializer
             tipo_nivel TEXT NOT NULL UNIQUE
         );
 
+        CREATE TABLE IF NOT EXISTS Grupos (
+            id_grupo INTEGER PRIMARY KEY AUTOINCREMENT,
+            nombre TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            descripcion TEXT NOT NULL DEFAULT '',
+            id_responsable TEXT REFERENCES Usuarios(id_usuario) ON DELETE SET NULL,
+            activo INTEGER NOT NULL DEFAULT 1,
+            fecha_creacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            fecha_modificacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            row_version INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_Grupos_Activo_Nombre ON Grupos(activo, nombre);
+
         CREATE TABLE IF NOT EXISTS Usuarios (
             id_usuario TEXT PRIMARY KEY,
             codigo_id INTEGER,
@@ -23,6 +36,7 @@ public static class SchemaInitializer
             ape_pat_usuario TEXT NOT NULL,
             ape_mat_usuario TEXT NOT NULL DEFAULT '',
             id_nivel INTEGER NOT NULL DEFAULT 1 REFERENCES Niveles(id_nivel),
+            id_grupo INTEGER REFERENCES Grupos(id_grupo) ON DELETE SET NULL,
             mail_usuario TEXT NOT NULL DEFAULT '',
             fono_usuario TEXT NOT NULL DEFAULT '',
             es_solicitante INTEGER NOT NULL DEFAULT 0,
@@ -30,8 +44,26 @@ public static class SchemaInitializer
             debe_cambiar_clave INTEGER NOT NULL DEFAULT 0,
             fecha_creacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             fecha_modificacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-            ultimo_acceso TEXT
+            ultimo_acceso TEXT,
+            row_version INTEGER NOT NULL DEFAULT 1
         );
+
+        CREATE TABLE IF NOT EXISTS MovimientosGrupo (
+            id_movimiento INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_usuario TEXT NOT NULL REFERENCES Usuarios(id_usuario),
+            codigo_usuario INTEGER NOT NULL DEFAULT 0,
+            alias_usuario TEXT NOT NULL DEFAULT '',
+            id_grupo_origen INTEGER REFERENCES Grupos(id_grupo) ON DELETE SET NULL,
+            nombre_grupo_origen TEXT NOT NULL DEFAULT 'Sin grupo',
+            id_grupo_destino INTEGER REFERENCES Grupos(id_grupo) ON DELETE SET NULL,
+            nombre_grupo_destino TEXT NOT NULL DEFAULT 'Sin grupo',
+            ejecutado_por TEXT NOT NULL,
+            motivo TEXT NOT NULL DEFAULT '',
+            fecha_movimiento TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+
+        CREATE INDEX IF NOT EXISTS IX_MovimientosGrupo_Fecha ON MovimientosGrupo(fecha_movimiento DESC, id_movimiento DESC);
+        CREATE INDEX IF NOT EXISTS IX_MovimientosGrupo_Usuario ON MovimientosGrupo(id_usuario, fecha_movimiento DESC);
 
         CREATE TABLE IF NOT EXISTS Permisos (
             id_usuario TEXT PRIMARY KEY REFERENCES Usuarios(id_usuario) ON DELETE CASCADE,
@@ -450,7 +482,9 @@ public static class SchemaInitializer
 
         MigrateUsuariosSchema(conn);
         MigrateActivosSchema(conn);
+        EnsurePerformanceIndexes(conn);
         SeedLevels(conn);
+        SeedInitialGroups(conn);
         SeedRootAsset(conn);
         InitialAdminProvisioner.EnsureInitialAdmin(conn, initialAdmin);
     }
@@ -534,6 +568,16 @@ public static class SchemaInitializer
                 """);
         }
 
+        if (!cols.Contains("id_grupo"))
+        {
+            ExecuteNonQuery(conn, "ALTER TABLE Usuarios ADD COLUMN id_grupo INTEGER REFERENCES Grupos(id_grupo) ON DELETE SET NULL;");
+        }
+
+        if (!cols.Contains("row_version"))
+        {
+            ExecuteNonQuery(conn, "ALTER TABLE Usuarios ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1;");
+        }
+
         // Backfill auto-increment numeric IDs for any existing legacy rows without codigo_id
         List<string> missingIds = [];
         using (SqliteCommand missingCmd = conn.CreateCommand())
@@ -571,6 +615,17 @@ public static class SchemaInitializer
 
         ExecuteNonQuery(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_Usuarios_CodigoId ON Usuarios(codigo_id);");
         ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Usuarios_Nivel_Activo ON Usuarios(id_nivel, activo);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Usuarios_Grupo_Activo ON Usuarios(id_grupo, activo);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Usuarios_FechaCreacion ON Usuarios(fecha_creacion DESC, codigo_id DESC);");
+    }
+
+    private static void EnsurePerformanceIndexes(SqliteConnection conn)
+    {
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_OT_FechaDesc_IdDesc ON OrdenesTrabajo(fecha_ot DESC, id_ot DESC);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Facturas_FechaDesc_IdDesc ON Facturas(fecha_fac DESC, id_factura DESC);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_MantOT_FechaDesc_IdDesc ON Mant_OT(fechai DESC, id DESC);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_MantOT_Oficio_Estado ON Mant_OT(oficio_ot, estado_ot);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_AuditLog_FechaDesc_IdDesc ON AuditLog(fecha_utc DESC, id_log DESC);");
     }
 
     private static void ExecuteNonQuery(SqliteConnection conn, string sql)
@@ -588,6 +643,18 @@ public static class SchemaInitializer
             (2, 'Supervisor'),
             (3, 'Jefatura'),
             (4, 'Administrador');
+            """);
+    }
+
+    private static void SeedInitialGroups(SqliteConnection conn)
+    {
+        ExecuteNonQuery(conn, """
+            INSERT OR IGNORE INTO Grupos(nombre, descripcion, activo) VALUES
+            ('MECÁNICOS', 'Personal técnico especialista en mantención mecánica industrial.', 1),
+            ('ELÉCTRICOS', 'Personal técnico especialista en sistemas eléctricos y potencia.', 1),
+            ('ELECTRÓNICOS', 'Personal especialista en instrumentación, PLC y electrónica industrial.', 1),
+            ('EXTERNOS', 'Contratistas, proveedores técnicos y servicios externos especializados.', 1),
+            ('OPERADORES', 'Personal de operación de líneas productivas y equipos industriales.', 1);
             """);
     }
 

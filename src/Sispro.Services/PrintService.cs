@@ -52,7 +52,7 @@ public sealed class PrintService(AppSettings settings)
             using Font regularFont = new("Segoe UI", 9, FontStyle.Regular);
             using Font smallFont = new("Segoe UI", 8, FontStyle.Regular);
             using Pen olivePen = new(CambiasoGreen, 1.5f);
-            using Pen gridPen = new(Color.FromArgb(180, 188, 165), 0.75f);
+            using Pen gridPen = new(Color.FromArgb(197, 214, 226), 0.75f);
             using SolidBrush oliveBrush = new(CambiasoGreen);
             using SolidBrush lightBrush = new(SubtleFill);
 
@@ -227,11 +227,12 @@ public sealed class PrintService(AppSettings settings)
 
             g.FillRectangle(oliveBrush, bounds.Left, y, bounds.Width, 22);
             g.DrawString("ID", boldFont, Brushes.White, bounds.Left + 4, y + 4);
-            g.DrawString("Usuario", boldFont, Brushes.White, bounds.Left + 42, y + 4);
-            g.DrawString("Nombre Completo", boldFont, Brushes.White, bounds.Left + 148, y + 4);
-            g.DrawString("Perfil", boldFont, Brushes.White, bounds.Left + 345, y + 4);
-            g.DrawString("Estado", boldFont, Brushes.White, bounds.Left + 440, y + 4);
-            g.DrawString("Correo", boldFont, Brushes.White, bounds.Left + 510, y + 4);
+            g.DrawString("Usuario", boldFont, Brushes.White, bounds.Left + 38, y + 4);
+            g.DrawString("Nombre Completo", boldFont, Brushes.White, bounds.Left + 130, y + 4);
+            g.DrawString("Perfil", boldFont, Brushes.White, bounds.Left + 300, y + 4);
+            g.DrawString("Grupo", boldFont, Brushes.White, bounds.Left + 388, y + 4);
+            g.DrawString("Estado", boldFont, Brushes.White, bounds.Left + 485, y + 4);
+            g.DrawString("Correo", boldFont, Brushes.White, bounds.Left + 545, y + 4);
             y += 24;
 
             while (index < users.Count)
@@ -245,11 +246,12 @@ public sealed class PrintService(AppSettings settings)
 
                 User u = users[index];
                 g.DrawString(u.CodigoId.ToString(), regularFont, Brushes.Black, bounds.Left + 4, y + 2);
-                g.DrawString(u.AliasUsuario, regularFont, Brushes.Black, bounds.Left + 42, y + 2);
-                g.DrawString(u.NombreCompleto, regularFont, Brushes.Black, bounds.Left + 148, y + 2);
-                g.DrawString(u.Nivel.ToString(), regularFont, Brushes.Black, bounds.Left + 345, y + 2);
-                g.DrawString(u.Activo ? "Activo" : "Inactivo", regularFont, u.Activo ? Brushes.DarkGreen : Brushes.Firebrick, bounds.Left + 440, y + 2);
-                g.DrawString(u.MailUsuario, regularFont, Brushes.Black, bounds.Left + 510, y + 2);
+                g.DrawString(u.AliasUsuario, regularFont, Brushes.Black, bounds.Left + 38, y + 2);
+                g.DrawString(u.NombreCompleto, regularFont, Brushes.Black, new RectangleF(bounds.Left + 130, y + 2, 166, 18));
+                g.DrawString(u.Nivel.ToString(), regularFont, Brushes.Black, bounds.Left + 300, y + 2);
+                g.DrawString(string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo, regularFont, Brushes.Black, new RectangleF(bounds.Left + 388, y + 2, 94, 18));
+                g.DrawString(u.Activo ? "Activo" : "Inactivo", regularFont, u.Activo ? Brushes.DarkGreen : Brushes.Firebrick, bounds.Left + 485, y + 2);
+                g.DrawString(u.MailUsuario, regularFont, Brushes.Black, new RectangleF(bounds.Left + 545, y + 2, Math.Max(80, bounds.Right - (bounds.Left + 545)), 18));
                 g.DrawLine(Pens.LightGray, bounds.Left, y + 20, bounds.Right, y + 20);
 
                 y += 22;
@@ -286,10 +288,10 @@ public sealed class PrintService(AppSettings settings)
         }
     }
 
-    private static void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
+    private void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
     {
         g.DrawLine(Pens.LightGray, bounds.Left, bounds.Bottom - 20, bounds.Right, bounds.Bottom - 20);
-        g.DrawString($"SISPRO v3.0 — Cambiaso Hnos S.A.C. ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
+        g.DrawString($"SISPRO v4.0 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
         using StringFormat right = new() { Alignment = StringAlignment.Far };
         g.DrawString($"Página {pageNumber}", smallFont, Brushes.Gray, new RectangleF(bounds.Left, bounds.Bottom - 16, bounds.Width, 16), right);
     }

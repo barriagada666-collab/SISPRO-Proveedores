@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="SISPRO Cambiaso Hnos S.A.C.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0E4163"/>
+      <stop offset="100%" stop-color="#0A263C"/>
+    </linearGradient>
+  </defs>
+  <rect x="5" y="5" width="118" height="118" rx="26" fill="url(#bg)" stroke="#0089B6" stroke-width="4"/>
+  <rect x="13" y="13" width="102" height="102" rx="20" fill="none" stroke="#C8A977" stroke-opacity="0.7" stroke-width="2"/>
+  <circle cx="64" cy="64" r="34" fill="none" stroke="#C8A977" stroke-width="4.5" stroke-dasharray="186 28" stroke-dashoffset="-14"/>
+  <path d="M64 38 C71 49 71 61 64 72 C57 61 57 49 64 38 Z" fill="none" stroke="#C8A977" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M40 66 C52 66 60 72 62 84 C50 84 42 78 40 66 Z" fill="none" stroke="#C8A977" stroke-width="3.5" stroke-linejoin="round"/>
+  <path d="M88 66 C76 66 68 72 66 84 C78 84 86 78 88 66 Z" fill="none" stroke="#C8A977" stroke-width="3.5" stroke-linejoin="round"/>
+</svg>

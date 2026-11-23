@@ -17,6 +17,8 @@ public sealed class MantWorkOrderFilter
     public string? Oficio { get; set; }
     public string? Estado { get; set; }
     public int? Anio { get; set; }
+    public DateTime? FechaInicio { get; set; }
+    public DateTime? FechaFin { get; set; }
     public int MaxRows { get; set; } = 300;
 }
 

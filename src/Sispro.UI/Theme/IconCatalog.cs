@@ -42,7 +42,18 @@ public enum AppIcon
     ClipboardCheck,
     Factory,
     TrendingUp,
-    Cpu
+    Cpu,
+    Layers,
+    MoveRight,
+    Power,
+    Ban,
+    Shield,
+    FileText,
+    Zap,
+    Globe,
+    Gauge,
+    Download,
+    Calendar
 }
 
 /// <summary>
@@ -352,6 +363,69 @@ public static class IconCatalog
                 g.DrawLine(pen, 2, 15, 5, 15);
                 g.DrawLine(pen, 19, 9, 22, 9);
                 g.DrawLine(pen, 19, 15, 22, 15);
+                break;
+
+            case AppIcon.Layers: // lucide: layers
+                g.DrawPolygon(pen, [new PointF(12, 2), new PointF(22, 7), new PointF(12, 12), new PointF(2, 7)]);
+                g.DrawLines(pen, [new PointF(2, 12), new PointF(12, 17), new PointF(22, 12)]);
+                g.DrawLines(pen, [new PointF(2, 17), new PointF(12, 22), new PointF(22, 17)]);
+                break;
+
+            case AppIcon.MoveRight: // lucide: arrow-left-right
+                g.DrawLines(pen, [new PointF(17, 3), new PointF(21, 7), new PointF(17, 11)]);
+                g.DrawLine(pen, 21, 7, 7, 7);
+                g.DrawLines(pen, [new PointF(7, 13), new PointF(3, 17), new PointF(7, 21)]);
+                g.DrawLine(pen, 3, 17, 17, 17);
+                break;
+
+            case AppIcon.Power: // lucide: power
+                g.DrawLine(pen, 12, 2, 12, 12);
+                g.DrawArc(pen, 4, 5, 16, 16, -45, 270);
+                break;
+
+            case AppIcon.Ban: // lucide: ban
+                g.DrawEllipse(pen, 2, 2, 20, 20);
+                g.DrawLine(pen, 5, 5, 19, 19);
+                break;
+
+            case AppIcon.Shield: // lucide: shield
+                g.DrawLines(pen, [new PointF(12, 2), new PointF(20, 5), new PointF(20, 12), new PointF(12, 22), new PointF(4, 12), new PointF(4, 5), new PointF(12, 2)]);
+                break;
+
+            case AppIcon.FileText: // lucide: file-text
+                g.DrawPolygon(pen, [new PointF(5, 2), new PointF(15, 2), new PointF(20, 7), new PointF(20, 22), new PointF(5, 22)]);
+                g.DrawLines(pen, [new PointF(14, 2), new PointF(14, 8), new PointF(20, 8)]);
+                g.DrawLine(pen, 8, 13, 16, 13);
+                g.DrawLine(pen, 8, 17, 14, 17);
+                break;
+
+            case AppIcon.Zap: // lucide: zap
+                g.DrawPolygon(pen, [new PointF(13, 2), new PointF(4, 14), new PointF(12, 14), new PointF(11, 22), new PointF(20, 10), new PointF(12, 10)]);
+                break;
+
+            case AppIcon.Globe: // lucide: globe
+                g.DrawEllipse(pen, 2, 2, 20, 20);
+                g.DrawEllipse(pen, 8, 2, 8, 20);
+                g.DrawLine(pen, 2, 12, 22, 12);
+                break;
+
+            case AppIcon.Gauge: // lucide: gauge
+                g.DrawArc(pen, 2, 4, 20, 20, 180, 180);
+                g.DrawLine(pen, 12, 15, 17, 9);
+                g.DrawEllipse(pen, 10.5f, 13.5f, 3, 3);
+                break;
+
+            case AppIcon.Download: // lucide: download
+                g.DrawLines(pen, [new PointF(21, 15), new PointF(21, 19), new PointF(19, 21), new PointF(5, 21), new PointF(3, 19), new PointF(3, 15)]);
+                g.DrawLines(pen, [new PointF(7, 10), new PointF(12, 15), new PointF(17, 10)]);
+                g.DrawLine(pen, 12, 15, 12, 3);
+                break;
+
+            case AppIcon.Calendar: // lucide: calendar
+                DrawRoundedRect(g, pen, 3, 4, 18, 18, 2);
+                g.DrawLine(pen, 16, 2, 16, 6);
+                g.DrawLine(pen, 8, 2, 8, 6);
+                g.DrawLine(pen, 3, 10, 21, 10);
                 break;
         }
 

@@ -25,7 +25,7 @@ Se realizó una auditoría exhaustiva archivo por archivo del proyecto heredado 
 
 | ID | Archivo VB6 | Hallazgo | Severidad | Solución en .NET 10 |
 |---|---|---|---|---|
-| SEC-01 | `index.frm` L44, L61 | Credenciales hardcodeadas por defecto en los campos de login (`L Reyes` / `wanderes`). | Crítica | Campos de inicio vacíos por defecto; verificado por prueba automatizada UI. |
+| SEC-01 | `index.frm` L44, L61 | Credenciales hardcodeadas por defecto en los campos de login (cuenta legada con clave en texto plano). | Crítica | Campos de inicio vacíos por defecto; verificado por prueba automatizada UI. |
 | SEC-02 | `form_usuario.frm` | Datos personales y contraseñas de prueba precargados en todos los `TextBox`. | Alta | Campos limpios con validación de RUT chileno módulo 11 y política de contraseña. |
 | SEC-03 | `Utilitarios.bas` L200-247 | Algoritmo rotulado "MD5" que en realidad era un desplazamiento ASCII reversible truncado al largo del alias. | Crítica | `PasswordSecurity` con **PBKDF2-HMAC-SHA256** (100.000 iteraciones + salt aleatorio 128-bit) y actualización automática en el primer login de cuentas migradas. |
 | SEC-04 | `Transacciones.bas`, `TAB_0.bas`, `index.frm` | Concatenación directa de strings en SQL (inyección SQL en login, búsquedas e inserciones). | Crítica | 100% consultas SQL parametrizadas con `Microsoft.Data.Sqlite`. |

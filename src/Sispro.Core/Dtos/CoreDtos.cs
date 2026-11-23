@@ -35,7 +35,11 @@ public sealed class UserSearchFilter
 {
     public string? TextoBusqueda { get; set; }
     public UserRoleLevel? Perfil { get; set; }
+    public int? IdGrupo { get; set; }
+    public bool SoloSinGrupo { get; set; }
     public bool? Activo { get; set; }
+    public DateTime? FechaCreacionInicio { get; set; }
+    public DateTime? FechaCreacionFin { get; set; }
 }
 
 public sealed class InitialAdminSeedOptions
@@ -56,6 +60,8 @@ public sealed class WorkOrderSearchFilter
     public DateTime? FechaInicio { get; set; }
     public DateTime? FechaFin { get; set; }
     public int? IdProv { get; set; }
+    public int? IdSol { get; set; }
+    public WorkOrderStatus? Estado { get; set; }
     public string? TextoBusqueda { get; set; }
     public int? NumeroOt { get; set; }
     public int? AssetLevel { get; set; }
@@ -111,6 +117,7 @@ public sealed class DashboardMetrics
     public int TotalSolicitantesActivos { get; set; }
     public int TotalFacturas { get; set; }
     public int TotalUsuariosActivos { get; set; }
+    public int TotalGruposActivos { get; set; }
     public int TotalNodosActivos { get; set; }
     public int TotalMantOts { get; set; }
     public int TotalPlanesMp { get; set; }
@@ -118,6 +125,72 @@ public sealed class DashboardMetrics
     public int TotalInsumos { get; set; }
     public int TotalPersonalTecnico { get; set; }
 }
+
+public sealed class AuditSearchFilter
+{
+    public DateTime? FechaInicio { get; set; }
+    public DateTime? FechaFin { get; set; }
+    public string? Modulo { get; set; }
+    public string? Usuario { get; set; }
+    public string? TextoBusqueda { get; set; }
+    public int MaxRows { get; set; } = 500;
+}
+
+public sealed class GroupMovementFilter
+{
+    public DateTime? FechaInicio { get; set; }
+    public DateTime? FechaFin { get; set; }
+    public int? IdGrupo { get; set; }
+    public string? IdUsuario { get; set; }
+    public string? TextoBusqueda { get; set; }
+    public int MaxRows { get; set; } = 500;
+}
+
+public sealed class BatchItemOutcome
+{
+    public required string TargetId { get; init; }
+    public required string TargetLabel { get; init; }
+    public bool Succeeded { get; init; }
+    public bool ProtectedSkipped { get; init; }
+    public string Message { get; init; } = string.Empty;
+}
+
+public sealed class BatchOperationResult
+{
+    public required string OperationName { get; init; }
+    public int RequestedCount { get; init; }
+    public List<BatchItemOutcome> Items { get; init; } = [];
+
+    public int SucceededCount => Items.Count(i => i.Succeeded);
+    public int ProtectedSkippedCount => Items.Count(i => !i.Succeeded && i.ProtectedSkipped);
+    public int FailedCount => Items.Count(i => !i.Succeeded && !i.ProtectedSkipped);
+
+    public string BuildSummary()
+    {
+        List<string> lines =
+        [
+            $"Operación: {OperationName}",
+            $"Seleccionados: {RequestedCount} | Aplicados: {SucceededCount} | Protegidos omitidos: {ProtectedSkippedCount} | Errores: {FailedCount}"
+        ];
+
+        IEnumerable<BatchItemOutcome> issues = Items.Where(i => !i.Succeeded).Take(12);
+        foreach (BatchItemOutcome item in issues)
+        {
+            string tag = item.ProtectedSkipped ? "[PROTEGIDO]" : "[ERROR]";
+            lines.Add($"  {tag} {item.TargetLabel}: {item.Message}");
+        }
+
+        int extraIssues = Items.Count(i => !i.Succeeded) - 12;
+        if (extraIssues > 0)
+        {
+            lines.Add($"  ... y {extraIssues} elemento(s) adicionales con observaciones.");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+}
+
+public sealed class ConcurrencyConflictException(string message) : InvalidOperationException(message);
 
 public sealed class AppSettings
 {

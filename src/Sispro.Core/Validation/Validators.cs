@@ -162,4 +162,27 @@ public static partial class DomainValidator
 
         return null;
     }
+
+    public static string? ValidateDateRange(DateTime? desde, DateTime? hasta)
+    {
+        if (desde.HasValue && hasta.HasValue && desde.Value.Date > hasta.Value.Date)
+        {
+            return "La fecha inicial ('Desde') no puede ser posterior a la fecha final ('Hasta').";
+        }
+
+        return null;
+    }
+
+    public static (DateTime? Desde, DateTime? Hasta) ResolveDatePreset(Enums.DateRangePreset preset, DateTime? referenceDate = null)
+    {
+        DateTime today = (referenceDate ?? DateTime.Today).Date;
+        return preset switch
+        {
+            Enums.DateRangePreset.Hoy => (today, today),
+            Enums.DateRangePreset.UltimaSemana => (today.AddDays(-6), today),
+            Enums.DateRangePreset.UltimoMes => (today.AddMonths(-1), today),
+            Enums.DateRangePreset.EsteAnio => (new DateTime(today.Year, 1, 1), today),
+            _ => (null, null)
+        };
+    }
 }

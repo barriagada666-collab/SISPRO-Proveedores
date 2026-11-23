@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.Data.Sqlite;
 using Sispro.Core.Dtos;
@@ -14,12 +15,14 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         SELECT u.id_usuario, u.codigo_id, u.alias_usuario, u.pass_hash, u.nombre_usuario, u.ape_pat_usuario,
                u.ape_mat_usuario, u.id_nivel, u.mail_usuario, u.fono_usuario, u.es_solicitante,
                u.activo, u.debe_cambiar_clave, u.fecha_creacion, u.fecha_modificacion, u.ultimo_acceso,
+               u.id_grupo, COALESCE(g.nombre, ''), COALESCE(u.row_version, 1),
                p.m1_ot, p.tab_0_1_ingreso_ot, p.tab_0_vbj, p.tab_0_vbs,
                p.tab_0_2_busqueda_ot, p.tab_0_3_impresion_ot,
                p.m2_facturas, p.tab_1_0_ingreso_fac, p.tab_1_1_busqueda_fac,
                p.m3_mantenedor,
                p.m4_usuarios, p.tab_2_0_ingreso_us, p.tab_2_1_listado_us
         FROM Usuarios u
+        LEFT JOIN Grupos g ON g.id_grupo = u.id_grupo
         LEFT JOIN Permisos p ON p.id_usuario = u.id_usuario
         """;
 
@@ -74,6 +77,8 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                     OR u.ape_mat_usuario LIKE $q
                     OR (u.nombre_usuario || ' ' || u.ape_pat_usuario || ' ' || u.ape_mat_usuario) LIKE $q
                     OR u.mail_usuario LIKE $q
+                    OR u.fono_usuario LIKE $q
+                    OR COALESCE(g.nombre, '') LIKE $q
                     OR u.id_usuario LIKE $q
                     OR CAST(u.codigo_id AS TEXT) LIKE $q
                 )
@@ -87,10 +92,32 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             cmd.Parameters.AddWithValue("$nivel", (int)filter.Perfil.Value);
         }
 
+        if (filter.SoloSinGrupo)
+        {
+            clauses.Add("u.id_grupo IS NULL");
+        }
+        else if (filter.IdGrupo.HasValue)
+        {
+            clauses.Add("u.id_grupo = $grupo");
+            cmd.Parameters.AddWithValue("$grupo", filter.IdGrupo.Value);
+        }
+
         if (filter.Activo.HasValue)
         {
             clauses.Add("u.activo = $activo");
             cmd.Parameters.AddWithValue("$activo", filter.Activo.Value ? 1 : 0);
+        }
+
+        if (filter.FechaCreacionInicio.HasValue)
+        {
+            clauses.Add("u.fecha_creacion >= $fini");
+            cmd.Parameters.AddWithValue("$fini", filter.FechaCreacionInicio.Value.Date.ToString("yyyy-MM-dd 00:00:00", CultureInfo.InvariantCulture));
+        }
+
+        if (filter.FechaCreacionFin.HasValue)
+        {
+            clauses.Add("u.fecha_creacion <= $ffin");
+            cmd.Parameters.AddWithValue("$ffin", filter.FechaCreacionFin.Value.Date.ToString("yyyy-MM-dd 23:59:59", CultureInfo.InvariantCulture));
         }
 
         if (clauses.Count > 0)
@@ -99,7 +126,8 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             sql.Append(string.Join(" AND ", clauses));
         }
 
-        sql.Append(" ORDER BY u.codigo_id ASC, u.alias_usuario ASC;");
+        // Orden cronológico descendente predeterminado: registros más recientes primero
+        sql.Append(" ORDER BY u.fecha_creacion DESC, u.codigo_id DESC;");
         cmd.CommandText = sql.ToString();
 
         List<User> list = [];
@@ -143,6 +171,7 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         }
 
         user.CodigoId = nextCodigo;
+        user.RowVersion = 1;
         user.Permisos.IdUsuario = user.IdUsuario;
         user.Permisos.NormalizeHierarchy();
 
@@ -152,12 +181,12 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             cmd.CommandText = """
                 INSERT INTO Usuarios(
                     id_usuario, codigo_id, alias_usuario, pass_hash, nombre_usuario, ape_pat_usuario,
-                    ape_mat_usuario, id_nivel, mail_usuario, fono_usuario, es_solicitante,
-                    activo, debe_cambiar_clave, fecha_creacion, fecha_modificacion
+                    ape_mat_usuario, id_nivel, id_grupo, mail_usuario, fono_usuario, es_solicitante,
+                    activo, debe_cambiar_clave, fecha_creacion, fecha_modificacion, row_version
                 ) VALUES (
                     $id, $codigo, $alias, $hash, $nom, $pat,
-                    $mat, $nivel, $mail, $fono, $sol,
-                    $act, $forceChange, datetime('now','localtime'), datetime('now','localtime')
+                    $mat, $nivel, $grupo, $mail, $fono, $sol,
+                    $act, $forceChange, datetime('now','localtime'), datetime('now','localtime'), 1
                 );
                 """;
             cmd.Parameters.AddWithValue("$codigo", user.CodigoId);
@@ -170,7 +199,7 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         return user.CodigoId;
     }
 
-    public void Update(User user, bool updatePassword)
+    public void Update(User user, bool updatePassword, int? expectedRowVersion = null)
     {
         user.Permisos.IdUsuario = user.IdUsuario;
         user.Permisos.NormalizeHierarchy();
@@ -178,30 +207,45 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteTransaction tx = conn.BeginTransaction();
 
+        string versionClause = expectedRowVersion.HasValue ? " AND row_version = $ver" : string.Empty;
+
         using (SqliteCommand cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
             cmd.CommandText = updatePassword
-                ? """
+                ? $"""
                   UPDATE Usuarios
                   SET alias_usuario = $alias, pass_hash = $hash, nombre_usuario = $nom,
                       ape_pat_usuario = $pat, ape_mat_usuario = $mat, id_nivel = $nivel,
-                      mail_usuario = $mail, fono_usuario = $fono, es_solicitante = $sol,
+                      id_grupo = $grupo, mail_usuario = $mail, fono_usuario = $fono, es_solicitante = $sol,
                       activo = $act, debe_cambiar_clave = $forceChange,
-                      fecha_modificacion = datetime('now','localtime')
-                  WHERE id_usuario = $id;
+                      fecha_modificacion = datetime('now','localtime'),
+                      row_version = row_version + 1
+                  WHERE id_usuario = $id{versionClause};
                   """
-                : """
+                : $"""
                   UPDATE Usuarios
                   SET alias_usuario = $alias, nombre_usuario = $nom,
                       ape_pat_usuario = $pat, ape_mat_usuario = $mat, id_nivel = $nivel,
-                      mail_usuario = $mail, fono_usuario = $fono, es_solicitante = $sol,
+                      id_grupo = $grupo, mail_usuario = $mail, fono_usuario = $fono, es_solicitante = $sol,
                       activo = $act, debe_cambiar_clave = $forceChange,
-                      fecha_modificacion = datetime('now','localtime')
-                  WHERE id_usuario = $id;
+                      fecha_modificacion = datetime('now','localtime'),
+                      row_version = row_version + 1
+                  WHERE id_usuario = $id{versionClause};
                   """;
             BindUserParameters(cmd, user, includePassword: updatePassword);
-            cmd.ExecuteNonQuery();
+            if (expectedRowVersion.HasValue)
+            {
+                cmd.Parameters.AddWithValue("$ver", expectedRowVersion.Value);
+            }
+
+            int affected = cmd.ExecuteNonQuery();
+            if (expectedRowVersion.HasValue && affected == 0)
+            {
+                tx.Rollback();
+                throw new ConcurrencyConflictException(
+                    $"El usuario '{user.AliasUsuario}' fue modificado simultáneamente en otra sesión. Los datos fueron recargados desde la base de datos.");
+            }
         }
 
         UpsertPermissions(conn, tx, user.Permisos);
@@ -216,7 +260,8 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             UPDATE Usuarios
             SET pass_hash = $hash,
                 debe_cambiar_clave = $forceChange,
-                fecha_modificacion = datetime('now','localtime')
+                fecha_modificacion = datetime('now','localtime'),
+                row_version = row_version + 1
             WHERE id_usuario = $id;
             """;
         cmd.Parameters.AddWithValue("$hash", newHash);
@@ -241,7 +286,8 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.CommandText = """
             UPDATE Usuarios
             SET activo = $act,
-                fecha_modificacion = datetime('now','localtime')
+                fecha_modificacion = datetime('now','localtime'),
+                row_version = row_version + 1
             WHERE id_usuario = $id;
             """;
         cmd.Parameters.AddWithValue("$act", active ? 1 : 0);
@@ -249,11 +295,62 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.ExecuteNonQuery();
     }
 
+    public void SetGroup(string idUsuario, int? idGrupo)
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE Usuarios
+            SET id_grupo = $grp,
+                fecha_modificacion = datetime('now','localtime'),
+                row_version = row_version + 1
+            WHERE id_usuario = $id;
+            """;
+        cmd.Parameters.AddWithValue("$grp", idGrupo.HasValue ? idGrupo.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", idUsuario);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions)
+    {
+        normalizedPermissions.IdUsuario = idUsuario;
+        normalizedPermissions.NormalizeHierarchy();
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+
+        using (SqliteCommand cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                UPDATE Usuarios
+                SET id_nivel = $nivel,
+                    fecha_modificacion = datetime('now','localtime'),
+                    row_version = row_version + 1
+                WHERE id_usuario = $id;
+                """;
+            cmd.Parameters.AddWithValue("$nivel", (int)newRole);
+            cmd.Parameters.AddWithValue("$id", idUsuario);
+            cmd.ExecuteNonQuery();
+        }
+
+        UpsertPermissions(conn, tx, normalizedPermissions);
+        tx.Commit();
+    }
+
     public int CountActiveAdmins()
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM Usuarios WHERE activo = 1 AND id_nivel = 4;";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    public int CountWithoutGroup()
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM Usuarios WHERE id_grupo IS NULL;";
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
@@ -270,6 +367,7 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.Parameters.AddWithValue("$pat", user.ApePatUsuario.Trim());
         cmd.Parameters.AddWithValue("$mat", user.ApeMatUsuario.Trim());
         cmd.Parameters.AddWithValue("$nivel", (int)user.Nivel);
+        cmd.Parameters.AddWithValue("$grupo", user.IdGrupo.HasValue ? user.IdGrupo.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$mail", user.MailUsuario.Trim());
         cmd.Parameters.AddWithValue("$fono", user.FonoUsuario.Trim());
         cmd.Parameters.AddWithValue("$sol", user.EsSolicitante ? 1 : 0);
@@ -347,22 +445,25 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             FechaCreacion = fechaCreacion,
             FechaModificacion = fechaModificacion,
             UltimoAcceso = ultimoAcceso,
+            IdGrupo = rdr.IsDBNull(16) ? null : rdr.GetInt32(16),
+            NombreGrupo = rdr.GetString(17),
+            RowVersion = rdr.IsDBNull(18) ? 1 : rdr.GetInt32(18),
             Permisos = new UserPermissions
             {
                 IdUsuario = id,
-                MenuOrdenesTrabajo = !rdr.IsDBNull(16) && rdr.GetInt32(16) != 0,
-                IngresoOt = !rdr.IsDBNull(17) && rdr.GetInt32(17) != 0,
-                VistoBuenoJefatura = !rdr.IsDBNull(18) && rdr.GetInt32(18) != 0,
-                VistoBuenoSupervisor = !rdr.IsDBNull(19) && rdr.GetInt32(19) != 0,
-                BusquedaOt = !rdr.IsDBNull(20) && rdr.GetInt32(20) != 0,
-                ImpresionOt = !rdr.IsDBNull(21) && rdr.GetInt32(21) != 0,
-                MenuFacturas = !rdr.IsDBNull(22) && rdr.GetInt32(22) != 0,
-                IngresoFacturas = !rdr.IsDBNull(23) && rdr.GetInt32(23) != 0,
-                BusquedaFacturas = !rdr.IsDBNull(24) && rdr.GetInt32(24) != 0,
-                MenuMantenedor = !rdr.IsDBNull(25) && rdr.GetInt32(25) != 0,
-                MenuUsuarios = !rdr.IsDBNull(26) && rdr.GetInt32(26) != 0,
-                IngresoUsuarios = !rdr.IsDBNull(27) && rdr.GetInt32(27) != 0,
-                ListadoUsuarios = !rdr.IsDBNull(28) && rdr.GetInt32(28) != 0
+                MenuOrdenesTrabajo = !rdr.IsDBNull(19) && rdr.GetInt32(19) != 0,
+                IngresoOt = !rdr.IsDBNull(20) && rdr.GetInt32(20) != 0,
+                VistoBuenoJefatura = !rdr.IsDBNull(21) && rdr.GetInt32(21) != 0,
+                VistoBuenoSupervisor = !rdr.IsDBNull(22) && rdr.GetInt32(22) != 0,
+                BusquedaOt = !rdr.IsDBNull(23) && rdr.GetInt32(23) != 0,
+                ImpresionOt = !rdr.IsDBNull(24) && rdr.GetInt32(24) != 0,
+                MenuFacturas = !rdr.IsDBNull(25) && rdr.GetInt32(25) != 0,
+                IngresoFacturas = !rdr.IsDBNull(26) && rdr.GetInt32(26) != 0,
+                BusquedaFacturas = !rdr.IsDBNull(27) && rdr.GetInt32(27) != 0,
+                MenuMantenedor = !rdr.IsDBNull(28) && rdr.GetInt32(28) != 0,
+                MenuUsuarios = !rdr.IsDBNull(29) && rdr.GetInt32(29) != 0,
+                IngresoUsuarios = !rdr.IsDBNull(30) && rdr.GetInt32(30) != 0,
+                ListadoUsuarios = !rdr.IsDBNull(31) && rdr.GetInt32(31) != 0
             }
         };
     }

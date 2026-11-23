@@ -1,8 +1,10 @@
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Core.Validation;
 using Sispro.Services;
+using Sispro.UI.Controls;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Forms;
@@ -49,12 +51,15 @@ public sealed class InvoicesForm : UserControl
     private readonly ComboBox _cmbSearchProv;
     private readonly TextBox _txtSearchDoc;
     private readonly TextBox _txtSearchOt;
+    private readonly DateRangeFilterControl _searchDateRange;
     private readonly Button _btnSearchInvoices;
+    private readonly Button _btnClearSearchInvoices;
     private readonly Button _btnDeleteInvoice;
     private readonly Button _btnExportInvoices;
     private readonly DataGridView _gridInvoices;
     private readonly DataGridView _gridInvoiceItems;
     private IReadOnlyList<InvoiceSearchRow> _invoiceRows = [];
+    private bool _syncSubscribed;
 
     public InvoicesForm(SisproApplicationContext ctx, UserSession session)
     {
@@ -71,7 +76,7 @@ public sealed class InvoicesForm : UserControl
         _tabRegister = new TabPage("Guías de Despacho / Facturas") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
         _txtNumDoc = new TextBox { Width = 120, MaxLength = 10 };
         _txtNumDoc.KeyPress += DigitsOnly_KeyPress;
-        _dtFechaDoc = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 116, Value = DateTime.Today };
+        _dtFechaDoc = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "dd-MM-yyyy", Width = 116, Value = DateTime.Today };
         _cmbProvider = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 240 };
         _txtRecibidoPor = new TextBox { Width = 220, PlaceholderText = "Nombre quien recibe" };
         _txtDetalleDoc = new TextBox { Multiline = true, Width = 440, Height = 52, ScrollBars = ScrollBars.Vertical };
@@ -118,22 +123,33 @@ public sealed class InvoicesForm : UserControl
         // --- TAB 1 ---
         _tabSearch = new TabPage("Buscar Facturas y Guías") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
         _chkSearchProv = new CheckBox { Text = "Proveedor", AutoSize = true };
-        _cmbSearchProv = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 220, Enabled = false };
+        _cmbSearchProv = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, Enabled = false };
         _chkSearchProv.CheckedChanged += (_, _) => _cmbSearchProv.Enabled = _chkSearchProv.Checked;
-        _txtSearchDoc = new TextBox { Width = 110, PlaceholderText = "N° Doc." };
+        _txtSearchDoc = new TextBox { Width = 98, PlaceholderText = "N° Doc." };
         _txtSearchDoc.KeyPress += DigitsOnly_KeyPress;
-        _txtSearchOt = new TextBox { Width = 100, PlaceholderText = "N° OT" };
+        _txtSearchOt = new TextBox { Width = 88, PlaceholderText = "N° OT" };
         _txtSearchOt.KeyPress += DigitsOnly_KeyPress;
 
-        _btnSearchInvoices = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Buscar facturas y guías registradas", width: 114);
+        _searchDateRange = new DateRangeFilterControl(compact: true);
+        _searchDateRange.RangeChanged += (_, _) => ExecuteInvoiceSearch();
+
+        _btnSearchInvoices = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Buscar facturas y guías registradas", width: 96, height: 30);
         _btnSearchInvoices.Click += (_, _) => ExecuteInvoiceSearch();
 
-        _btnDeleteInvoice = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar factura seleccionada y liberar ítems de OT", width: 118);
+        _btnClearSearchInvoices = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros de búsqueda", width: 96, height: 30);
+        _btnClearSearchInvoices.Click += (_, _) => ClearInvoiceSearchFilters();
+
+        _btnDeleteInvoice = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar factura seleccionada y liberar ítems de OT", width: 102, height: 30);
         _btnDeleteInvoice.Enabled = _session.Permisos.IngresoFacturas;
         _btnDeleteInvoice.Click += (_, _) => DeleteSelectedInvoice();
 
-        _btnExportInvoices = CambiasoTheme.CreateButton("Exportar Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar listado de facturas a Excel (.xlsx)", width: 146);
-        _btnExportInvoices.Click += (_, _) => ExportInvoicesExcel();
+        _btnExportInvoices = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar facturas filtradas a Excel, PDF, Word o CSV", width: 108, height: 30);
+        _btnExportInvoices.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            _btnExportInvoices,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_Facturas_Guias",
+            () => DocumentExportService.BuildInvoicesReport(_invoiceRows, BuildInvoiceFilterSummary()));
 
         _gridInvoices = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridInvoices);
@@ -157,10 +173,36 @@ public sealed class InvoicesForm : UserControl
         Controls.Add(_tabs);
         LoadProviders();
         RefreshAssociatedGrid();
+        SubscribeSync();
         if (_session.Permisos.BusquedaFacturas)
         {
             ExecuteInvoiceSearch();
         }
+    }
+
+    private void SubscribeSync()
+    {
+        if (_syncSubscribed) return;
+        _ctx.SyncHub.DataChanged += OnSyncChanged;
+        _syncSubscribed = true;
+    }
+
+    private void OnSyncChanged(object? sender, DataChangedEventArgs e)
+    {
+        if (IsDisposed || (e.Kind & (DataChangeKind.Catalogs | DataChangeKind.Invoices)) == 0)
+        {
+            return;
+        }
+
+        void RefreshUi()
+        {
+            if (IsDisposed) return;
+            if ((e.Kind & DataChangeKind.Catalogs) != 0) LoadProviders();
+            if ((e.Kind & DataChangeKind.Invoices) != 0 && _session.Permisos.BusquedaFacturas) ExecuteInvoiceSearch();
+        }
+
+        if (InvokeRequired && IsHandleCreated) BeginInvoke(RefreshUi);
+        else if (!InvokeRequired) RefreshUi();
     }
 
     public void ReloadCatalogs() => LoadProviders();
@@ -272,17 +314,28 @@ public sealed class InvoicesForm : UserControl
     private void BuildSearchLayout()
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 68));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 58));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 42));
 
-        GroupBox grpFilters = CambiasoTheme.CreateGroupBox("Filtros de Búsqueda");
+        GroupBox grpFilters = CambiasoTheme.CreateGroupBox("Filtros Combinados de Búsqueda (orden más reciente primero)");
         grpFilters.Dock = DockStyle.Fill;
-        FlowLayoutPanel flt = new() { Dock = DockStyle.Fill };
-        flt.Controls.AddRange([_chkSearchProv, _cmbSearchProv, Wrap("N° Documento:", _txtSearchDoc), Wrap("N° OT:", _txtSearchOt), _btnSearchInvoices, _btnDeleteInvoice, _btnExportInvoices]);
-        grpFilters.Controls.Add(flt);
 
-        GroupBox grpMaster = CambiasoTheme.CreateGroupBox("Documentos Registrados");
+        TableLayoutPanel fltGrid = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        fltGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        fltGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+
+        FlowLayoutPanel flt1 = new() { Dock = DockStyle.Fill, WrapContents = false };
+        flt1.Controls.AddRange([_chkSearchProv, _cmbSearchProv, Wrap("N° Documento:", _txtSearchDoc), Wrap("N° OT:", _txtSearchOt), _btnSearchInvoices, _btnClearSearchInvoices, _btnDeleteInvoice, _btnExportInvoices]);
+
+        FlowLayoutPanel flt2 = new() { Dock = DockStyle.Fill, WrapContents = false };
+        flt2.Controls.Add(_searchDateRange);
+
+        fltGrid.Controls.Add(flt1, 0, 0);
+        fltGrid.Controls.Add(flt2, 0, 1);
+        grpFilters.Controls.Add(fltGrid);
+
+        GroupBox grpMaster = CambiasoTheme.CreateGroupBox("Documentos Registrados (orden cronológico descendente)");
         grpMaster.Dock = DockStyle.Fill;
         grpMaster.Controls.Add(_gridInvoices);
 
@@ -504,13 +557,20 @@ public sealed class InvoicesForm : UserControl
 
     private void ExecuteInvoiceSearch()
     {
+        if (!_searchDateRange.TryValidate(this, out _))
+        {
+            return;
+        }
+
         try
         {
             InvoiceSearchFilter filter = new()
             {
                 IdProv = _chkSearchProv.Checked && _cmbSearchProv.SelectedValue is int pid ? pid : null,
                 NumeroDocumento = int.TryParse(_txtSearchDoc.Text.Trim(), out int nd) && nd > 0 ? nd : null,
-                NumeroOt = int.TryParse(_txtSearchOt.Text.Trim(), out int not) && not > 0 ? not : null
+                NumeroOt = int.TryParse(_txtSearchOt.Text.Trim(), out int not) && not > 0 ? not : null,
+                FechaInicio = _searchDateRange.FechaInicio,
+                FechaFin = _searchDateRange.FechaFin
             };
 
             _invoiceRows = _ctx.InvoiceService.Search(_session, filter);
@@ -536,6 +596,21 @@ public sealed class InvoicesForm : UserControl
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
         }
+    }
+
+    private void ClearInvoiceSearchFilters()
+    {
+        _chkSearchProv.Checked = false;
+        _txtSearchDoc.Clear();
+        _txtSearchOt.Clear();
+        _searchDateRange.Clear();
+        ExecuteInvoiceSearch();
+    }
+
+    private string BuildInvoiceFilterSummary()
+    {
+        string prov = _chkSearchProv.Checked && _cmbSearchProv.SelectedItem is Provider p ? p.Nombre : "Todos";
+        return $"Proveedor: {prov} | {_searchDateRange.BuildFilterDescription()}";
     }
 
     private void LoadSelectedInvoiceItems()
@@ -595,29 +670,6 @@ public sealed class InvoicesForm : UserControl
         }
     }
 
-    private void ExportInvoicesExcel()
-    {
-        if (_invoiceRows.Count == 0)
-        {
-            CambiasoTheme.ShowWarning(this, "No hay facturas en pantalla para exportar.");
-            return;
-        }
-
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar Facturas y Guías a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"Facturas_SISPRO_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
-        };
-        if (dlg.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
-
-        _ctx.ExcelExportService.ExportInvoicesGrid(_invoiceRows, dlg.FileName);
-        CambiasoTheme.ShowInfo(this, $"Archivo Excel generado correctamente:\n{dlg.FileName}");
-    }
-
     private static Label CenterLabel(string text)
     {
         Label lbl = CambiasoTheme.CreateFieldLabel(text);
@@ -647,6 +699,12 @@ public sealed class InvoicesForm : UserControl
     {
         if (disposing)
         {
+            if (_syncSubscribed)
+            {
+                _ctx.SyncHub.DataChanged -= OnSyncChanged;
+                _syncSubscribed = false;
+            }
+
             _toolTip.Dispose();
         }
 

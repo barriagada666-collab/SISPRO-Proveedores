@@ -12,11 +12,29 @@ public interface IUserRepository
     IReadOnlyList<User> GetAll(string? search = null);
     IReadOnlyList<User> Search(UserSearchFilter filter);
     int Create(User user);
-    void Update(User user, bool updatePassword);
+    void Update(User user, bool updatePassword, int? expectedRowVersion = null);
     void UpdatePasswordHash(string idUsuario, string newHash, bool requirePasswordChange = false);
     void UpdateLastLogin(string idUsuario);
     void SetActive(string idUsuario, bool active);
+    void SetGroup(string idUsuario, int? idGrupo);
+    void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions);
     int CountActiveAdmins();
+    int CountWithoutGroup();
+}
+
+public interface IGroupRepository
+{
+    IReadOnlyList<UserGroup> GetAll(bool includeInactive = true, string? search = null);
+    UserGroup? GetById(int idGrupo);
+    UserGroup? GetByName(string nombre);
+    int Create(UserGroup group);
+    void Update(UserGroup group, int? expectedRowVersion = null);
+    void SetActive(int idGrupo, bool active);
+    int CountAssignedUsers(int idGrupo);
+    bool HasDependencies(int idGrupo);
+    void Delete(int idGrupo);
+    void RecordMovement(GroupMovementEntry movement);
+    IReadOnlyList<GroupMovementEntry> GetMovements(GroupMovementFilter? filter = null);
 }
 
 public interface IProviderRepository
@@ -82,6 +100,7 @@ public interface IAuditRepository
 {
     void Log(string usuario, string modulo, string accion, string detalle = "");
     IReadOnlyList<AuditEntry> GetRecent(int limit = 200);
+    IReadOnlyList<AuditEntry> Search(AuditSearchFilter filter);
     DashboardMetrics GetDashboardMetrics();
 }
 

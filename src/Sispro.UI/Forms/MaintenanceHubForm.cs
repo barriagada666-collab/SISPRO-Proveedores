@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Globalization;
 using Sispro.Core.Dtos;
 using Sispro.Services;
+using Sispro.UI.Controls;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Forms;
@@ -22,6 +23,7 @@ public sealed class MaintenanceHubForm : UserControl
     private readonly ComboBox _cmbOtTrade;
     private readonly ComboBox _cmbOtStatus;
     private readonly ComboBox _cmbOtYear;
+    private readonly DateRangeFilterControl _otDateRange;
     private readonly DataGridView _gridMantOts;
     private readonly TextBox _txtOtDetail;
     private readonly GroupBox _grpMantOts;
@@ -83,6 +85,8 @@ public sealed class MaintenanceHubForm : UserControl
         _cmbOtTrade = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 104 };
         _cmbOtStatus = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 102 };
         _cmbOtYear = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 76 };
+        _otDateRange = new DateRangeFilterControl(compact: true);
+        _otDateRange.RangeChanged += (_, _) => LoadMantOts();
 
         _gridMantOts = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridMantOts);
@@ -166,27 +170,34 @@ public sealed class MaintenanceHubForm : UserControl
 
     private void BuildOtsTab(TabPage page)
     {
-        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 68));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 32));
 
-        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 5, 0, 4) };
+        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 4, 0, 2) };
         Button btnSearch = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Consultar OTs de mantención con filtros", width: 92, height: 30);
         btnSearch.Click += (_, _) => LoadMantOts();
 
-        Button btnClear = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros de búsqueda", width: 98, height: 30);
+        Button btnClear = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros de búsqueda", width: 94, height: 30);
         btnClear.Click += (_, _) =>
         {
             _txtOtSearch.Clear();
             if (_cmbOtTrade.Items.Count > 0) _cmbOtTrade.SelectedIndex = 0;
             if (_cmbOtStatus.Items.Count > 0) _cmbOtStatus.SelectedIndex = 0;
             if (_cmbOtYear.Items.Count > 0) _cmbOtYear.SelectedIndex = 0;
+            _otDateRange.Clear();
             LoadMantOts();
         };
 
-        Button btnExcel = CambiasoTheme.CreateButton("Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar resultados visibles a Excel (.xlsx)", width: 82, height: 30);
-        btnExcel.Click += (_, _) => ExportMantOtsExcel();
+        Button btnExport = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar OTs visibles a Excel, PDF, Word o CSV", width: 106, height: 30);
+        btnExport.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            btnExport,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_OTs_Mantencion",
+            () => DocumentExportService.BuildMaintenanceOrdersReport(_mantOts, BuildMantOtFilterSummary()));
 
         bar.Controls.AddRange(
         [
@@ -194,8 +205,11 @@ public sealed class MaintenanceHubForm : UserControl
             Wrap("Oficio:", _cmbOtTrade),
             Wrap("Estado:", _cmbOtStatus),
             Wrap("Año:", _cmbOtYear),
-            btnSearch, btnClear, btnExcel
+            btnSearch, btnClear, btnExport
         ]);
+
+        FlowLayoutPanel dateBar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(2, 2, 0, 2) };
+        dateBar.Controls.Add(_otDateRange);
 
         _grpMantOts.Controls.Add(_gridMantOts);
 
@@ -204,8 +218,9 @@ public sealed class MaintenanceHubForm : UserControl
         grpDetail.Controls.Add(_txtOtDetail);
 
         layout.Controls.Add(bar, 0, 0);
-        layout.Controls.Add(_grpMantOts, 0, 1);
-        layout.Controls.Add(grpDetail, 0, 2);
+        layout.Controls.Add(dateBar, 0, 1);
+        layout.Controls.Add(_grpMantOts, 0, 2);
+        layout.Controls.Add(grpDetail, 0, 3);
         page.Controls.Add(layout);
     }
 
@@ -259,10 +274,15 @@ public sealed class MaintenanceHubForm : UserControl
         btnSearch.Click += (_, _) => LoadSupplies();
         Button btnRefresh = CambiasoTheme.CreateButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar catálogo de insumos", width: 106, height: 30);
         btnRefresh.Click += (_, _) => { _txtSupplySearch.Clear(); LoadSupplies(); };
-        Button btnExcel = CambiasoTheme.CreateButton("Exportar Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar insumos SAP a Excel (.xlsx)", width: 138, height: 30);
-        btnExcel.Click += (_, _) => ExportSuppliesExcel();
+        Button btnExport = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar insumos SAP a Excel, PDF, Word o CSV", width: 110, height: 30);
+        btnExport.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            btnExport,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_Insumos_SAP",
+            () => DocumentExportService.BuildSuppliesReport(_supplies, string.IsNullOrWhiteSpace(_txtSupplySearch.Text) ? "Catálogo completo" : $"Filtro: {_txtSupplySearch.Text}"));
 
-        bar.Controls.AddRange([Wrap("Buscar:", _txtSupplySearch), btnSearch, btnRefresh, btnExcel]);
+        bar.Controls.AddRange([Wrap("Buscar:", _txtSupplySearch), btnSearch, btnRefresh, btnExport]);
         _grpSupplies.Controls.Add(_gridSupplies);
 
         layout.Controls.Add(bar, 0, 0);
@@ -349,17 +369,24 @@ public sealed class MaintenanceHubForm : UserControl
 
     private void LoadMantOts()
     {
+        if (!_otDateRange.TryValidate(this, out _))
+        {
+            return;
+        }
+
         MantWorkOrderFilter filter = new()
         {
             TextoBusqueda = _txtOtSearch.Text,
             Oficio = _cmbOtTrade.SelectedIndex > 0 ? _cmbOtTrade.SelectedItem?.ToString() : null,
             Estado = _cmbOtStatus.SelectedIndex > 0 ? _cmbOtStatus.SelectedItem?.ToString() : null,
             Anio = _cmbOtYear.SelectedItem is int yr ? yr : null,
+            FechaInicio = _otDateRange.FechaInicio,
+            FechaFin = _otDateRange.FechaFin,
             MaxRows = 400
         };
 
         _mantOts = _ctx.MaintenanceService.SearchInternalWorkOrders(_session, filter);
-        _grpMantOts.Text = $"Órdenes de Trabajo de Mantención Interna (mostrando {_mantOts.Count:N0} registros — tope 400 por consulta)";
+        _grpMantOts.Text = $"Órdenes de Trabajo de Mantención Interna (mostrando {_mantOts.Count:N0} registros — más recientes primero)";
         _gridMantOts.DataSource = _mantOts.Select(o => new
         {
             N_OT = o.NumeroOt,
@@ -537,34 +564,12 @@ public sealed class MaintenanceHubForm : UserControl
         _gridChecklists.DataSource = _ctx.MaintenanceService.GetChecklistsSummary(_session).Select(c => new { c.Id, Tarea = c.Nombre, Grupo = c.Detalle }).ToList();
     }
 
-    private void ExportMantOtsExcel()
+    private string BuildMantOtFilterSummary()
     {
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar OTs de Mantención a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"OTs_Mantencion_SISPRO_{DateTime.Now:yyyyMMdd}.xlsx"
-        };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-        {
-            _ctx.ExcelExportService.ExportMaintenanceOrders(_mantOts, dlg.FileName);
-            CambiasoTheme.ShowInfo(this, $"OTs de mantención exportadas a:\n{dlg.FileName}");
-        }
-    }
-
-    private void ExportSuppliesExcel()
-    {
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar Insumos SAP a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"Insumos_SAP_SISPRO_{DateTime.Now:yyyyMMdd}.xlsx"
-        };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-        {
-            _ctx.ExcelExportService.ExportSupplies(_supplies, dlg.FileName);
-            CambiasoTheme.ShowInfo(this, $"Insumos SAP exportados a:\n{dlg.FileName}");
-        }
+        string trade = _cmbOtTrade.SelectedItem?.ToString() ?? "Todos";
+        string status = _cmbOtStatus.SelectedItem?.ToString() ?? "Todos";
+        string year = _cmbOtYear.SelectedItem?.ToString() ?? "Todos";
+        return $"Oficio: {trade} | Estado: {status} | Año: {year} | {_otDateRange.BuildFilterDescription()}";
     }
 
     private static string FormatDetencion(string raw) =>

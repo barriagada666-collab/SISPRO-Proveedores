@@ -1,11 +1,11 @@
-# Guía de Despliegue, Actualización y Respaldo — SISPRO v3.0
+# Guía de Despliegue, Actualización y Respaldo — SISPRO v4.0
 
 ## 1. Requisitos del Equipo de Producción
 
 - **Sistema Operativo**: Windows 10 (1809+) o Windows 11 de 64 bits (`x64`).
 - **Memoria RAM**: mínimo 2 GB (recomendado 4 GB).
 - **Espacio en disco**: 250 MB libres para aplicación + espacio para respaldos de base de datos.
-- **Dependencias externas requeridas**: **Ninguna** (el instalador oficial incluye el runtime `.NET 10` autocontenido, motor SQLite embebido y motor OpenXML; no requiere Microsoft Access ni Microsoft Excel).
+- **Dependencias externas requeridas**: **Ninguna** (el instalador oficial incluye el runtime `.NET 10` autocontenido, motor SQLite embebido, OpenXML y generador PDF vectorial; no requiere Microsoft Access, Excel ni Word).
 
 ---
 
@@ -14,15 +14,16 @@
 ### Instalación Interactiva
 1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt`:
    ```powershell
-   Get-FileHash SISPRO_Setup_v3.0.0_win-x64.exe -Algorithm SHA256
+   Get-FileHash SISPRO_Setup_v4.0.0_win-x64.exe -Algorithm SHA256
    ```
-2. Ejecute `SISPRO_Setup_v3.0.0_win-x64.exe`.
-3. Seleccione instalación para el usuario actual (no requiere privilegios de administrador) o para todos los usuarios.
-4. Complete el asistente y opcionalmente cree acceso directo en el escritorio.
+2. Ejecute `SISPRO_Setup_v4.0.0_win-x64.exe`.
+3. **Ruta predeterminada:** `C:\Temp` (editable libremente por el usuario durante la instalación).
+4. Seleccione instalación para el usuario actual (no requiere privilegios de administrador) o para todos los usuarios.
+5. Complete el asistente y opcionalmente cree acceso directo en el escritorio.
 
 ### Instalación Desatendida (Despliegue Corporativo)
 ```powershell
-.\SISPRO_Setup_v3.0.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\Cambiaso\SISPRO"
+.\SISPRO_Setup_v4.0.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="C:\Temp"
 ```
 
 ---

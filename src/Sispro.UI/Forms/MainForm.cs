@@ -25,6 +25,8 @@ public sealed class MainForm : Form
     private readonly ToolStripStatusLabel _statusDb;
     private readonly ToolStripStatusLabel _statusClock;
     private readonly System.Windows.Forms.Timer _clockTimer;
+    private readonly System.Windows.Forms.Timer _syncTimer;
+    private bool _syncSubscribed;
 
     // Navigation buttons (exposed internally for automated RBAC/UI testing)
     internal Button NavDashboard { get; }
@@ -63,7 +65,7 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v3.0 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Text = $"SISPRO v4.0 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -195,7 +197,7 @@ public sealed class MainForm : Form
         NavMaintenance.Enabled = _session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor;
         NavMaintenance.Click += (_, _) => ShowMaintenanceHub();
 
-        NavUsers = CreateNavButton("Gestión de Usuarios", AppIcon.Users, "Gestión de usuarios y control de acceso (exclusivo Administrador)");
+        NavUsers = CreateNavButton("Usuarios y Grupos", AppIcon.Users, "Gestión de usuarios, grupos y operaciones masivas (exclusivo Administrador)");
         NavUsers.Enabled = isAdmin;
         NavUsers.Click += (_, _) => ShowUsers();
 
@@ -203,7 +205,7 @@ public sealed class MainForm : Form
         NavAudit.Enabled = isAdmin;
         NavAudit.Click += (_, _) =>
         {
-            using AuditLogDialog dlg = new(_ctx.Audit);
+            using AuditLogDialog dlg = new(_ctx.Audit, _ctx.DocumentExportService);
             dlg.ShowDialog(this);
         };
 
@@ -239,12 +241,55 @@ public sealed class MainForm : Form
         _clockTimer.Tick += (_, _) => _statusClock.Text = DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss");
         _clockTimer.Start();
 
+        _syncTimer = new System.Windows.Forms.Timer { Interval = 2500 };
+        _syncTimer.Tick += (_, _) => _ctx.SyncHub.PollExternalChanges();
+        _syncTimer.Start();
+
+        _ctx.SyncHub.DataChanged += OnSyncDataChanged;
+        _syncSubscribed = true;
+
         Controls.Add(_contentHost);
         Controls.Add(sidebar);
         Controls.Add(topBar);
         Controls.Add(status);
 
         ShowDashboard();
+    }
+
+    private void OnSyncDataChanged(object? sender, DataChangedEventArgs e)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        void RefreshViews()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if (_dashboardView is not null && _dashboardView.Visible)
+            {
+                RefreshDashboard();
+            }
+
+            if ((e.Kind & DataChangeKind.Catalogs) != 0)
+            {
+                _workOrdersView?.ReloadCatalogs();
+                _invoicesView?.ReloadCatalogs();
+            }
+        }
+
+        if (InvokeRequired && IsHandleCreated)
+        {
+            BeginInvoke(RefreshViews);
+        }
+        else if (!InvokeRequired)
+        {
+            RefreshViews();
+        }
     }
 
     private Button CreateNavButton(string text, AppIcon icon, string tooltip)
@@ -362,7 +407,7 @@ public sealed class MainForm : Form
         }
 
         HighlightNav(NavUsers);
-        _lblModuleTitle.Text = "GESTIÓN DE USUARIOS";
+        _lblModuleTitle.Text = "GESTIÓN DE USUARIOS Y GRUPOS";
         _usersView ??= new UsersForm(_ctx, _session);
         _usersView.RefreshData();
         HostControl(_usersView);
@@ -539,6 +584,14 @@ public sealed class MainForm : Form
     {
         if (disposing)
         {
+            if (_syncSubscribed)
+            {
+                _ctx.SyncHub.DataChanged -= OnSyncDataChanged;
+                _syncSubscribed = false;
+            }
+
+            _syncTimer.Stop();
+            _syncTimer.Dispose();
             _clockTimer.Stop();
             _clockTimer.Dispose();
             _toolTip.Dispose();

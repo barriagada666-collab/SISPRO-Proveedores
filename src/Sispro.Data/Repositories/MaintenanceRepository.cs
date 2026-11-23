@@ -199,6 +199,18 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
             cmd.Parameters.AddWithValue("$anio", filter.Anio.Value.ToString(CultureInfo.InvariantCulture));
         }
 
+        if (filter.FechaInicio.HasValue)
+        {
+            where.Add("o.fechai <> '' AND substr(o.fechai, 1, 10) >= $fini");
+            cmd.Parameters.AddWithValue("$fini", filter.FechaInicio.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
+        if (filter.FechaFin.HasValue)
+        {
+            where.Add("o.fechai <> '' AND substr(o.fechai, 1, 10) <= $ffin");
+            cmd.Parameters.AddWithValue("$ffin", filter.FechaFin.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        }
+
         string whereSql = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : string.Empty;
         int limit = Math.Clamp(filter.MaxRows, 10, 5000);
 
@@ -559,7 +571,7 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
                    COALESCE(e.desc_empresa, 'Sin empresa'), o.descripcion_ote, o.costo, o.garantia
             FROM Mant_OTExterna o
             LEFT JOIN Mant_Empresas e ON e.id_empresa = o.id_empresa
-            ORDER BY o.id_ote DESC;
+            ORDER BY o.fecha_pedido DESC, o.id_ote DESC;
             """;
         List<MantExternalOrderRow> list = [];
         using SqliteDataReader rdr = cmd.ExecuteReader();

@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
@@ -23,17 +25,55 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
         cmd.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<AuditEntry> GetRecent(int limit = 200)
+    public IReadOnlyList<AuditEntry> GetRecent(int limit = 200) =>
+        Search(new AuditSearchFilter { MaxRows = limit });
+
+    public IReadOnlyList<AuditEntry> Search(AuditSearchFilter filter)
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT id_log, fecha_utc, usuario, modulo, accion, detalle
-            FROM AuditLog
-            ORDER BY id_log DESC
-            LIMIT $lim;
-            """;
-        cmd.Parameters.AddWithValue("$lim", Math.Clamp(limit, 1, 2000));
+        List<string> where = [];
+
+        if (filter.FechaInicio.HasValue)
+        {
+            where.Add("fecha_utc >= $fini");
+            cmd.Parameters.AddWithValue("$fini", filter.FechaInicio.Value.Date.ToString("yyyy-MM-dd 00:00:00", CultureInfo.InvariantCulture));
+        }
+
+        if (filter.FechaFin.HasValue)
+        {
+            where.Add("fecha_utc <= $ffin");
+            cmd.Parameters.AddWithValue("$ffin", filter.FechaFin.Value.Date.ToString("yyyy-MM-dd 23:59:59", CultureInfo.InvariantCulture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Modulo))
+        {
+            where.Add("LOWER(modulo) = LOWER($mod)");
+            cmd.Parameters.AddWithValue("$mod", filter.Modulo.Trim());
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.Usuario))
+        {
+            where.Add("usuario LIKE $usr");
+            cmd.Parameters.AddWithValue("$usr", $"%{filter.Usuario.Trim()}%");
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.TextoBusqueda))
+        {
+            where.Add("(usuario LIKE $q OR modulo LIKE $q OR accion LIKE $q OR detalle LIKE $q)");
+            cmd.Parameters.AddWithValue("$q", $"%{filter.TextoBusqueda.Trim()}%");
+        }
+
+        StringBuilder sql = new("SELECT id_log, fecha_utc, usuario, modulo, accion, detalle FROM AuditLog");
+        if (where.Count > 0)
+        {
+            sql.Append(" WHERE ");
+            sql.Append(string.Join(" AND ", where));
+        }
+
+        sql.Append(" ORDER BY fecha_utc DESC, id_log DESC LIMIT $lim;");
+        cmd.CommandText = sql.ToString();
+        cmd.Parameters.AddWithValue("$lim", Math.Clamp(filter.MaxRows, 1, 5000));
 
         List<AuditEntry> list = [];
         using SqliteDataReader rdr = cmd.ExecuteReader();
@@ -66,6 +106,7 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
                 (SELECT COUNT(*) FROM Solicitantes WHERE activo = 1),
                 (SELECT COUNT(*) FROM Facturas),
                 (SELECT COUNT(*) FROM Usuarios WHERE activo = 1),
+                (SELECT COUNT(*) FROM Grupos WHERE activo = 1),
                 (SELECT COUNT(*) FROM Activos WHERE activo = 1),
                 (SELECT COUNT(*) FROM Mant_OT),
                 (SELECT COUNT(*) FROM Mant_MP),
@@ -87,12 +128,13 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
             TotalSolicitantesActivos = rdr.GetInt32(3),
             TotalFacturas = rdr.GetInt32(4),
             TotalUsuariosActivos = rdr.GetInt32(5),
-            TotalNodosActivos = rdr.GetInt32(6),
-            TotalMantOts = rdr.GetInt32(7),
-            TotalPlanesMp = rdr.GetInt32(8),
-            TotalTareasMp = rdr.GetInt32(9),
-            TotalInsumos = rdr.GetInt32(10),
-            TotalPersonalTecnico = rdr.GetInt32(11)
+            TotalGruposActivos = rdr.GetInt32(6),
+            TotalNodosActivos = rdr.GetInt32(7),
+            TotalMantOts = rdr.GetInt32(8),
+            TotalPlanesMp = rdr.GetInt32(9),
+            TotalTareasMp = rdr.GetInt32(10),
+            TotalInsumos = rdr.GetInt32(11),
+            TotalPersonalTecnico = rdr.GetInt32(12)
         };
     }
 }

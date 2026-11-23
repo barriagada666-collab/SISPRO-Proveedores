@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.Drawing.Printing;
 using System.Globalization;
 using Sispro.Core.Dtos;
@@ -6,13 +7,17 @@ using Sispro.Core.Entities;
 using Sispro.Core.Enums;
 using Sispro.Core.Security;
 using Sispro.Services;
+using Sispro.UI.Controls;
 using Sispro.UI.Dialogs;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Forms;
 
 /// <summary>
-/// Módulo profesional GESTIÓN DE USUARIOS (CRUD completo, eliminación lógica, filtros avanzados y RBAC estricto).
+/// Módulo profesional GESTIÓN DE USUARIOS Y GRUPOS en interfaz de 3 Áreas:
+/// Área 1 (Grupos con iconos, contadores, acciones y destino Drag & Drop),
+/// Área 2 (Listado con CheckBoxes, filtros combinados, Date Pickers, orden descendente y origen Drag & Drop),
+/// Área 3 (Barra de acciones individuales y operaciones masivas con confirmación y sincronización inmediata).
 /// Acceso exclusivo para el perfil Administrador.
 /// </summary>
 public sealed class UsersForm : UserControl
@@ -24,6 +29,20 @@ public sealed class UsersForm : UserControl
         Edit
     }
 
+    private sealed record GroupListEntry(
+        int? IdGrupo,
+        bool IsAllFilter,
+        bool IsUnassignedFilter,
+        string Name,
+        string Subtitle,
+        int Count,
+        bool IsActive,
+        UserGroup? GroupModel);
+
+    private sealed record GroupComboOption(int? IdGrupo, string Label);
+
+    private sealed record UserDragPayload(IReadOnlyList<string> UserIds);
+
     private readonly SisproApplicationContext _ctx;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
@@ -31,15 +50,28 @@ public sealed class UsersForm : UserControl
     private EditorMode _mode = EditorMode.View;
     private bool _suppressGridSelection;
     private bool _suppressProfileChange;
+    private bool _suppressGroupSelection;
+    private bool _syncSubscribed;
+
+    private IReadOnlyList<UserGroup> _groups = [];
     private IReadOnlyList<User> _users = [];
+    private readonly HashSet<string> _checkedUserIds = new(StringComparer.OrdinalIgnoreCase);
     private User? _selectedUser;
     private UserPermissions _workingPermissions = PermissionPresets.CreateForRole(UserRoleLevel.Usuario);
+
+    // Group filter state (Area 1)
+    private int? _activeGroupFilterId;
+    private bool _filterUnassignedOnly;
+    private int _dragHoverGroupIndex = -1;
+    private Point _dragStartPoint = Point.Empty;
+    private int _dragSourceRowIndex = -1;
 
     // Header mode indicator
     private readonly Panel _modeStrip;
     private readonly Label _lblMode;
+    private readonly Label _lblTimestamps;
 
-    // Top section fields (DATOS DEL USUARIO)
+    // Editor fields (DATOS DEL USUARIO)
     private readonly TextBox _txtId;
     private readonly TextBox _txtUsuario;
     private readonly TextBox _txtNombre;
@@ -47,17 +79,24 @@ public sealed class UsersForm : UserControl
     private readonly TextBox _txtCorreo;
     private readonly TextBox _txtTelefono;
     private readonly ComboBox _cmbPerfil;
+    private readonly ComboBox _cmbGrupo;
     private readonly ComboBox _cmbEstado;
     private readonly TextBox _txtPassword;
     private readonly TextBox _txtConfirmPassword;
-    private readonly TextBox _txtFechaCreacion;
-    private readonly TextBox _txtUltimoAcceso;
     private readonly CheckBox _chkMostrarPass;
     private readonly CheckBox _chkSolicitante;
     private readonly CheckBox _chkForzarCambioClave;
     private readonly Button _btnPermisos;
 
-    // 10 required buttons + export actions (internal for automated UI verification)
+    // Area 1: Groups panel
+    internal ListBox ListGroups { get; }
+    private readonly Button _btnNuevoGrupo;
+    private readonly Button _btnEditarGrupo;
+    private readonly Button _btnEstadoGrupo;
+    private readonly Button _btnEliminarGrupo;
+    private readonly Button _btnHistorialGrupos;
+
+    // Standard & Batch buttons (exposed internally for automated UI verification)
     internal Button BtnNuevo { get; }
     internal Button BtnGuardar { get; }
     internal Button BtnEditar { get; }
@@ -69,11 +108,21 @@ public sealed class UsersForm : UserControl
     internal Button BtnBuscar { get; }
     internal Button BtnRefrescar { get; }
 
-    // Bottom section filters & grid (LISTADO DE USUARIOS)
+    internal Button BtnActivar { get; }
+    internal Button BtnDesactivar { get; }
+    internal Button BtnMover { get; }
+    internal Button BtnCambiarPerfil { get; }
+    internal Button BtnExportar { get; }
+    internal Button BtnImprimir { get; }
+
+    // Area 2: Filters & Grid
     private readonly GroupBox _grpListado;
     private readonly TextBox _txtBuscar;
     private readonly ComboBox _cmbFiltroPerfil;
     private readonly ComboBox _cmbFiltroEstado;
+    private readonly DateRangeFilterControl _dateFilter;
+    private readonly Label _lblSelectedCounter;
+    private readonly Label _lblGridStats;
     internal DataGridView GridUsers { get; }
 
     public UsersForm(SisproApplicationContext ctx, UserSession session)
@@ -94,9 +143,9 @@ public sealed class UsersForm : UserControl
         _modeStrip = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 28,
+            Height = 26,
             BackColor = CambiasoTheme.SubtleFill,
-            Padding = new Padding(10, 0, 10, 0)
+            Padding = new Padding(8, 0, 8, 0)
         };
         _lblMode = new Label
         {
@@ -107,15 +156,15 @@ public sealed class UsersForm : UserControl
         };
         _modeStrip.Controls.Add(_lblMode);
 
-        // --- FORM FIELDS ---
-        Padding fieldMargin = new(0, 5, 10, 4);
+        // --- EDITOR FIELDS ---
+        Padding fieldMargin = new(0, 3, 8, 3);
         _txtId = CreateReadOnlyTextBox("(Automático)");
         _txtId.Margin = fieldMargin;
         _txtUsuario = new TextBox { Name = "txtUsuarioCrud", MaxLength = 30, PlaceholderText = "Ej. barriagada", Dock = DockStyle.Fill, Margin = fieldMargin };
-        _txtNombre = new TextBox { Name = "txtNombreCrud", MaxLength = 60, PlaceholderText = "Nombres del usuario", Dock = DockStyle.Fill, Margin = fieldMargin };
-        _txtApellido = new TextBox { Name = "txtApellidoCrud", MaxLength = 80, PlaceholderText = "Apellidos del usuario", Dock = DockStyle.Fill, Margin = fieldMargin };
+        _txtNombre = new TextBox { Name = "txtNombreCrud", MaxLength = 60, PlaceholderText = "Nombres", Dock = DockStyle.Fill, Margin = fieldMargin };
+        _txtApellido = new TextBox { Name = "txtApellidoCrud", MaxLength = 80, PlaceholderText = "Apellidos", Dock = DockStyle.Fill, Margin = fieldMargin };
         _txtCorreo = new TextBox { Name = "txtCorreoCrud", MaxLength = 100, PlaceholderText = "correo@cambiaso.cl", Dock = DockStyle.Fill, Margin = fieldMargin };
-        _txtTelefono = new TextBox { Name = "txtTelefonoCrud", MaxLength = 30, PlaceholderText = "Ej. +56 9 1234 5678", Dock = DockStyle.Fill, Margin = fieldMargin };
+        _txtTelefono = new TextBox { Name = "txtTelefonoCrud", MaxLength = 30, PlaceholderText = "+56 9 ...", Dock = DockStyle.Fill, Margin = fieldMargin };
 
         _cmbPerfil = new ComboBox
         {
@@ -126,6 +175,15 @@ public sealed class UsersForm : UserControl
         };
         _cmbPerfil.DataSource = Enum.GetValues<UserRoleLevel>();
         _cmbPerfil.SelectedIndexChanged += (_, _) => OnProfileChanged();
+
+        _cmbGrupo = new ComboBox
+        {
+            Name = "cmbGrupoCrud",
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Dock = DockStyle.Fill,
+            Margin = fieldMargin,
+            DisplayMember = nameof(GroupComboOption.Label)
+        };
 
         _cmbEstado = new ComboBox
         {
@@ -149,23 +207,27 @@ public sealed class UsersForm : UserControl
         {
             Name = "txtConfirmPasswordCrud",
             UseSystemPasswordChar = true,
-            PlaceholderText = "Confirmar contraseña",
+            PlaceholderText = "Confirmar clave",
             Dock = DockStyle.Fill,
             Margin = fieldMargin
         };
 
-        _txtFechaCreacion = CreateReadOnlyTextBox("—");
-        _txtFechaCreacion.Margin = fieldMargin;
-        _txtUltimoAcceso = CreateReadOnlyTextBox("Sin accesos");
-        _txtUltimoAcceso.Margin = fieldMargin;
-
-        _chkMostrarPass = new CheckBox
+        _lblTimestamps = new Label
         {
-            Text = "Mostrar contraseñas",
             AutoSize = true,
             Font = CambiasoTheme.SmallFont,
             ForeColor = CambiasoTheme.TextMuted,
-            Margin = new Padding(0, 4, 14, 0)
+            Text = "Creación: —   |   Modificación: —   |   Último acceso: —",
+            Margin = new Padding(0, 4, 8, 0)
+        };
+
+        _chkMostrarPass = new CheckBox
+        {
+            Text = "Mostrar clave",
+            AutoSize = true,
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = CambiasoTheme.TextMuted,
+            Margin = new Padding(0, 3, 10, 0)
         };
         _chkMostrarPass.CheckedChanged += (_, _) =>
         {
@@ -176,58 +238,130 @@ public sealed class UsersForm : UserControl
 
         _chkSolicitante = new CheckBox
         {
-            Text = "Es solicitante de trabajos",
+            Text = "Solicitante OT",
             AutoSize = true,
             Font = CambiasoTheme.SmallFont,
             ForeColor = CambiasoTheme.TextPrimary,
-            Margin = new Padding(0, 4, 14, 0)
+            Margin = new Padding(0, 3, 10, 0)
         };
 
         _chkForzarCambioClave = new CheckBox
         {
-            Text = "Solicitar cambio de contraseña en el primer acceso",
+            Text = "Cambiar clave 1er acceso",
             AutoSize = true,
             Checked = true,
             Font = CambiasoTheme.SmallFont,
             ForeColor = CambiasoTheme.TextPrimary,
-            Margin = new Padding(0, 4, 14, 0)
+            Margin = new Padding(0, 3, 10, 0)
         };
 
-        _btnPermisos = CambiasoTheme.CreateButton("Permisos RBAC", AppIcon.Template, ButtonTone.Secondary, _toolTip, "Ver o personalizar permisos del perfil seleccionado", width: 138, height: 26);
-        _btnPermisos.Margin = new Padding(4, 0, 0, 0);
+        _btnPermisos = CambiasoTheme.CreateButton("Permisos", AppIcon.Template, ButtonTone.Secondary, _toolTip, "Ver o personalizar permisos RBAC", width: 102, height: 24);
+        _btnPermisos.Margin = new Padding(2, 0, 0, 0);
         _btnPermisos.Click += (_, _) => OpenPermissionsDialog();
 
-        // --- ACTION BUTTONS (EDITOR) ---
-        BtnNuevo = CambiasoTheme.CreateButton("Nuevo", AppIcon.UserPlus, ButtonTone.Primary, _toolTip, "Limpiar el formulario para registrar un nuevo usuario", width: 90, height: 32);
+        // --- AREA 1: GROUPS PANEL ---
+        ListGroups = new ListBox
+        {
+            Name = "lstGrupos",
+            Dock = DockStyle.Fill,
+            DrawMode = DrawMode.OwnerDrawFixed,
+            ItemHeight = 46,
+            BorderStyle = BorderStyle.None,
+            BackColor = CambiasoTheme.CardBackground,
+            IntegralHeight = false,
+            AllowDrop = true
+        };
+        ListGroups.DrawItem += OnDrawGroupItem;
+        ListGroups.SelectedIndexChanged += (_, _) => OnGroupFilterSelected();
+        ListGroups.DoubleClick += (_, _) => EditSelectedGroup();
+        ListGroups.DragOver += OnGroupsDragOver;
+        ListGroups.DragLeave += (_, _) => ClearDragHover();
+        ListGroups.DragDrop += OnGroupsDragDrop;
+
+        _btnNuevoGrupo = CreateCompactButton("Nuevo", AppIcon.Add, ButtonTone.Primary, "Crear un nuevo grupo o categoría de trabajo");
+        _btnNuevoGrupo.Click += (_, _) => CreateGroup();
+
+        _btnEditarGrupo = CreateCompactButton("Editar", AppIcon.Edit, ButtonTone.Secondary, "Editar el grupo seleccionado");
+        _btnEditarGrupo.Click += (_, _) => EditSelectedGroup();
+
+        _btnEstadoGrupo = CreateCompactButton("Estado", AppIcon.Power, ButtonTone.Secondary, "Activar o desactivar el grupo seleccionado");
+        _btnEstadoGrupo.Click += (_, _) => ToggleSelectedGroupActive();
+
+        _btnEliminarGrupo = CreateCompactButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Eliminar grupo (solo si no tiene integrantes ni historial)");
+        _btnEliminarGrupo.Click += (_, _) => DeleteSelectedGroup();
+
+        _btnHistorialGrupos = CreateCompactButton("Historial Mov.", AppIcon.Audit, ButtonTone.Accent, "Consultar historial auditable de movimientos entre grupos");
+        _btnHistorialGrupos.Click += (_, _) => OpenGroupHistoryDialog();
+
+        // --- EDITOR BUTTONS ---
+        BtnNuevo = CreateAutoButton("Nuevo", AppIcon.UserPlus, ButtonTone.Primary, "Registrar un nuevo usuario");
         BtnNuevo.Click += (_, _) => EnterCreateMode();
 
-        BtnGuardar = CambiasoTheme.CreateButton("Guardar", AppIcon.Save, ButtonTone.Primary, _toolTip, "Insertar el nuevo usuario en la base de datos", width: 96, height: 32);
+        BtnGuardar = CreateAutoButton("Guardar", AppIcon.Save, ButtonTone.Primary, "Guardar nuevo usuario en la base de datos");
         BtnGuardar.Click += (_, _) => SaveNewUser();
 
-        BtnEditar = CambiasoTheme.CreateButton("Editar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Habilitar modificación de datos del usuario seleccionado", width: 88, height: 32);
+        BtnEditar = CreateAutoButton("Editar", AppIcon.Edit, ButtonTone.Accent, "Editar el usuario seleccionado");
         BtnEditar.Click += (_, _) => EnterEditMode();
 
-        BtnActualizar = CambiasoTheme.CreateButton("Actualizar", AppIcon.Check, ButtonTone.Accent, _toolTip, "Guardar los cambios realizados en el usuario", width: 106, height: 32);
+        BtnActualizar = CreateAutoButton("Actualizar", AppIcon.Check, ButtonTone.Accent, "Confirmar cambios del usuario en edición");
         BtnActualizar.Click += (_, _) => UpdateExistingUser();
 
-        BtnEliminar = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Realizar eliminación lógica (desactivar) del usuario seleccionado", width: 98, height: 32);
-        BtnEliminar.Click += (_, _) => DeactivateSelectedUser();
-
-        BtnCambiarPassword = CambiasoTheme.CreateButton("Cambiar Contraseña", AppIcon.Key, ButtonTone.Accent, _toolTip, "Gestionar o restablecer credenciales del usuario seleccionado", width: 164, height: 32);
+        BtnCambiarPassword = CreateAutoButton("Cambiar Contraseña", AppIcon.Key, ButtonTone.Accent, "Restablecer contraseña del usuario seleccionado");
         BtnCambiarPassword.Click += (_, _) => OpenResetPasswordDialog();
 
-        BtnCancelar = CambiasoTheme.CreateButton("Cancelar", AppIcon.Cancel, ButtonTone.Secondary, _toolTip, "Cancelar la operación actual y restaurar datos", width: 96, height: 32);
+        BtnCancelar = CreateAutoButton("Cancelar", AppIcon.Cancel, ButtonTone.Secondary, "Cancelar creación/edición");
         BtnCancelar.Click += (_, _) => CancelOperation();
 
-        BtnLimpiar = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar campos del formulario o filtros de búsqueda", width: 92, height: 32);
+        BtnLimpiar = CreateAutoButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar campos del formulario o filtros");
         BtnLimpiar.Click += (_, _) => ClearFieldsOrFilters();
 
-        // --- BOTTOM SECTION FILTERS & GRID ---
+        // --- AREA 3: BATCH & INDIVIDUAL ACTIONS BAR ---
+        _lblSelectedCounter = new Label
+        {
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.Primary,
+            BackColor = CambiasoTheme.SubtleFill,
+            Padding = new Padding(8, 5, 8, 5),
+            Margin = new Padding(0, 3, 6, 0),
+            Text = "Sel: 0"
+        };
+
+        BtnActivar = CreateAutoButton("Activar", AppIcon.Power, ButtonTone.Primary, "Activar usuario(s) seleccionado(s) en lote");
+        BtnActivar.Click += (_, _) => RunBatchSetActive(activate: true);
+
+        BtnDesactivar = CreateAutoButton("Desactivar", AppIcon.Ban, ButtonTone.Secondary, "Desactivar usuario(s) seleccionado(s) en lote");
+        BtnDesactivar.Click += (_, _) => RunBatchSetActive(activate: false, isDeleteAction: false);
+
+        BtnEliminar = CreateAutoButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Eliminación lógica individual o por lotes (protege último Administrador)");
+        BtnEliminar.Click += (_, _) => RunBatchSetActive(activate: false, isDeleteAction: true);
+
+        BtnMover = CreateAutoButton("Mover", AppIcon.MoveRight, ButtonTone.Accent, "Mover usuario(s) seleccionado(s) a otro grupo de trabajo");
+        BtnMover.Click += (_, _) => OpenMoveUsersDialog();
+
+        BtnCambiarPerfil = CreateAutoButton("Cambiar Perfil", AppIcon.Shield, ButtonTone.Secondary, "Cambiar perfil (rol) de usuario(s) seleccionado(s) por lotes");
+        BtnCambiarPerfil.Click += (_, _) => RunBatchChangeRole();
+
+        BtnExportar = CreateAutoButton("Exportar", AppIcon.Download, ButtonTone.Accent, "Exportar listado filtrado a Excel, PDF, Word o CSV");
+        BtnExportar.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            BtnExportar,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_Usuarios_Grupos",
+            () => DocumentExportService.BuildUsersReport(_users, BuildFilterSummary()));
+
+        BtnImprimir = CreateAutoButton("Imprimir", AppIcon.Print, ButtonTone.Secondary, "Vista previa e impresión del listado de usuarios");
+        BtnImprimir.Click += (_, _) => PrintUsersList();
+
+        BtnRefrescar = CreateAutoButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, "Sincronizar inmediatamente grupos y usuarios desde SQLite");
+        BtnRefrescar.Click += (_, _) => RefreshData();
+
+        // --- AREA 2: FILTERS & GRID ---
         _txtBuscar = new TextBox
         {
             Name = "txtBuscarUsuarios",
-            Width = 176,
-            PlaceholderText = "Nombre, apellido o usuario..."
+            Width = 104,
+            PlaceholderText = "Buscar..."
         };
         _txtBuscar.KeyDown += (_, e) =>
         {
@@ -242,7 +376,7 @@ public sealed class UsersForm : UserControl
         {
             Name = "cmbFiltroPerfil",
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 120
+            Width = 88
         };
         _cmbFiltroPerfil.Items.Add("Todos");
         foreach (UserRoleLevel lvl in Enum.GetValues<UserRoleLevel>())
@@ -256,57 +390,224 @@ public sealed class UsersForm : UserControl
         {
             Name = "cmbFiltroEstado",
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 96
+            Width = 74
         };
         _cmbFiltroEstado.Items.AddRange(["Todos", "Activo", "Inactivo"]);
         _cmbFiltroEstado.SelectedIndex = 0;
         _cmbFiltroEstado.SelectedIndexChanged += (_, _) => LoadUsersGrid();
 
-        BtnBuscar = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Ejecutar búsqueda y aplicar filtros", width: 92, height: 30);
+        _dateFilter = new DateRangeFilterControl(compact: true);
+        _dateFilter.RangeChanged += (_, _) => LoadUsersGrid();
+
+        BtnBuscar = CreateAutoButton("Buscar", AppIcon.Search, ButtonTone.Primary, "Ejecutar búsqueda combinada");
         BtnBuscar.Click += (_, _) => LoadUsersGrid();
 
-        BtnRefrescar = CambiasoTheme.CreateButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar listado de usuarios desde la base de datos", width: 106, height: 30);
-        BtnRefrescar.Click += (_, _) => RefreshData();
+        _lblGridStats = new Label
+        {
+            AutoSize = true,
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = CambiasoTheme.TextMuted,
+            Margin = new Padding(8, 7, 0, 0)
+        };
 
         GridUsers = new DataGridView { Name = "gridUsuarios", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(GridUsers);
-        GridUsers.SelectionChanged += (_, _) => OnGridSelectionChanged();
-        GridUsers.CellDoubleClick += (_, _) =>
+        GridUsers.ReadOnly = false;
+        GridUsers.MultiSelect = true;
+        GridUsers.AutoGenerateColumns = false;
+        ConfigureUsersGridColumns();
+        GridUsers.CurrentCellDirtyStateChanged += (_, _) =>
         {
-            if (_selectedUser is not null)
+            if (GridUsers.IsCurrentCellDirty && GridUsers.CurrentCell?.ColumnIndex == 0)
+            {
+                GridUsers.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        };
+        GridUsers.CellValueChanged += OnGridCellValueChanged;
+        GridUsers.SelectionChanged += (_, _) => OnGridSelectionChanged();
+        GridUsers.CellDoubleClick += (_, e) =>
+        {
+            if (e.RowIndex >= 0 && e.ColumnIndex > 0 && _selectedUser is not null)
             {
                 EnterEditMode();
             }
         };
         GridUsers.CellFormatting += OnGridCellFormatting;
+        GridUsers.MouseDown += OnGridMouseDown;
+        GridUsers.MouseMove += OnGridMouseMove;
 
-        _grpListado = CambiasoTheme.CreateGroupBox("LISTADO DE USUARIOS");
+        _grpListado = CambiasoTheme.CreateGroupBox("ÁREA 2 — LISTADO DE USUARIOS");
         _grpListado.Dock = DockStyle.Fill;
 
-        BuildLayout();
+        BuildThreeAreaLayout();
+        SubscribeSyncEvents();
+        ReloadGroupsAndUsers();
         ApplyMode(EditorMode.View);
-        LoadUsersGrid();
     }
 
     public void RefreshData()
     {
         string? preserveId = _selectedUser?.IdUsuario;
-        LoadUsersGrid(preserveId);
+        ReloadGroupsAndUsers(preserveId);
     }
 
-    private void BuildLayout()
+    private void SubscribeSyncEvents()
     {
-        TableLayoutPanel root = new()
+        if (_syncSubscribed)
+        {
+            return;
+        }
+
+        _ctx.SyncHub.DataChanged += OnSyncDataChanged;
+        _syncSubscribed = true;
+    }
+
+    private void OnSyncDataChanged(object? sender, DataChangedEventArgs e)
+    {
+        if (IsDisposed || (e.Kind & (DataChangeKind.Users | DataChangeKind.Groups)) == 0)
+        {
+            return;
+        }
+
+        void ApplyRefresh()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            // No interrumpir si el usuario está escribiendo en modo Nuevo/Edición, pero sí refrescar grupos y grilla
+            string? preserve = _selectedUser?.IdUsuario;
+            LoadGroupsPanel();
+            if (_mode == EditorMode.View)
+            {
+                LoadUsersGrid(preserve);
+            }
+        }
+
+        if (InvokeRequired && IsHandleCreated)
+        {
+            BeginInvoke(ApplyRefresh);
+        }
+        else if (!InvokeRequired)
+        {
+            ApplyRefresh();
+        }
+    }
+
+    private void ConfigureUsersGridColumns()
+    {
+        GridUsers.Columns.Clear();
+
+        DataGridViewCheckBoxColumn colSel = new()
+        {
+            Name = "colSel",
+            HeaderText = "✓",
+            Width = 34,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            ReadOnly = false
+        };
+
+        DataGridViewTextBoxColumn MakeCol(string name, string header, float weight) => new()
+        {
+            Name = name,
+            HeaderText = header,
+            FillWeight = weight,
+            ReadOnly = true
+        };
+
+        GridUsers.Columns.AddRange(
+        [
+            colSel,
+            MakeCol("colId", "ID", 5),
+            MakeCol("colUsuario", "Usuario", 10),
+            MakeCol("colNombre", "Nombre", 16),
+            MakeCol("colCorreo", "Correo", 16),
+            MakeCol("colTelefono", "Teléfono", 9),
+            MakeCol("colPerfil", "Perfil", 9),
+            MakeCol("colGrupo", "Grupo", 11),
+            MakeCol("colEstado", "Estado", 8),
+            MakeCol("colCreacion", "Creación", 10),
+            MakeCol("colUltimoAcceso", "Últ. Acceso", 10)
+        ]);
+    }
+
+    private void BuildThreeAreaLayout()
+    {
+        // Dividir en Área 1 (Izquierda: Grupos) y Panel Derecho (Editor + Área 3 Acciones + Área 2 Listado)
+        TableLayoutPanel outer = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Padding = new Padding(2)
+        };
+        outer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 268));
+        outer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        // === ÁREA 1: GRUPOS ===
+        GroupBox grpAreas1 = CambiasoTheme.CreateGroupBox("ÁREA 1 — GRUPOS DE TRABAJO");
+        grpAreas1.Dock = DockStyle.Fill;
+
+        TableLayoutPanel leftLayout = new()
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
-            Padding = new Padding(2)
+            RowCount = 4
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 318));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        leftLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
 
-        // === SECCIÓN SUPERIOR: DATOS DEL USUARIO ===
+        TableLayoutPanel grpCrudRow1 = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty };
+        grpCrudRow1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+        grpCrudRow1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+        grpCrudRow1.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
+        _btnNuevoGrupo.Dock = _btnEditarGrupo.Dock = _btnEstadoGrupo.Dock = DockStyle.Fill;
+        _btnNuevoGrupo.Margin = _btnEditarGrupo.Margin = new Padding(0, 1, 3, 2);
+        _btnEstadoGrupo.Margin = new Padding(0, 1, 0, 2);
+        grpCrudRow1.Controls.Add(_btnNuevoGrupo, 0, 0);
+        grpCrudRow1.Controls.Add(_btnEditarGrupo, 1, 0);
+        grpCrudRow1.Controls.Add(_btnEstadoGrupo, 2, 0);
+
+        TableLayoutPanel grpCrudRow2 = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
+        grpCrudRow2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40f));
+        grpCrudRow2.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 60f));
+        _btnEliminarGrupo.Dock = _btnHistorialGrupos.Dock = DockStyle.Fill;
+        _btnEliminarGrupo.Margin = new Padding(0, 1, 3, 2);
+        _btnHistorialGrupos.Margin = new Padding(0, 1, 0, 2);
+        grpCrudRow2.Controls.Add(_btnEliminarGrupo, 0, 0);
+        grpCrudRow2.Controls.Add(_btnHistorialGrupos, 1, 0);
+
+        Label lblDragHint = new()
+        {
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 7.8f, FontStyle.Italic),
+            ForeColor = CambiasoTheme.TextMuted,
+            Text = "Arrastre usuarios aquí para mover de grupo",
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+
+        leftLayout.Controls.Add(grpCrudRow1, 0, 0);
+        leftLayout.Controls.Add(grpCrudRow2, 0, 1);
+        leftLayout.Controls.Add(ListGroups, 0, 2);
+        leftLayout.Controls.Add(lblDragHint, 0, 3);
+        grpAreas1.Controls.Add(leftLayout);
+
+        // === PANEL DERECHO (Editor + Área 3 + Área 2) ===
+        TableLayoutPanel rightPanel = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(4, 0, 0, 0)
+        };
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 258));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        // 1. Editor DATOS DEL USUARIO
         GroupBox grpDatos = CambiasoTheme.CreateGroupBox("DATOS DEL USUARIO");
         grpDatos.Dock = DockStyle.Fill;
 
@@ -316,29 +617,29 @@ public sealed class UsersForm : UserControl
             ColumnCount = 1,
             RowCount = 3
         };
-        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         topContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
 
         TableLayoutPanel fieldsGrid = new()
         {
             Dock = DockStyle.Fill,
             ColumnCount = 6,
             RowCount = 5,
-            Padding = new Padding(4, 6, 4, 2)
+            Padding = new Padding(2, 4, 2, 0)
         };
+        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
+        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
         fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
         fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
-        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
-        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
+        fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
         fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
 
         for (int r = 0; r < 4; r++)
         {
-            fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         }
-        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
 
         // Row 0: ID | Usuario | Perfil
         fieldsGrid.Controls.Add(FieldLabel("ID:"), 0, 0);
@@ -348,101 +649,748 @@ public sealed class UsersForm : UserControl
         fieldsGrid.Controls.Add(FieldLabel("Perfil *:"), 4, 0);
         fieldsGrid.Controls.Add(_cmbPerfil, 5, 0);
 
-        // Row 1: Nombre | Apellido | Estado
+        // Row 1: Nombre | Apellido | Grupo
         fieldsGrid.Controls.Add(FieldLabel("Nombre *:"), 0, 1);
         fieldsGrid.Controls.Add(_txtNombre, 1, 1);
         fieldsGrid.Controls.Add(FieldLabel("Apellido *:"), 2, 1);
         fieldsGrid.Controls.Add(_txtApellido, 3, 1);
-        fieldsGrid.Controls.Add(FieldLabel("Estado *:"), 4, 1);
-        fieldsGrid.Controls.Add(_cmbEstado, 5, 1);
+        fieldsGrid.Controls.Add(FieldLabel("Grupo:"), 4, 1);
+        fieldsGrid.Controls.Add(_cmbGrupo, 5, 1);
 
-        // Row 2: Correo electrónico | Teléfono | Fecha de creación
-        fieldsGrid.Controls.Add(FieldLabel("Correo electrónico:"), 0, 2);
+        // Row 2: Correo | Teléfono | Estado
+        fieldsGrid.Controls.Add(FieldLabel("Correo:"), 0, 2);
         fieldsGrid.Controls.Add(_txtCorreo, 1, 2);
         fieldsGrid.Controls.Add(FieldLabel("Teléfono:"), 2, 2);
         fieldsGrid.Controls.Add(_txtTelefono, 3, 2);
-        fieldsGrid.Controls.Add(FieldLabel("Fecha de creación:"), 4, 2);
-        fieldsGrid.Controls.Add(_txtFechaCreacion, 5, 2);
+        fieldsGrid.Controls.Add(FieldLabel("Estado *:"), 4, 2);
+        fieldsGrid.Controls.Add(_cmbEstado, 5, 2);
 
-        // Row 3: Contraseña | Confirmar contraseña | Último acceso
+        // Row 3: Contraseña | Confirmar | Opciones clave
         fieldsGrid.Controls.Add(FieldLabel("Contraseña:"), 0, 3);
         fieldsGrid.Controls.Add(_txtPassword, 1, 3);
-        fieldsGrid.Controls.Add(FieldLabel("Confirmar contraseña:"), 2, 3);
+        fieldsGrid.Controls.Add(FieldLabel("Confirmar clave:"), 2, 3);
         fieldsGrid.Controls.Add(_txtConfirmPassword, 3, 3);
-        fieldsGrid.Controls.Add(FieldLabel("Último acceso:"), 4, 3);
-        fieldsGrid.Controls.Add(_txtUltimoAcceso, 5, 3);
+        FlowLayoutPanel passOpts = new() { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
+        passOpts.Controls.AddRange([_chkMostrarPass, _btnPermisos]);
+        fieldsGrid.Controls.Add(passOpts, 4, 3);
+        fieldsGrid.SetColumnSpan(passOpts, 2);
 
-        // Row 4: Options + Permissions button
-        FlowLayoutPanel optionsRow = new()
+        // Row 4: Flags + Timestamps
+        FlowLayoutPanel metaRow = new() { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
+        metaRow.Controls.AddRange([_chkSolicitante, _chkForzarCambioClave, _lblTimestamps]);
+        fieldsGrid.Controls.Add(metaRow, 0, 4);
+        fieldsGrid.SetColumnSpan(metaRow, 6);
+
+        FlowLayoutPanel editorButtons = new()
         {
             Dock = DockStyle.Fill,
             WrapContents = false,
-            Margin = new Padding(0, 2, 0, 0)
+            Padding = new Padding(0, 3, 0, 0)
         };
-        optionsRow.Controls.AddRange([_chkMostrarPass, _chkSolicitante, _chkForzarCambioClave, _btnPermisos]);
-        fieldsGrid.Controls.Add(optionsRow, 0, 4);
-        fieldsGrid.SetColumnSpan(optionsRow, 6);
-
-        FlowLayoutPanel actionBar = new()
-        {
-            Dock = DockStyle.Fill,
-            WrapContents = false,
-            Padding = new Padding(2, 6, 2, 2)
-        };
-        actionBar.Controls.AddRange(
-        [
-            BtnNuevo, BtnGuardar, BtnEditar, BtnActualizar,
-            BtnEliminar, BtnCambiarPassword, BtnCancelar, BtnLimpiar
-        ]);
+        editorButtons.Controls.AddRange([BtnNuevo, BtnGuardar, BtnEditar, BtnActualizar, BtnCambiarPassword, BtnCancelar, BtnLimpiar]);
 
         topContainer.Controls.Add(_modeStrip, 0, 0);
         topContainer.Controls.Add(fieldsGrid, 0, 1);
-        topContainer.Controls.Add(actionBar, 0, 2);
+        topContainer.Controls.Add(editorButtons, 0, 2);
         grpDatos.Controls.Add(topContainer);
 
-        // === SECCIÓN INFERIOR: LISTADO DE USUARIOS ===
+        // 2. ÁREA 3: BARRA DE ACCIONES INDIVIDUALES Y MASIVAS
+        Panel area3Card = new()
+        {
+            Dock = DockStyle.Fill,
+            BackColor = CambiasoTheme.CardBackground,
+            Padding = new Padding(8, 8, 8, 6)
+        };
+        area3Card.Paint += (_, e) =>
+        {
+            using Pen p = new(CambiasoTheme.BorderColor);
+            e.Graphics.DrawRectangle(p, 0, 0, area3Card.Width - 1, area3Card.Height - 1);
+        };
+
+        FlowLayoutPanel area3Flow = new()
+        {
+            Dock = DockStyle.Fill,
+            WrapContents = false
+        };
+
+        Button btnSelectAll = CreateAutoButton("Todos", AppIcon.Check, ButtonTone.Secondary, "Seleccionar todos los usuarios visibles");
+        btnSelectAll.Click += (_, _) => SetAllVisibleChecked(true);
+
+        Button btnSelectNone = CreateAutoButton("Ninguno", AppIcon.Clear, ButtonTone.Secondary, "Desmarcar toda la selección");
+        btnSelectNone.Click += (_, _) => SetAllVisibleChecked(false);
+
+        area3Flow.Controls.AddRange(
+        [
+            _lblSelectedCounter,
+            btnSelectAll,
+            btnSelectNone,
+            BtnActivar,
+            BtnDesactivar,
+            BtnEliminar,
+            BtnMover,
+            BtnCambiarPerfil
+        ]);
+        area3Card.Controls.Add(area3Flow);
+
+        // 3. ÁREA 2: LISTADO Y FILTROS COMBINADOS
         TableLayoutPanel bottomContainer = new()
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2
+            RowCount = 3
         };
-        bottomContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        bottomContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        bottomContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         bottomContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        FlowLayoutPanel filterBar = new()
-        {
-            Dock = DockStyle.Fill,
-            WrapContents = false,
-            Padding = new Padding(2, 5, 2, 4)
-        };
-
-        Button btnPrint = CambiasoTheme.CreateButton("Imprimir", AppIcon.Print, ButtonTone.Secondary, _toolTip, "Vista previa e impresión del listado", width: 108, height: 30);
-        btnPrint.Click += (_, _) => PrintUsersList();
-
-        Button btnExcel = CambiasoTheme.CreateButton("Excel", AppIcon.Excel, ButtonTone.Secondary, _toolTip, "Exportar listado a Excel (.xlsx)", width: 86, height: 30);
-        btnExcel.Click += (_, _) => ExportUsersExcel();
-
-        filterBar.Controls.AddRange(
+        FlowLayoutPanel filterRow1 = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 0) };
+        filterRow1.Controls.AddRange(
         [
             WrapFilter("Buscar:", _txtBuscar),
             WrapFilter("Perfil:", _cmbFiltroPerfil),
             WrapFilter("Estado:", _cmbFiltroEstado),
             BtnBuscar,
-            BtnRefrescar,
-            btnPrint,
-            btnExcel
+            BtnExportar,
+            BtnImprimir,
+            BtnRefrescar
         ]);
 
-        bottomContainer.Controls.Add(filterBar, 0, 0);
-        bottomContainer.Controls.Add(GridUsers, 0, 1);
+        FlowLayoutPanel filterRow2 = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 1, 0, 0) };
+        filterRow2.Controls.AddRange([_dateFilter, _lblGridStats]);
+
+        bottomContainer.Controls.Add(filterRow1, 0, 0);
+        bottomContainer.Controls.Add(filterRow2, 0, 1);
+        bottomContainer.Controls.Add(GridUsers, 0, 2);
         _grpListado.Controls.Add(bottomContainer);
 
-        root.Controls.Add(grpDatos, 0, 0);
-        root.Controls.Add(_grpListado, 0, 1);
-        Controls.Add(root);
+        rightPanel.Controls.Add(grpDatos, 0, 0);
+        rightPanel.Controls.Add(area3Card, 0, 1);
+        rightPanel.Controls.Add(_grpListado, 0, 2);
+
+        outer.Controls.Add(grpAreas1, 0, 0);
+        outer.Controls.Add(rightPanel, 1, 0);
+        Controls.Add(outer);
     }
 
+    private void ReloadGroupsAndUsers(string? preserveUserId = null)
+    {
+        LoadGroupsPanel();
+        LoadUsersGrid(preserveUserId);
+    }
+
+    private void LoadGroupsPanel()
+    {
+        _suppressGroupSelection = true;
+        try
+        {
+            _groups = _ctx.GroupManagementService.GetAll(_session, includeInactive: true);
+            int totalUsers = _ctx.UserManagementService.Search(_session, new UserSearchFilter()).Count;
+            int unassignedCount = _ctx.UserManagementService.CountWithoutGroup(_session);
+
+            List<GroupListEntry> entries =
+            [
+                new GroupListEntry(null, IsAllFilter: true, IsUnassignedFilter: false, "TODOS LOS USUARIOS", "Ver todo el directorio", totalUsers, true, null),
+                new GroupListEntry(null, IsAllFilter: false, IsUnassignedFilter: true, "SIN GRUPO", "Pendientes de asignar", unassignedCount, true, null)
+            ];
+
+            foreach (UserGroup g in _groups)
+            {
+                string sub = !g.Activo
+                    ? "Inactivo"
+                    : (!string.IsNullOrWhiteSpace(g.AliasResponsable) ? $"Resp: {g.AliasResponsable}" : g.Descripcion);
+                entries.Add(new GroupListEntry(g.IdGrupo, false, false, g.Nombre, sub, g.CantidadIntegrantes, g.Activo, g));
+            }
+
+            ListGroups.BeginUpdate();
+            ListGroups.Items.Clear();
+            foreach (GroupListEntry entry in entries)
+            {
+                ListGroups.Items.Add(entry);
+            }
+
+            int idxToSelect = 0;
+            if (_filterUnassignedOnly)
+            {
+                idxToSelect = 1;
+            }
+            else if (_activeGroupFilterId.HasValue)
+            {
+                int found = entries.FindIndex(e => e.IdGrupo == _activeGroupFilterId.Value);
+                if (found >= 0) idxToSelect = found;
+            }
+
+            if (ListGroups.Items.Count > idxToSelect)
+            {
+                ListGroups.SelectedIndex = idxToSelect;
+            }
+            ListGroups.EndUpdate();
+
+            // Actualizar ComboBox de grupo en editor
+            int? prevEditorGroup = (_cmbGrupo.SelectedItem as GroupComboOption)?.IdGrupo;
+            List<GroupComboOption> comboItems = [new GroupComboOption(null, "(Sin grupo)")];
+            foreach (UserGroup g in _groups)
+            {
+                string suffix = g.Activo ? string.Empty : " (Inactivo)";
+                comboItems.Add(new GroupComboOption(g.IdGrupo, $"{g.Nombre}{suffix}"));
+            }
+            _cmbGrupo.DataSource = comboItems;
+            SelectGroupInCombo(_selectedUser?.IdGrupo ?? prevEditorGroup);
+            UpdateGroupToolbarButtons();
+        }
+        finally
+        {
+            _suppressGroupSelection = false;
+        }
+    }
+
+    private void OnGroupFilterSelected()
+    {
+        if (_suppressGroupSelection || ListGroups.SelectedItem is not GroupListEntry entry)
+        {
+            return;
+        }
+
+        _activeGroupFilterId = entry.IdGrupo;
+        _filterUnassignedOnly = entry.IsUnassignedFilter;
+        UpdateGroupToolbarButtons();
+        LoadUsersGrid();
+    }
+
+    private void UpdateGroupToolbarButtons()
+    {
+        UserGroup? selGroup = (ListGroups.SelectedItem as GroupListEntry)?.GroupModel;
+        bool hasGroup = selGroup is not null;
+        _btnEditarGrupo.Enabled = hasGroup;
+        _btnEstadoGrupo.Enabled = hasGroup;
+        _btnEliminarGrupo.Enabled = hasGroup;
+        if (selGroup is not null)
+        {
+            _toolTip.SetToolTip(_btnEstadoGrupo, selGroup.Activo ? $"Desactivar grupo '{selGroup.Nombre}'" : $"Activar grupo '{selGroup.Nombre}'");
+        }
+    }
+
+    private void CreateGroup()
+    {
+        using GroupEditorDialog dlg = new(_ctx.GroupManagementService, _ctx.UserManagementService, _session);
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
+            _activeGroupFilterId = dlg.SavedGroupId;
+            _filterUnassignedOnly = false;
+            ReloadGroupsAndUsers();
+        }
+    }
+
+    private void EditSelectedGroup()
+    {
+        if (ListGroups.SelectedItem is not GroupListEntry { GroupModel: UserGroup grp })
+        {
+            return;
+        }
+
+        UserGroup? fresh = _ctx.GroupManagementService.GetById(_session, grp.IdGrupo);
+        if (fresh is null)
+        {
+            ReloadGroupsAndUsers();
+            return;
+        }
+
+        using GroupEditorDialog dlg = new(_ctx.GroupManagementService, _ctx.UserManagementService, _session, fresh);
+        if (dlg.ShowDialog(this) == DialogResult.OK)
+        {
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+        }
+    }
+
+    private void ToggleSelectedGroupActive()
+    {
+        if (ListGroups.SelectedItem is not GroupListEntry { GroupModel: UserGroup grp })
+        {
+            return;
+        }
+
+        bool targetState = !grp.Activo;
+        string action = targetState ? "activar" : "desactivar";
+        if (!CambiasoTheme.Confirm(this, $"¿Desea {action} el grupo '{grp.Nombre}'?"))
+        {
+            return;
+        }
+
+        try
+        {
+            _ctx.GroupManagementService.SetGroupActive(_session, grp.IdGrupo, targetState);
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(this, ex.Message);
+        }
+    }
+
+    private void DeleteSelectedGroup()
+    {
+        if (ListGroups.SelectedItem is not GroupListEntry { GroupModel: UserGroup grp })
+        {
+            return;
+        }
+
+        if (!CambiasoTheme.Confirm(this, $"¿Desea eliminar el grupo '{grp.Nombre}'?\n\nSolo se permitirá si no tiene integrantes ni historial de movimientos."))
+        {
+            return;
+        }
+
+        try
+        {
+            _ctx.GroupManagementService.DeleteGroup(_session, grp.IdGrupo);
+            _activeGroupFilterId = null;
+            _filterUnassignedOnly = false;
+            ReloadGroupsAndUsers();
+            CambiasoTheme.ShowInfo(this, $"Grupo '{grp.Nombre}' eliminado correctamente.");
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    private void OpenGroupHistoryDialog()
+    {
+        using GroupHistoryDialog dlg = new(_ctx.GroupManagementService, _ctx.DocumentExportService, _session, _activeGroupFilterId);
+        dlg.ShowDialog(this);
+    }
+
+    // --- DRAG & DROP ENTRE GRILLA (ÁREA 2) Y GRUPOS (ÁREA 1) ---
+    private void OnGridMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left)
+        {
+            _dragStartPoint = Point.Empty;
+            _dragSourceRowIndex = -1;
+            return;
+        }
+
+        DataGridView.HitTestInfo hit = GridUsers.HitTest(e.X, e.Y);
+        if (hit.Type == DataGridViewHitTestType.Cell && hit.RowIndex >= 0 && hit.ColumnIndex > 0)
+        {
+            _dragStartPoint = e.Location;
+            _dragSourceRowIndex = hit.RowIndex;
+        }
+        else
+        {
+            _dragStartPoint = Point.Empty;
+            _dragSourceRowIndex = -1;
+        }
+    }
+
+    private void OnGridMouseMove(object? sender, MouseEventArgs e)
+    {
+        if ((e.Button & MouseButtons.Left) != MouseButtons.Left || _dragStartPoint == Point.Empty || _dragSourceRowIndex < 0)
+        {
+            return;
+        }
+
+        Size dragSize = SystemInformation.DragSize;
+        Rectangle dragBox = new(
+            _dragStartPoint.X - (dragSize.Width / 2),
+            _dragStartPoint.Y - (dragSize.Height / 2),
+            dragSize.Width,
+            dragSize.Height);
+
+        if (dragBox.Contains(e.Location))
+        {
+            return;
+        }
+
+        _dragStartPoint = Point.Empty;
+        if (_dragSourceRowIndex >= _users.Count)
+        {
+            return;
+        }
+
+        User draggedUser = _users[_dragSourceRowIndex];
+        List<string> ids = _checkedUserIds.Count > 0 && _checkedUserIds.Contains(draggedUser.IdUsuario)
+            ? [.. _checkedUserIds]
+            : [draggedUser.IdUsuario];
+
+        GridUsers.DoDragDrop(new UserDragPayload(ids), DragDropEffects.Move);
+    }
+
+    private void OnGroupsDragOver(object? sender, DragEventArgs e)
+    {
+        if (e.Data?.GetData(typeof(UserDragPayload)) is not UserDragPayload)
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        Point pt = ListGroups.PointToClient(new Point(e.X, e.Y));
+        int idx = ListGroups.IndexFromPoint(pt);
+        if (idx >= 0 && idx < ListGroups.Items.Count && ListGroups.Items[idx] is GroupListEntry entry && !entry.IsAllFilter && entry.IsActive)
+        {
+            e.Effect = DragDropEffects.Move;
+            if (_dragHoverGroupIndex != idx)
+            {
+                _dragHoverGroupIndex = idx;
+                ListGroups.Invalidate();
+            }
+        }
+        else
+        {
+            e.Effect = DragDropEffects.None;
+            ClearDragHover();
+        }
+    }
+
+    private void OnGroupsDragDrop(object? sender, DragEventArgs e)
+    {
+        int dropIdx = _dragHoverGroupIndex;
+        ClearDragHover();
+
+        if (e.Data?.GetData(typeof(UserDragPayload)) is not UserDragPayload payload || dropIdx < 0 || dropIdx >= ListGroups.Items.Count)
+        {
+            return;
+        }
+
+        if (ListGroups.Items[dropIdx] is not GroupListEntry targetEntry || targetEntry.IsAllFilter || !targetEntry.IsActive)
+        {
+            return;
+        }
+
+        List<User> targetUsers = payload.UserIds
+            .Select(id => _ctx.UserManagementService.GetById(_session, id))
+            .Where(u => u is not null)
+            .Cast<User>()
+            .ToList();
+
+        if (targetUsers.Count == 0)
+        {
+            return;
+        }
+
+        string destLabel = targetEntry.IsUnassignedFilter ? "Sin grupo asignado" : targetEntry.Name;
+        string names = string.Join(", ", targetUsers.Take(5).Select(u => u.AliasUsuario));
+        if (targetUsers.Count > 5) names += $" y {targetUsers.Count - 5} más";
+
+        if (!CambiasoTheme.Confirm(this, $"¿Mover {targetUsers.Count} usuario(s) [{names}] al grupo '{destLabel}'?\n\nSe preservará todo su historial de órdenes y operaciones."))
+        {
+            return;
+        }
+
+        try
+        {
+            BatchOperationResult result = _ctx.UserManagementService.MoveUsersToGroup(
+                _session,
+                payload.UserIds,
+                targetEntry.IsUnassignedFilter ? null : targetEntry.IdGrupo,
+                "Movimiento mediante Drag & Drop");
+
+            _checkedUserIds.Clear();
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+            CambiasoTheme.ShowInfo(this, result.BuildSummary());
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(this, ex.Message);
+        }
+    }
+
+    private void ClearDragHover()
+    {
+        if (_dragHoverGroupIndex != -1)
+        {
+            _dragHoverGroupIndex = -1;
+            ListGroups.Invalidate();
+        }
+    }
+
+    private void OnDrawGroupItem(object? sender, DrawItemEventArgs e)
+    {
+        if (e.Index < 0 || e.Index >= ListGroups.Items.Count || ListGroups.Items[e.Index] is not GroupListEntry item)
+        {
+            return;
+        }
+
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+
+        bool selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+        bool isDropHover = e.Index == _dragHoverGroupIndex;
+
+        Color bg = isDropHover
+            ? Color.FromArgb(207, 238, 250)
+            : (selected ? CambiasoTheme.SubtleFill : CambiasoTheme.CardBackground);
+        using (SolidBrush br = new(bg))
+        {
+            g.FillRectangle(br, e.Bounds);
+        }
+
+        if (selected || isDropHover)
+        {
+            using SolidBrush accent = new(isDropHover ? CambiasoTheme.Accent : CambiasoTheme.Primary);
+            g.FillRectangle(accent, e.Bounds.X, e.Bounds.Y + 2, 4, e.Bounds.Height - 4);
+        }
+
+        if (isDropHover)
+        {
+            using Pen dash = new(CambiasoTheme.Accent, 1.5f) { DashStyle = DashStyle.Dash };
+            g.DrawRectangle(dash, e.Bounds.X + 4, e.Bounds.Y + 2, e.Bounds.Width - 7, e.Bounds.Height - 5);
+        }
+
+        // Ícono por categoría
+        AppIcon icon = ResolveGroupIcon(item);
+        Color iconColor = !item.IsActive
+            ? CambiasoTheme.TextMuted
+            : (selected ? CambiasoTheme.Primary : CambiasoTheme.Accent);
+        Bitmap bmp = IconCatalog.Get(icon, iconColor, 18);
+        g.DrawImage(bmp, e.Bounds.X + 12, e.Bounds.Y + 14, 18, 18);
+
+        // Badge de contador
+        string badgeText = item.Count.ToString(CultureInfo.InvariantCulture);
+        int badgeW = Math.Max(26, (badgeText.Length * 8) + 12);
+        Rectangle badgeRect = new(e.Bounds.Right - badgeW - 8, e.Bounds.Y + 12, badgeW, 20);
+        using (SolidBrush pillBrush = new(selected ? CambiasoTheme.Primary : CambiasoTheme.SubtleFill))
+        {
+            g.FillRectangle(pillBrush, badgeRect);
+        }
+        TextRenderer.DrawText(
+            g,
+            badgeText,
+            CambiasoTheme.SmallFont,
+            badgeRect,
+            selected ? Color.White : CambiasoTheme.Primary,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+
+        // Texto Nombre + Subtítulo
+        int textW = Math.Max(40, badgeRect.Left - (e.Bounds.X + 38) - 4);
+        Rectangle nameRect = new(e.Bounds.X + 38, e.Bounds.Y + 6, textW, 18);
+        Rectangle subRect = new(e.Bounds.X + 38, e.Bounds.Y + 24, textW, 16);
+
+        TextRenderer.DrawText(
+            g,
+            item.Name,
+            CambiasoTheme.LabelFont,
+            nameRect,
+            item.IsActive ? CambiasoTheme.TextPrimary : CambiasoTheme.TextMuted,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        string subText = isDropHover ? "Soltar aquí para mover" : item.Subtitle;
+        TextRenderer.DrawText(
+            g,
+            subText,
+            new Font("Segoe UI", 7.8f, item.IsActive ? FontStyle.Regular : FontStyle.Italic),
+            subRect,
+            isDropHover ? CambiasoTheme.Accent : (!item.IsActive ? CambiasoTheme.Danger : CambiasoTheme.TextMuted),
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
+
+        using Pen sep = new(Color.FromArgb(230, 238, 244));
+        g.DrawLine(sep, e.Bounds.X + 8, e.Bounds.Bottom - 1, e.Bounds.Right - 8, e.Bounds.Bottom - 1);
+    }
+
+    private static AppIcon ResolveGroupIcon(GroupListEntry item)
+    {
+        if (item.IsAllFilter) return AppIcon.Users;
+        if (item.IsUnassignedFilter) return AppIcon.Layers;
+
+        string upper = item.Name.ToUpperInvariant();
+        if (upper.Contains("MEC")) return AppIcon.Wrench;
+        if (upper.Contains("ELECTRÓN") || upper.Contains("ELECTRON")) return AppIcon.Cpu;
+        if (upper.Contains("ELÉCT") || upper.Contains("ELECT")) return AppIcon.Zap;
+        if (upper.Contains("EXTER")) return AppIcon.Globe;
+        if (upper.Contains("OPERA")) return AppIcon.Gauge;
+        return AppIcon.Layers;
+    }
+
+    // --- OPERACIONES INDIVIDUALES Y MASIVAS (ÁREA 3) ---
+    private List<string> GetTargetUserIdsForAction()
+    {
+        if (_checkedUserIds.Count > 0)
+        {
+            return [.. _checkedUserIds];
+        }
+
+        return _selectedUser is not null ? [_selectedUser.IdUsuario] : [];
+    }
+
+    private void OpenMoveUsersDialog()
+    {
+        List<string> ids = GetTargetUserIdsForAction();
+        if (ids.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione al menos un usuario (mediante CheckBox o fila activa) para mover de grupo.");
+            return;
+        }
+
+        List<User> selectedUsers = ids
+            .Select(id => _ctx.UserManagementService.GetById(_session, id))
+            .Where(u => u is not null)
+            .Cast<User>()
+            .ToList();
+
+        using GroupMovementDialog dlg = new(selectedUsers, _groups, _activeGroupFilterId);
+        if (dlg.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            BatchOperationResult result = _ctx.UserManagementService.MoveUsersToGroup(
+                _session,
+                ids,
+                dlg.SelectedTargetGroupId,
+                dlg.Motivo);
+
+            _checkedUserIds.Clear();
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+            CambiasoTheme.ShowInfo(this, result.BuildSummary());
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(this, ex.Message);
+        }
+    }
+
+    private void RunBatchSetActive(bool activate, bool isDeleteAction = false)
+    {
+        List<string> ids = GetTargetUserIdsForAction();
+        if (ids.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione al menos un usuario para ejecutar esta operación.");
+            return;
+        }
+
+        (IReadOnlyList<User> affected, IReadOnlyList<(User User, string Reason)> protectedUsers) =
+            _ctx.UserManagementService.PreviewBatchImpact(_session, ids, checkAdminDeactivationOrDemotion: !activate);
+
+        string title = activate
+            ? "Activar Usuarios"
+            : (isDeleteAction ? "Eliminación Lógica de Usuarios" : "Desactivar Usuarios");
+
+        string warning = activate
+            ? "Los usuarios seleccionados volverán a quedar habilitados para iniciar sesión."
+            : "Se aplicará eliminación lógica (desactivación). Los registros históricos, órdenes de trabajo y auditoría se preservarán íntegros.";
+
+        using BatchConfirmDialog dlg = new(
+            title,
+            warning,
+            ids.Count,
+            affected,
+            protectedUsers,
+            requireRoleSelection: false,
+            isDestructive: !activate);
+
+        if (dlg.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            BatchOperationResult result = _ctx.UserManagementService.BatchSetActive(_session, ids, activate, dlg.Motivo);
+            _checkedUserIds.Clear();
+            ApplyMode(EditorMode.View);
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+            CambiasoTheme.ShowInfo(this, result.BuildSummary());
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(this, ex.Message);
+        }
+    }
+
+    private void RunBatchChangeRole()
+    {
+        List<string> ids = GetTargetUserIdsForAction();
+        if (ids.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione al menos un usuario para cambiar su perfil.");
+            return;
+        }
+
+        (IReadOnlyList<User> affected, IReadOnlyList<(User User, string Reason)> protectedUsers) =
+            _ctx.UserManagementService.PreviewBatchImpact(_session, ids, checkAdminDeactivationOrDemotion: true);
+
+        using BatchConfirmDialog dlg = new(
+            "Cambiar Perfil por Lotes",
+            "Los permisos RBAC de cada usuario elegible se ajustarán automáticamente al nuevo perfil seleccionado.",
+            ids.Count,
+            affected,
+            protectedUsers,
+            requireRoleSelection: true,
+            isDestructive: false);
+
+        if (dlg.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            BatchOperationResult result = _ctx.UserManagementService.BatchChangeRole(_session, ids, dlg.SelectedRole, dlg.Motivo);
+            _checkedUserIds.Clear();
+            ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+            CambiasoTheme.ShowInfo(this, result.BuildSummary());
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(this, ex.Message);
+        }
+    }
+
+    private void SetAllVisibleChecked(bool isChecked)
+    {
+        _suppressGridSelection = true;
+        try
+        {
+            _checkedUserIds.Clear();
+            for (int i = 0; i < GridUsers.Rows.Count && i < _users.Count; i++)
+            {
+                GridUsers.Rows[i].Cells[0].Value = isChecked;
+                if (isChecked)
+                {
+                    _checkedUserIds.Add(_users[i].IdUsuario);
+                }
+            }
+        }
+        finally
+        {
+            _suppressGridSelection = false;
+        }
+
+        UpdateSelectionBadgeAndBatchButtons();
+    }
+
+    private void OnGridCellValueChanged(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (_suppressGridSelection || e.RowIndex < 0 || e.ColumnIndex != 0 || e.RowIndex >= _users.Count)
+        {
+            return;
+        }
+
+        bool isChecked = Convert.ToBoolean(GridUsers.Rows[e.RowIndex].Cells[0].Value ?? false);
+        string id = _users[e.RowIndex].IdUsuario;
+        if (isChecked) _checkedUserIds.Add(id);
+        else _checkedUserIds.Remove(id);
+
+        UpdateSelectionBadgeAndBatchButtons();
+    }
+
+    private void UpdateSelectionBadgeAndBatchButtons()
+    {
+        int count = _checkedUserIds.Count;
+        _lblSelectedCounter.Text = $"Sel: {count}";
+        _lblSelectedCounter.BackColor = count > 0 ? CambiasoTheme.Accent : CambiasoTheme.SubtleFill;
+        _lblSelectedCounter.ForeColor = count > 0 ? Color.White : CambiasoTheme.Primary;
+
+        bool hasTarget = count > 0 || _selectedUser is not null;
+        bool inView = _mode == EditorMode.View;
+        BtnActivar.Enabled = inView && hasTarget;
+        BtnDesactivar.Enabled = inView && hasTarget;
+        BtnEliminar.Enabled = inView && hasTarget;
+        BtnMover.Enabled = inView && hasTarget;
+        BtnCambiarPerfil.Enabled = inView && hasTarget;
+    }
+
+    // --- EDITOR CRUD ---
     private void ApplyMode(EditorMode mode)
     {
         _mode = mode;
@@ -459,48 +1407,47 @@ public sealed class UsersForm : UserControl
         _txtCorreo.ReadOnly = !editable;
         _txtTelefono.ReadOnly = !editable;
 
-        // No permitir que el administrador degrade o desactive su propia sesión
         _cmbPerfil.Enabled = editable && !(mode == EditorMode.Edit && isSelf);
+        _cmbGrupo.Enabled = editable;
         _cmbEstado.Enabled = editable && !(mode == EditorMode.Edit && isSelf);
 
         _txtPassword.Enabled = isCreate;
         _txtConfirmPassword.Enabled = isCreate;
-        _txtPassword.PlaceholderText = isCreate ? "Mínimo 6 caracteres" : "Use el botón Cambiar Contraseña";
-        _txtConfirmPassword.PlaceholderText = isCreate ? "Confirmar contraseña" : "Use el botón Cambiar Contraseña";
+        _txtPassword.PlaceholderText = isCreate ? "Mínimo 6 caracteres" : "Use Cambiar Contraseña";
+        _txtConfirmPassword.PlaceholderText = isCreate ? "Confirmar clave" : "Use Cambiar Contraseña";
         _chkMostrarPass.Enabled = isCreate;
         _chkSolicitante.Enabled = editable;
         _chkForzarCambioClave.Enabled = isCreate;
         _btnPermisos.Enabled = isCreate || hasSelection;
 
-        // Button states
         BtnNuevo.Enabled = mode == EditorMode.View;
         BtnGuardar.Enabled = mode == EditorMode.Create;
         BtnEditar.Enabled = mode == EditorMode.View && hasSelection;
         BtnActualizar.Enabled = mode == EditorMode.Edit;
-        BtnEliminar.Enabled = mode == EditorMode.View && hasSelection && _selectedUser!.Activo && !isSelf;
         BtnCambiarPassword.Enabled = (mode == EditorMode.View || mode == EditorMode.Edit) && hasSelection;
         BtnCancelar.Enabled = editable;
         BtnLimpiar.Enabled = true;
 
-        // Mode banner styling
+        UpdateSelectionBadgeAndBatchButtons();
+
         switch (mode)
         {
             case EditorMode.Create:
                 _modeStrip.BackColor = Color.FromArgb(224, 244, 252);
                 _lblMode.ForeColor = CambiasoTheme.Primary;
-                _lblMode.Text = "MODO: NUEVO USUARIO — Complete los datos obligatorios (*) y presione Guardar.";
+                _lblMode.Text = "MODO: NUEVO USUARIO — Complete los campos obligatorios (*) y presione Guardar.";
                 break;
             case EditorMode.Edit:
                 _modeStrip.BackColor = Color.FromArgb(254, 243, 199);
                 _lblMode.ForeColor = Color.FromArgb(146, 64, 14);
-                _lblMode.Text = $"MODO: EDITANDO USUARIO '{_selectedUser?.AliasUsuario}' (ID {_selectedUser?.CodigoId}) — Modifique los datos y presione Actualizar.";
+                _lblMode.Text = $"MODO: EDITANDO '{_selectedUser?.AliasUsuario}' (ID {_selectedUser?.CodigoId}, v{_selectedUser?.RowVersion}) — Presione Actualizar para guardar.";
                 break;
             default:
                 _modeStrip.BackColor = CambiasoTheme.SubtleFill;
                 _lblMode.ForeColor = CambiasoTheme.Primary;
                 _lblMode.Text = hasSelection
-                    ? $"MODO: CONSULTA — Usuario seleccionado: '{_selectedUser!.AliasUsuario}' ({_selectedUser.Nivel}, {(_selectedUser.Activo ? "Activo" : "Inactivo")})."
-                    : "MODO: CONSULTA — Seleccione un usuario de la grilla o presione Nuevo para registrar uno.";
+                    ? $"MODO: CONSULTA — '{_selectedUser!.AliasUsuario}' ({_selectedUser.Nivel} | {(string.IsNullOrWhiteSpace(_selectedUser.NombreGrupo) ? "Sin grupo" : _selectedUser.NombreGrupo)} | {(_selectedUser.Activo ? "Activo" : "Inactivo")})."
+                    : "MODO: CONSULTA — Seleccione usuarios en la grilla, arrástrelos a un grupo o presione Nuevo.";
                 break;
         }
     }
@@ -516,12 +1463,12 @@ public sealed class UsersForm : UserControl
         _txtTelefono.Clear();
         _txtPassword.Clear();
         _txtConfirmPassword.Clear();
-        _txtFechaCreacion.Text = "(Automática al guardar)";
-        _txtUltimoAcceso.Text = "Sin accesos";
+        _lblTimestamps.Text = "Creación: (Automática)   |   Modificación: (Automática)   |   Último acceso: Sin accesos";
 
         _suppressProfileChange = true;
         _cmbPerfil.SelectedItem = UserRoleLevel.Usuario;
-        _cmbEstado.SelectedIndex = 0; // Activo
+        _cmbEstado.SelectedIndex = 0;
+        SelectGroupInCombo(_activeGroupFilterId);
         _suppressProfileChange = false;
 
         _chkSolicitante.Checked = false;
@@ -540,6 +1487,13 @@ public sealed class UsersForm : UserControl
             return;
         }
 
+        // Recargar versión fresca desde BD para control de concurrencia optimista
+        User? fresh = _ctx.UserManagementService.GetById(_session, _selectedUser.IdUsuario);
+        if (fresh is not null)
+        {
+            _selectedUser = fresh;
+        }
+
         PopulateEditorFromUser(_selectedUser);
         ApplyMode(EditorMode.Edit);
         _txtNombre.Focus();
@@ -553,7 +1507,7 @@ public sealed class UsersForm : UserControl
             int assignedId = _ctx.UserManagementService.CreateUser(_session, user, _txtPassword.Text, _txtConfirmPassword.Text);
             CambiasoTheme.ShowInfo(this, $"Usuario '{user.AliasUsuario}' (ID {assignedId}) creado correctamente.");
             ApplyMode(EditorMode.View);
-            LoadUsersGrid(selectUserId: user.IdUsuario);
+            ReloadGroupsAndUsers(user.IdUsuario);
         }
         catch (Exception ex)
         {
@@ -571,44 +1525,20 @@ public sealed class UsersForm : UserControl
         try
         {
             User user = BuildUserFromEditor(existingId: _selectedUser.IdUsuario);
-            _ctx.UserManagementService.UpdateUser(_session, user);
+            _ctx.UserManagementService.UpdateUser(_session, user, expectedRowVersion: _selectedUser.RowVersion);
             CambiasoTheme.ShowInfo(this, $"Usuario '{user.AliasUsuario}' actualizado correctamente.");
             ApplyMode(EditorMode.View);
-            LoadUsersGrid(selectUserId: user.IdUsuario);
+            ReloadGroupsAndUsers(user.IdUsuario);
+        }
+        catch (ConcurrencyConflictException cx)
+        {
+            CambiasoTheme.ShowWarning(this, cx.Message, "SISPRO — Conflicto de Concurrencia");
+            ApplyMode(EditorMode.View);
+            ReloadGroupsAndUsers(_selectedUser.IdUsuario);
         }
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
-        }
-    }
-
-    private void DeactivateSelectedUser()
-    {
-        if (_selectedUser is null)
-        {
-            return;
-        }
-
-        string confirmMsg =
-            $"¿Desea desactivar (eliminación lógica) al usuario '{_selectedUser.AliasUsuario}' ({_selectedUser.NombreCompleto})?\n\n" +
-            "El usuario no podrá iniciar sesión, pero se conservarán todos sus registros históricos y de auditoría.";
-
-        if (!CambiasoTheme.Confirm(this, confirmMsg))
-        {
-            return;
-        }
-
-        try
-        {
-            string targetId = _selectedUser.IdUsuario;
-            _ctx.UserManagementService.DeleteUser(_session, targetId);
-            CambiasoTheme.ShowInfo(this, $"Usuario '{_selectedUser.AliasUsuario}' desactivado correctamente.");
-            ApplyMode(EditorMode.View);
-            LoadUsersGrid(selectUserId: targetId);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowError(this, ex.Message);
         }
     }
 
@@ -622,7 +1552,7 @@ public sealed class UsersForm : UserControl
         using AdminResetPasswordDialog dlg = new(_ctx.UserManagementService, _session, _selectedUser);
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
-            LoadUsersGrid(selectUserId: _selectedUser.IdUsuario);
+            ReloadGroupsAndUsers(_selectedUser.IdUsuario);
         }
     }
 
@@ -674,13 +1604,16 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        // En modo Consulta: limpiar filtros de búsqueda y recargar todo
         _txtBuscar.Clear();
         _cmbFiltroPerfil.SelectedIndex = 0;
         _cmbFiltroEstado.SelectedIndex = 0;
+        _dateFilter.Clear();
+        _activeGroupFilterId = null;
+        _filterUnassignedOnly = false;
+        _checkedUserIds.Clear();
         _selectedUser = null;
         ClearEditorInputs();
-        LoadUsersGrid();
+        ReloadGroupsAndUsers();
     }
 
     private void ClearEditorInputs()
@@ -693,8 +1626,8 @@ public sealed class UsersForm : UserControl
         _txtTelefono.Clear();
         _txtPassword.Clear();
         _txtConfirmPassword.Clear();
-        _txtFechaCreacion.Text = "—";
-        _txtUltimoAcceso.Text = "Sin accesos";
+        SelectGroupInCombo(null);
+        _lblTimestamps.Text = "Creación: —   |   Modificación: —   |   Último acceso: —";
         _chkSolicitante.Checked = false;
         _chkForzarCambioClave.Checked = false;
     }
@@ -714,6 +1647,7 @@ public sealed class UsersForm : UserControl
     {
         (string pat, string mat) = User.SplitSurnames(_txtApellido.Text);
         UserRoleLevel level = _cmbPerfil.SelectedItem is UserRoleLevel lvl ? lvl : UserRoleLevel.Usuario;
+        int? groupId = (_cmbGrupo.SelectedItem as GroupComboOption)?.IdGrupo;
         bool active = _cmbEstado.SelectedIndex != 1;
 
         return new User
@@ -727,9 +1661,11 @@ public sealed class UsersForm : UserControl
             MailUsuario = _txtCorreo.Text.Trim(),
             FonoUsuario = _txtTelefono.Text.Trim(),
             Nivel = level,
+            IdGrupo = groupId,
             Activo = active,
             EsSolicitante = _chkSolicitante.Checked,
             DebeCambiarClave = _mode == EditorMode.Create && _chkForzarCambioClave.Checked,
+            RowVersion = _selectedUser?.RowVersion ?? 1,
             Permisos = _workingPermissions
         };
     }
@@ -745,15 +1681,17 @@ public sealed class UsersForm : UserControl
 
         _suppressProfileChange = true;
         _cmbPerfil.SelectedItem = u.Nivel;
+        SelectGroupInCombo(u.IdGrupo);
         _cmbEstado.SelectedIndex = u.Activo ? 0 : 1;
         _suppressProfileChange = false;
 
         _txtPassword.Clear();
         _txtConfirmPassword.Clear();
-        _txtFechaCreacion.Text = u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture);
-        _txtUltimoAcceso.Text = u.UltimoAcceso.HasValue
-            ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture)
-            : "Sin accesos";
+        string fc = u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture);
+        string fm = u.FechaModificacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture);
+        string ua = u.UltimoAcceso.HasValue ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture) : "Sin accesos";
+        _lblTimestamps.Text = $"Creación: {fc}   |   Modif.: {fm}   |   Último acceso: {ua}";
+
         _chkSolicitante.Checked = u.EsSolicitante;
         _chkForzarCambioClave.Checked = u.DebeCambiarClave;
         _workingPermissions = new UserPermissions
@@ -775,6 +1713,17 @@ public sealed class UsersForm : UserControl
         };
     }
 
+    private void SelectGroupInCombo(int? idGrupo)
+    {
+        if (_cmbGrupo.DataSource is not List<GroupComboOption> options)
+        {
+            return;
+        }
+
+        int idx = options.FindIndex(o => o.IdGrupo == idGrupo);
+        _cmbGrupo.SelectedIndex = idx >= 0 ? idx : 0;
+    }
+
     private UserSearchFilter BuildSearchFilter()
     {
         UserRoleLevel? profileFilter = _cmbFiltroPerfil.SelectedItem is UserRoleLevel lvl ? lvl : null;
@@ -789,62 +1738,77 @@ public sealed class UsersForm : UserControl
         {
             TextoBusqueda = _txtBuscar.Text,
             Perfil = profileFilter,
-            Activo = activeFilter
+            IdGrupo = _filterUnassignedOnly ? null : _activeGroupFilterId,
+            SoloSinGrupo = _filterUnassignedOnly,
+            Activo = activeFilter,
+            FechaCreacionInicio = _dateFilter.FechaInicio,
+            FechaCreacionFin = _dateFilter.FechaFin
         };
     }
 
     private void LoadUsersGrid(string? selectUserId = null)
     {
+        if (!_dateFilter.TryValidate(this, out _))
+        {
+            return;
+        }
+
         _suppressGridSelection = true;
         try
         {
             _users = _ctx.UserManagementService.Search(_session, BuildSearchFilter());
 
+            // Retener únicamente checkmarks que siguen en los resultados visibles
+            HashSet<string> visibleIds = _users.Select(u => u.IdUsuario).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _checkedUserIds.IntersectWith(visibleIds);
+
+            GridUsers.Rows.Clear();
+            foreach (User u in _users)
+            {
+                bool isChecked = _checkedUserIds.Contains(u.IdUsuario);
+                GridUsers.Rows.Add(
+                    isChecked,
+                    u.CodigoId,
+                    u.AliasUsuario,
+                    u.NombreCompleto,
+                    u.MailUsuario,
+                    u.FonoUsuario,
+                    u.Nivel.ToString(),
+                    string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo,
+                    u.Activo ? "Activo" : "Inactivo",
+                    u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
+                    u.UltimoAcceso.HasValue ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture) : "Sin accesos");
+            }
+
             int activos = _users.Count(u => u.Activo);
             int inactivos = _users.Count - activos;
-            _grpListado.Text = $"LISTADO DE USUARIOS ({_users.Count} registros — {activos} activos, {inactivos} inactivos)";
+            string groupTag = (ListGroups.SelectedItem as GroupListEntry)?.Name ?? "TODOS LOS USUARIOS";
+            _grpListado.Text = $"ÁREA 2 — LISTADO DE USUARIOS · {groupTag} ({_users.Count})";
+            _lblGridStats.Text = $"Activos: {activos} | Inactivos: {inactivos} | Más recientes primero";
 
-            GridUsers.DataSource = _users.Select(u => new
-            {
-                ID = u.CodigoId,
-                Usuario = u.AliasUsuario,
-                NombreCompleto = u.NombreCompleto,
-                Correo = u.MailUsuario,
-                Telefono = u.FonoUsuario,
-                Perfil = u.Nivel.ToString(),
-                Estado = u.Activo ? "● Activo" : "● Inactivo",
-                FechaCreacion = u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
-                UltimoAcceso = u.UltimoAcceso.HasValue
-                    ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture)
-                    : "Sin accesos"
-            }).ToList();
-
-            ConfigureGridColumns();
-
-            int targetIndex = -1;
-            if (!string.IsNullOrEmpty(selectUserId))
+            int targetIdx = -1;
+            if (!string.IsNullOrWhiteSpace(selectUserId))
             {
                 for (int i = 0; i < _users.Count; i++)
                 {
                     if (string.Equals(_users[i].IdUsuario, selectUserId, StringComparison.OrdinalIgnoreCase))
                     {
-                        targetIndex = i;
+                        targetIdx = i;
                         break;
                     }
                 }
             }
-
-            if (targetIndex < 0 && _users.Count > 0)
+            else if (_users.Count > 0)
             {
-                targetIndex = 0;
+                targetIdx = 0;
             }
 
-            if (targetIndex >= 0 && targetIndex < GridUsers.Rows.Count)
+            if (targetIdx >= 0 && targetIdx < GridUsers.Rows.Count)
             {
                 GridUsers.ClearSelection();
-                GridUsers.Rows[targetIndex].Selected = true;
-                GridUsers.CurrentCell = GridUsers.Rows[targetIndex].Cells[0];
-                _selectedUser = _users[targetIndex];
+                GridUsers.Rows[targetIdx].Selected = true;
+                GridUsers.CurrentCell = GridUsers.Rows[targetIdx].Cells[1];
+                _selectedUser = _users[targetIdx];
                 if (_mode == EditorMode.View)
                 {
                     PopulateEditorFromUser(_selectedUser);
@@ -868,43 +1832,10 @@ public sealed class UsersForm : UserControl
         {
             ApplyMode(EditorMode.View);
         }
-    }
-
-    private void ConfigureGridColumns()
-    {
-        if (GridUsers.Columns.Count < 9)
+        else
         {
-            return;
+            UpdateSelectionBadgeAndBatchButtons();
         }
-
-        GridUsers.Columns[0].HeaderText = "ID";
-        GridUsers.Columns[0].FillWeight = 5;
-        GridUsers.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-
-        GridUsers.Columns[1].HeaderText = "Usuario";
-        GridUsers.Columns[1].FillWeight = 10;
-
-        GridUsers.Columns[2].HeaderText = "Nombre completo";
-        GridUsers.Columns[2].FillWeight = 15;
-
-        GridUsers.Columns[3].HeaderText = "Correo electrónico";
-        GridUsers.Columns[3].FillWeight = 14;
-
-        GridUsers.Columns[4].HeaderText = "Teléfono";
-        GridUsers.Columns[4].FillWeight = 9;
-
-        GridUsers.Columns[5].HeaderText = "Perfil";
-        GridUsers.Columns[5].FillWeight = 12;
-
-        GridUsers.Columns[6].HeaderText = "Estado";
-        GridUsers.Columns[6].FillWeight = 9;
-        GridUsers.Columns[6].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-
-        GridUsers.Columns[7].HeaderText = "Fecha de creación";
-        GridUsers.Columns[7].FillWeight = 13;
-
-        GridUsers.Columns[8].HeaderText = "Último acceso";
-        GridUsers.Columns[8].FillWeight = 13;
     }
 
     private void OnGridSelectionChanged()
@@ -914,7 +1845,7 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        if (GridUsers.CurrentRow is null)
+        if (GridUsers.CurrentRow is null || GridUsers.CurrentRow.Index < 0 || GridUsers.CurrentRow.Index >= _users.Count)
         {
             _selectedUser = null;
             ClearEditorInputs();
@@ -922,13 +1853,9 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        int idx = GridUsers.CurrentRow.Index;
-        if (idx >= 0 && idx < _users.Count)
-        {
-            _selectedUser = _users[idx];
-            PopulateEditorFromUser(_selectedUser);
-            ApplyMode(EditorMode.View);
-        }
+        _selectedUser = _users[GridUsers.CurrentRow.Index];
+        PopulateEditorFromUser(_selectedUser);
+        ApplyMode(EditorMode.View);
     }
 
     private void OnGridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
@@ -938,85 +1865,106 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        User rowUser = _users[e.RowIndex];
+        User u = _users[e.RowIndex];
 
-        if (e.ColumnIndex == 6) // Columna Estado con indicador visual
+        if (e.ColumnIndex == 8) // Estado
         {
             e.CellStyle.Font = CambiasoTheme.LabelFont;
-            if (rowUser.Activo)
-            {
-                e.CellStyle.ForeColor = CambiasoTheme.Success;
-                e.CellStyle.BackColor = Color.FromArgb(226, 247, 233);
-                e.CellStyle.SelectionForeColor = CambiasoTheme.Success;
-            }
-            else
-            {
-                e.CellStyle.ForeColor = CambiasoTheme.Danger;
-                e.CellStyle.BackColor = Color.FromArgb(253, 234, 232);
-                e.CellStyle.SelectionForeColor = CambiasoTheme.Danger;
-            }
-
-            return;
+            e.CellStyle.ForeColor = u.Activo ? CambiasoTheme.Success : CambiasoTheme.Danger;
         }
-
-        if (!rowUser.Activo)
+        else if (e.ColumnIndex == 7) // Grupo
         {
-            e.CellStyle.ForeColor = Color.FromArgb(130, 144, 158);
+            e.CellStyle.ForeColor = string.IsNullOrWhiteSpace(u.NombreGrupo) ? CambiasoTheme.TextMuted : CambiasoTheme.Primary;
+            if (!string.IsNullOrWhiteSpace(u.NombreGrupo))
+            {
+                e.CellStyle.Font = CambiasoTheme.LabelFont;
+            }
         }
+        else if (!u.Activo && e.ColumnIndex > 0)
+        {
+            e.CellStyle.ForeColor = CambiasoTheme.TextMuted;
+        }
+    }
+
+    private string BuildFilterSummary()
+    {
+        string grp = (ListGroups.SelectedItem as GroupListEntry)?.Name ?? "Todos";
+        string perfil = _cmbFiltroPerfil.SelectedItem?.ToString() ?? "Todos";
+        string estado = _cmbFiltroEstado.SelectedItem?.ToString() ?? "Todos";
+        return $"Grupo: {grp} | Perfil: {perfil} | Estado: {estado} | {_dateFilter.BuildFilterDescription()}";
     }
 
     private void PrintUsersList()
     {
+        if (_users.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "No hay usuarios en el listado actual para imprimir.");
+            return;
+        }
+
         using PrintDocument doc = _ctx.PrintService.CreateUsersReportPrintDocument(_users);
         using PrintPreviewDialog preview = new()
         {
             Document = doc,
-            Width = 920,
+            Width = 960,
             Height = 720,
             StartPosition = FormStartPosition.CenterParent
         };
         preview.ShowDialog(this);
     }
 
-    private void ExportUsersExcel()
+    private Button CreateAutoButton(string text, AppIcon icon, ButtonTone tone, string tooltip)
     {
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar Usuarios a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"Usuarios_SISPRO_{DateTime.Now:yyyyMMdd}.xlsx"
-        };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-        {
-            _ctx.ExcelExportService.ExportUsersGrid(_users, dlg.FileName);
-            CambiasoTheme.ShowInfo(this, $"Listado de usuarios exportado a:\n{dlg.FileName}");
-        }
+        Button btn = CambiasoTheme.CreateButton(text, icon, tone, _toolTip, tooltip, width: 80, height: 28);
+        btn.AutoSize = true;
+        btn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        btn.MinimumSize = new Size(0, 28);
+        btn.Padding = new Padding(6, 0, 8, 0);
+        btn.Margin = new Padding(0, 1, 5, 1);
+        return btn;
     }
 
-    private static TextBox CreateReadOnlyTextBox(string initialText) => new()
+    private Button CreateCompactButton(string text, AppIcon icon, ButtonTone tone, string tooltip)
     {
-        Text = initialText,
+        Button btn = CambiasoTheme.CreateButton(text, icon, tone, _toolTip, tooltip, width: 72, height: 26);
+        btn.Font = new Font("Segoe UI", 8.2f, FontStyle.Bold);
+        btn.Padding = new Padding(4, 0, 4, 0);
+        return btn;
+    }
+
+    private static TextBox CreateReadOnlyTextBox(string text) => new()
+    {
+        Text = text,
         ReadOnly = true,
+        TabStop = false,
         BackColor = CambiasoTheme.Surface,
         ForeColor = CambiasoTheme.TextMuted,
         Dock = DockStyle.Fill
     };
 
-    private static Label FieldLabel(string text)
+    private static Label FieldLabel(string text) => new()
     {
-        Label lbl = CambiasoTheme.CreateFieldLabel(text);
-        lbl.Anchor = AnchorStyles.Left;
-        lbl.Margin = new Padding(4, 0, 2, 0);
-        return lbl;
-    }
+        Text = text,
+        Font = CambiasoTheme.LabelFont,
+        ForeColor = CambiasoTheme.TextMuted,
+        Dock = DockStyle.Fill,
+        TextAlign = ContentAlignment.MiddleRight,
+        Padding = new Padding(0, 0, 6, 0)
+    };
 
     private static FlowLayoutPanel WrapFilter(string label, Control ctl)
     {
-        FlowLayoutPanel p = new() { AutoSize = true, Margin = new Padding(2, 2, 8, 2), WrapContents = false };
+        FlowLayoutPanel p = new()
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            WrapContents = false,
+            Margin = new Padding(0, 0, 4, 0)
+        };
         Label lbl = CambiasoTheme.CreateFieldLabel(label);
-        lbl.Margin = new Padding(0, 5, 5, 0);
-        p.Controls.Add(lbl);
-        p.Controls.Add(ctl);
+        lbl.Margin = new Padding(0, 6, 3, 0);
+        ctl.Margin = new Padding(0, 2, 0, 0);
+        p.Controls.AddRange([lbl, ctl]);
         return p;
     }
 
@@ -1024,6 +1972,12 @@ public sealed class UsersForm : UserControl
     {
         if (disposing)
         {
+            if (_syncSubscribed)
+            {
+                _ctx.SyncHub.DataChanged -= OnSyncDataChanged;
+                _syncSubscribed = false;
+            }
+
             _toolTip.Dispose();
         }
 

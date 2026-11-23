@@ -79,6 +79,7 @@ internal sealed class TempTestDatabase : IDisposable
 
     public void Dispose()
     {
+        Context.Dispose();
         SqliteConnection.ClearAllPools();
         foreach (string suffix in new[] { string.Empty, "-wal", "-shm" })
         {

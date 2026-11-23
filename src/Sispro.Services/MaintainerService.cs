@@ -9,7 +9,8 @@ public sealed class MaintainerService(
     IProviderRepository providers,
     IRequesterRepository requesters,
     IAssetTreeRepository assetTree,
-    IAuditRepository audit)
+    IAuditRepository audit,
+    SisproSyncHub? syncHub = null)
 {
     // --- PROVEEDORES ---
     public IReadOnlyList<Provider> GetProviders(bool includeInactive = false, string? search = null) =>
@@ -43,11 +44,13 @@ public sealed class MaintainerService(
         {
             int id = providers.Create(provider);
             audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_PROVEEDOR", $"Proveedor '{provider.Nombre}' (ID {id}) creado.");
+            syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "CREAR_PROVEEDOR");
             return id;
         }
 
         providers.Update(provider);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_PROVEEDOR", $"Proveedor '{provider.Nombre}' (ID {provider.IdProv}) actualizado.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_PROVEEDOR");
         return provider.IdProv;
     }
 
@@ -63,11 +66,13 @@ public sealed class MaintainerService(
             providers.Update(existing);
             audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "DESACTIVAR_PROVEEDOR",
                 $"Proveedor '{existing.Nombre}' desactivado (mantiene OTs históricas).");
+            syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "DESACTIVAR_PROVEEDOR");
             return;
         }
 
         providers.Delete(idProv);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "ELIMINAR_PROVEEDOR", $"Proveedor '{existing.Nombre}' eliminado.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "ELIMINAR_PROVEEDOR");
     }
 
     // --- SOLICITANTES ---
@@ -102,11 +107,13 @@ public sealed class MaintainerService(
         {
             int id = requesters.Create(requester);
             audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_SOLICITANTE", $"Solicitante '{requester.Alias}' creado.");
+            syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "CREAR_SOLICITANTE");
             return id;
         }
 
         requesters.Update(requester);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_SOLICITANTE", $"Solicitante '{requester.Alias}' actualizado.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_SOLICITANTE");
         return requester.IdSol;
     }
 
@@ -122,11 +129,13 @@ public sealed class MaintainerService(
             requesters.Update(existing);
             audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "DESACTIVAR_SOLICITANTE",
                 $"Solicitante '{existing.Alias}' desactivado (mantiene OTs históricas).");
+            syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "DESACTIVAR_SOLICITANTE");
             return;
         }
 
         requesters.Delete(idSol);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "ELIMINAR_SOLICITANTE", $"Solicitante '{existing.Alias}' eliminado.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "ELIMINAR_SOLICITANTE");
     }
 
     // --- ÁRBOL DE ACTIVOS (10 NIVELES) ---
@@ -166,6 +175,7 @@ public sealed class MaintainerService(
         int id = assetTree.Create(node);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_ACTIVO",
             $"Nodo '{node.Descripcion}' (Nivel {node.Nivel}, ID {id}) creado bajo '{parent.Descripcion}'.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "CREAR_ACTIVO");
         return id;
     }
 
@@ -190,6 +200,7 @@ public sealed class MaintainerService(
         assetTree.Update(node);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
             $"Activo ID {idActivo} actualizado a '{node.Descripcion}' (Activo={activo}).");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_ACTIVO");
     }
 
     public void UpdateAssetDetails(UserSession session, AssetNode updated)
@@ -223,5 +234,6 @@ public sealed class MaintainerService(
         assetTree.Update(existing);
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
             $"Ficha técnica de activo ID {existing.IdActivo} ('{existing.Descripcion}', SAP='{existing.CodSap}') actualizada.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_ACTIVO");
     }
 }

@@ -20,6 +20,12 @@ public sealed class MaintenanceService(IMaintenanceRepository maintenance)
     public IReadOnlyList<MantWorkOrderRow> SearchInternalWorkOrders(UserSession session, MantWorkOrderFilter filter)
     {
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo || p.MenuMantenedor, "Consultar OTs de Mantención");
+        string? dateErr = Sispro.Core.Validation.DomainValidator.ValidateDateRange(filter.FechaInicio, filter.FechaFin);
+        if (dateErr is not null)
+        {
+            throw new ArgumentException(dateErr);
+        }
+
         return maintenance.SearchInternalWorkOrders(filter);
     }
 

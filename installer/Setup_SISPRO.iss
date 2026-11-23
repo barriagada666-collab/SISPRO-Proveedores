@@ -1,6 +1,6 @@
 #define MyAppName "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"
 #define MyAppShortName "SISPRO"
-#define MyAppVersion "3.0.0"
+#define MyAppVersion "4.0.0"
 #define MyAppPublisher "Cambiaso Hnos S.A.C."
 #define MyAppExeName "SISPRO.exe"
 #define MyAppURL "https://github.com/barriagada666-collab/SISPRO-Proveedores"
@@ -12,16 +12,25 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppShortName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
-AppSupportURL={#MyAppURL}
-AppUpdatesURL={#MyAppURL}
-DefaultDirName={autopf}\Cambiaso\SISPRO
+AppSupportURL={#MyAppURL}/issues
+AppUpdatesURL={#MyAppURL}/releases
+AppCopyright=Copyright © 2026 {#MyAppPublisher} — División Mantención Industrial
+AppComments=Sistema de Gestión de Proveedores, Órdenes de Trabajo, Usuarios, Grupos y Mantención Industrial (.NET 10)
+DefaultDirName=C:\Temp
+DisableDirPage=no
+DirExistsWarning=no
+UsePreviousAppDir=yes
 DefaultGroupName=Cambiaso\SISPRO
 AllowNoIcons=yes
 LicenseFile=..\LICENSE
 OutputDir=Output
 OutputBaseFilename=SISPRO_Setup_v{#MyAppVersion}_win-x64
 SetupIconFile=..\src\Sispro.UI\Assets\sispro.ico
-UninstallDisplayIcon={app}\{#MyAppExeName}
+WizardImageFile=Assets\wizard_banner.bmp
+WizardSmallImageFile=Assets\wizard_small.bmp
+WizardImageStretch=yes
+UninstallDisplayName={#MyAppShortName} {#MyAppVersion} — {#MyAppPublisher}
+UninstallDisplayIcon={app}\Assets\sispro.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -34,10 +43,15 @@ RestartApplications=no
 VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppShortName}
-VersionInfoDescription=Instalador Oficial de SISPRO (.NET 10)
+VersionInfoDescription=Instalador Oficial de SISPRO v{#MyAppVersion} (.NET 10)
+VersionInfoCopyright=Copyright © 2026 {#MyAppPublisher}
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
+
+[Messages]
+WelcomeLabel1=Bienvenido al Asistente de Instalación de [name]
+WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye base de datos SQLite migrada, gestión dinámica de usuarios y grupos, y exportaciones corporativas.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -47,9 +61,9 @@ Source: "..\publish\win-x64\*"; DestDir: "{app}"; Excludes: "Data\sispro.db"; Fl
 Source: "..\publish\win-x64\Data\sispro.db"; DestDir: "{app}\Data"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
-Name: "{group}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\sispro.ico"
-Name: "{group}\{cm:UninstallProgram,{#MyAppShortName}}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\sispro.ico"; Tasks: desktopicon
+Name: "{group}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\sispro.ico"; Comment: "Abrir SISPRO — Cambiaso Hnos S.A.C."
+Name: "{group}\{cm:UninstallProgram,{#MyAppShortName}}"; Filename: "{uninstallexe}"; IconFilename: "{app}\Assets\sispro.ico"
+Name: "{autodesktop}\{#MyAppShortName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\Assets\sispro.ico"; Comment: "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppShortName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

@@ -53,7 +53,7 @@ public sealed class ScreenshotCaptureTests
             main.WindowState = FormWindowState.Normal;
             main.StartPosition = FormStartPosition.Manual;
             main.Location = new Point(-2000, -2000);
-            main.Size = new Size(1320, 800);
+            main.Size = new Size(1380, 840);
             main.Show();
             Application.DoEvents();
 
@@ -61,7 +61,7 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "02_dashboard.png"));
 
-            main.ShowWorkOrders(2514);
+            main.ShowWorkOrders(14752);
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
@@ -80,6 +80,17 @@ public sealed class ScreenshotCaptureTests
             main.ShowUsers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "06_usuarios_rbac.png"));
+
+            using (Sispro.UI.Dialogs.AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService))
+            {
+                auditDlg.ShowInTaskbar = false;
+                auditDlg.StartPosition = FormStartPosition.Manual;
+                auditDlg.Location = new Point(-2000, -2000);
+                auditDlg.Show();
+                Application.DoEvents();
+                SaveFormBitmap(auditDlg, Path.Combine(outDir, "08_auditoria_fechas.png"));
+                auditDlg.Hide();
+            }
 
             main.Hide();
         });

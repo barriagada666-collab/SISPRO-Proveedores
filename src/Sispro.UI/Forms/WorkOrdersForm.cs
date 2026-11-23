@@ -50,11 +50,11 @@ public sealed class WorkOrdersForm : UserControl
     private bool _suppressApprovalEvents;
 
     // Tab 1 (Búsqueda de OT)
-    private readonly CheckBox _chkFilterDate;
-    private readonly DateTimePicker _dtSearchFrom;
-    private readonly DateTimePicker _dtSearchTo;
+    private readonly DateRangeFilterControl _searchDateRange;
     private readonly CheckBox _chkFilterProvider;
     private readonly ComboBox _cmbProviderSearch;
+    private readonly CheckBox _chkFilterRequester;
+    private readonly ComboBox _cmbRequesterSearch;
     private readonly CheckBox _chkFilterText;
     private readonly TextBox _txtSearchKeyword;
     private readonly CheckBox _chkFilterTree;
@@ -66,6 +66,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly ProgressBar _exportProgress;
     private readonly Label _lblSearchSummary;
     private IReadOnlyList<WorkOrderSearchRow> _lastSearchResults = [];
+    private bool _syncSubscribed;
 
     // Tab 2 (Generar / Imprimir OT)
     private readonly TextBox _txtPrintOtNumber;
@@ -146,7 +147,7 @@ public sealed class WorkOrdersForm : UserControl
 
         _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
         _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 155 };
-        _dtFechaOt = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 120, Value = DateTime.Today };
+        _dtFechaOt = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "dd-MM-yyyy", Width = 120, Value = DateTime.Today };
 
         _chkVbs = new CheckBox
         {
@@ -200,17 +201,18 @@ public sealed class WorkOrdersForm : UserControl
 
         // --- TAB 1: BÚSQUEDA DE OT ---
         _tabSearch = new TabPage("Búsqueda de OT") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
-        _chkFilterDate = new CheckBox { Text = "Rango de fechas", AutoSize = true, Checked = false };
-        _dtSearchFrom = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 112, Value = DateTime.Today.AddMonths(-1), Enabled = false };
-        _dtSearchTo = new DateTimePicker { Format = DateTimePickerFormat.Short, Width = 112, Value = DateTime.Today, Enabled = false };
-        _chkFilterDate.CheckedChanged += (_, _) => { _dtSearchFrom.Enabled = _chkFilterDate.Checked; _dtSearchTo.Enabled = _chkFilterDate.Checked; };
+        _searchDateRange = new DateRangeFilterControl(compact: true);
 
         _chkFilterProvider = new CheckBox { Text = "Proveedor", AutoSize = true };
-        _cmbProviderSearch = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200, Enabled = false };
+        _cmbProviderSearch = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 175, Enabled = false };
         _chkFilterProvider.CheckedChanged += (_, _) => _cmbProviderSearch.Enabled = _chkFilterProvider.Checked;
 
+        _chkFilterRequester = new CheckBox { Text = "Solicitante", AutoSize = true };
+        _cmbRequesterSearch = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140, Enabled = false };
+        _chkFilterRequester.CheckedChanged += (_, _) => _cmbRequesterSearch.Enabled = _chkFilterRequester.Checked;
+
         _chkFilterText = new CheckBox { Text = "Palabra clave / N° OT", AutoSize = true, Checked = true };
-        _txtSearchKeyword = new TextBox { Width = 210, PlaceholderText = "Ej. motor, MAI, 2815..." };
+        _txtSearchKeyword = new TextBox { Width = 185, PlaceholderText = "Ej. motor, MAI, 2815..." };
         _txtSearchKeyword.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
@@ -221,17 +223,23 @@ public sealed class WorkOrdersForm : UserControl
         };
         _chkFilterText.CheckedChanged += (_, _) => _txtSearchKeyword.Enabled = _chkFilterText.Checked;
 
-        _chkFilterTree = new CheckBox { Text = "Filtrar por nodo seleccionado del árbol", AutoSize = true };
-        _chkPendingVb = new CheckBox { Text = "Solo pendientes de VB", AutoSize = true };
+        _chkFilterTree = new CheckBox { Text = "Nodo árbol", AutoSize = true };
+        _chkPendingVb = new CheckBox { Text = "Pendientes VB", AutoSize = true };
 
-        _btnExecuteSearch = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Ejecutar búsqueda de órdenes de trabajo", width: 118);
+        _btnExecuteSearch = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Ejecutar búsqueda combinada de órdenes de trabajo", width: 102, height: 30);
         _btnExecuteSearch.Click += (_, _) => ExecuteSearch();
 
-        _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 112);
+        _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 98, height: 30);
         _btnClearSearch.Click += (_, _) => ClearSearchTab();
 
-        _btnExportSearch = CambiasoTheme.CreateButton("Exportar Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar resultados actuales a archivo Excel (.xlsx)", width: 146);
-        _btnExportSearch.Click += async (_, _) => await ExportSearchResultsAsync();
+        _btnExportSearch = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar resultados filtrados a Excel, PDF, Word o CSV", width: 112, height: 30);
+        _btnExportSearch.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
+            _btnExportSearch,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_OrdenesTrabajo",
+            () => DocumentExportService.BuildWorkOrdersReport(_lastSearchResults, BuildSearchFilterSummary()),
+            file => _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Órdenes de Trabajo", "EXPORTAR_OT_LISTA", $"Exportados {_lastSearchResults.Count} registros a {Path.GetFileName(file)}."));
 
         _gridSearchResults = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridSearchResults);
@@ -282,8 +290,8 @@ public sealed class WorkOrdersForm : UserControl
         _gridPrintItems = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridPrintItems);
 
-        _btnGenerateExcel = CambiasoTheme.CreateButton("Generar Excel", AppIcon.Excel, ButtonTone.Primary, _toolTip, "Generar documento oficial OT en formato Excel (.xlsx)", width: 144);
-        _btnGenerateExcel.Click += (_, _) => GenerateOrderExcel();
+        _btnGenerateExcel = CambiasoTheme.CreateButton("Exportar OT", AppIcon.Download, ButtonTone.Primary, _toolTip, "Exportar documento oficial de OT a Excel, PDF, Word o CSV", width: 136);
+        _btnGenerateExcel.Click += (_, _) => OpenWorkOrderExportMenu();
 
         _btnPrintPreview = CambiasoTheme.CreateButton("Vista Previa", AppIcon.Preview, ButtonTone.Accent, _toolTip, "Abrir vista previa de impresión de la OT", width: 136);
         _btnPrintPreview.Click += (_, _) => ShowPrintPreview();
@@ -319,6 +327,20 @@ public sealed class WorkOrdersForm : UserControl
         _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString();
         RefreshEntryDetailsGrid();
         RefreshPrintDetailsGrid();
+
+        _ctx.SyncHub.DataChanged += OnSyncChanged;
+        _syncSubscribed = true;
+    }
+
+    private void OnSyncChanged(object? sender, DataChangedEventArgs e)
+    {
+        if (IsDisposed || (e.Kind & DataChangeKind.Catalogs) == 0)
+        {
+            return;
+        }
+
+        if (InvokeRequired && IsHandleCreated) BeginInvoke(ReloadCatalogs);
+        else if (!InvokeRequired) ReloadCatalogs();
     }
 
     public void OpenOrderByNumber(int numeroOt)
@@ -427,23 +449,27 @@ public sealed class WorkOrdersForm : UserControl
     private void BuildSearchTabLayout()
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 146));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
 
-        GroupBox grpFilters = CambiasoTheme.CreateGroupBox("Criterios de Búsqueda Combinables");
+        GroupBox grpFilters = CambiasoTheme.CreateGroupBox("Criterios de Búsqueda Combinables (orden más reciente primero)");
         grpFilters.Dock = DockStyle.Fill;
 
-        FlowLayoutPanel f1 = new() { Dock = DockStyle.Top, Height = 42, Padding = new Padding(4, 4, 4, 0) };
-        f1.Controls.AddRange([_chkFilterDate, _dtSearchFrom, new Label { Text = "a", AutoSize = true, Margin = new Padding(2, 8, 2, 0) }, _dtSearchTo, _chkFilterProvider, _cmbProviderSearch]);
+        FlowLayoutPanel f1 = new() { Dock = DockStyle.Top, Height = 36, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+        f1.Controls.Add(_searchDateRange);
 
-        FlowLayoutPanel f2 = new() { Dock = DockStyle.Top, Height = 44, Padding = new Padding(4, 4, 4, 0) };
-        f2.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterTree, _chkPendingVb, _btnExecuteSearch]);
+        FlowLayoutPanel f2 = new() { Dock = DockStyle.Top, Height = 36, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+        f2.Controls.AddRange([_chkFilterProvider, _cmbProviderSearch, _chkFilterRequester, _cmbRequesterSearch]);
 
+        FlowLayoutPanel f3 = new() { Dock = DockStyle.Top, Height = 40, WrapContents = false, Padding = new Padding(4, 3, 4, 0) };
+        f3.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterTree, _chkPendingVb, _btnExecuteSearch]);
+
+        grpFilters.Controls.Add(f3);
         grpFilters.Controls.Add(f2);
         grpFilters.Controls.Add(f1);
 
-        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (doble clic para abrir la OT)");
+        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (orden cronológico descendente — doble clic para abrir)");
         grpResults.Dock = DockStyle.Fill;
         grpResults.Controls.Add(_gridSearchResults);
 
@@ -532,6 +558,7 @@ public sealed class WorkOrdersForm : UserControl
         BindCombo(_cmbProviderPrint, providers, nameof(Provider.Nombre), nameof(Provider.IdProv));
 
         BindCombo(_cmbRequesterEntry, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
+        BindCombo(_cmbRequesterSearch, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
         BindCombo(_cmbRequesterPrint, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
     }
 
@@ -819,13 +846,19 @@ public sealed class WorkOrdersForm : UserControl
 
     private void ExecuteSearch()
     {
+        if (!_searchDateRange.TryValidate(this, out _))
+        {
+            return;
+        }
+
         try
         {
             WorkOrderSearchFilter filter = new()
             {
-                FechaInicio = _chkFilterDate.Checked ? _dtSearchFrom.Value.Date : null,
-                FechaFin = _chkFilterDate.Checked ? _dtSearchTo.Value.Date : null,
+                FechaInicio = _searchDateRange.FechaInicio,
+                FechaFin = _searchDateRange.FechaFin,
                 IdProv = _chkFilterProvider.Checked && _cmbProviderSearch.SelectedValue is int pid ? pid : null,
+                IdSol = _chkFilterRequester.Checked && _cmbRequesterSearch.SelectedValue is int sid ? sid : null,
                 TextoBusqueda = _chkFilterText.Checked ? _txtSearchKeyword.Text.Trim() : null,
                 SoloPendientesVb = _chkPendingVb.Checked
             };
@@ -872,7 +905,7 @@ public sealed class WorkOrdersForm : UserControl
                 _gridSearchResults.Columns[8].FillWeight = 7;
             }
 
-            _lblSearchSummary.Text = $"{_lastSearchResults.Count} registro(s) encontrados.";
+            _lblSearchSummary.Text = $"{_lastSearchResults.Count:N0} registro(s) encontrados (más recientes primero).";
             if (_lastSearchResults.Count == 0)
             {
                 CambiasoTheme.ShowInfo(this, "No se encontraron órdenes de trabajo con los criterios indicados.");
@@ -890,8 +923,9 @@ public sealed class WorkOrdersForm : UserControl
 
     private void ClearSearchTab()
     {
-        _chkFilterDate.Checked = false;
+        _searchDateRange.Clear();
         _chkFilterProvider.Checked = false;
+        _chkFilterRequester.Checked = false;
         _chkFilterText.Checked = true;
         _chkFilterTree.Checked = false;
         _chkPendingVb.Checked = false;
@@ -899,6 +933,13 @@ public sealed class WorkOrdersForm : UserControl
         _lastSearchResults = [];
         _gridSearchResults.DataSource = null;
         _lblSearchSummary.Text = "Filtros restablecidos.";
+    }
+
+    private string BuildSearchFilterSummary()
+    {
+        string prov = _chkFilterProvider.Checked && _cmbProviderSearch.SelectedItem is Provider p ? p.Nombre : "Todos";
+        string sol = _chkFilterRequester.Checked && _cmbRequesterSearch.SelectedItem is Requester r ? r.Alias : "Todos";
+        return $"{_searchDateRange.BuildFilterDescription()} | Proveedor: {prov} | Solicitante: {sol}";
     }
 
     private void OpenSelectedSearchOrder()
@@ -912,54 +953,6 @@ public sealed class WorkOrdersForm : UserControl
         if (idx >= 0 && idx < _lastSearchResults.Count)
         {
             OpenOrderByNumber(_lastSearchResults[idx].NumeroOt);
-        }
-    }
-
-    private async Task ExportSearchResultsAsync()
-    {
-        if (_lastSearchResults.Count == 0)
-        {
-            CambiasoTheme.ShowWarning(this, "No hay registros en la búsqueda para exportar.");
-            return;
-        }
-
-        using SaveFileDialog dlg = new()
-        {
-            Title = "Exportar Órdenes de Trabajo a Excel",
-            Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-            FileName = $"OrdenesTrabajo_SISPRO_{DateTime.Now:yyyyMMdd_HHmm}.xlsx"
-        };
-
-        if (dlg.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
-
-        try
-        {
-            _btnExportSearch.Enabled = false;
-            _exportProgress.Value = 0;
-            _exportProgress.Visible = true;
-            Progress<int> progress = new(pct =>
-            {
-                _exportProgress.Value = Math.Clamp(pct, 0, 100);
-                _lblSearchSummary.Text = $"Exportando a Excel... {pct}%";
-            });
-
-            await _ctx.ExcelExportService.ExportWorkOrdersGridAsync(_lastSearchResults, dlg.FileName, progress);
-            _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Órdenes de Trabajo", "EXPORTAR_EXCEL",
-                $"Exportados {_lastSearchResults.Count} registros a {Path.GetFileName(dlg.FileName)}.");
-            _lblSearchSummary.Text = $"Exportación completada: {_lastSearchResults.Count} registros.";
-            CambiasoTheme.ShowInfo(this, $"Archivo Excel generado correctamente:\n{dlg.FileName}");
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowError(this, $"Error al exportar a Excel: {ex.Message}");
-        }
-        finally
-        {
-            _exportProgress.Visible = false;
-            _btnExportSearch.Enabled = true;
         }
     }
 
@@ -1101,26 +1094,12 @@ public sealed class WorkOrdersForm : UserControl
         _ => SignatureOption.Ninguna
     };
 
-    private void GenerateOrderExcel()
+    private void OpenWorkOrderExportMenu()
     {
         try
         {
             WorkOrder order = BuildPrintableOrder();
-            using SaveFileDialog dlg = new()
-            {
-                Title = "Guardar Orden de Trabajo Excel",
-                Filter = "Libro de Excel (*.xlsx)|*.xlsx",
-                FileName = $"OT_{order.NumeroOt:D6}_{SanitizeFileName(order.NombreProveedor)}.xlsx"
-            };
-
-            if (dlg.ShowDialog(this) != DialogResult.OK)
-            {
-                return;
-            }
-
-            _ctx.ExcelExportService.ExportWorkOrderDocument(order, dlg.FileName, GetSelectedSignature());
-            _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Órdenes de Trabajo", "GENERAR_EXCEL_OT", $"OT N° {order.NumeroOt} exportada a {Path.GetFileName(dlg.FileName)}.");
-            CambiasoTheme.ShowInfo(this, $"Documento Excel generado correctamente:\n{dlg.FileName}");
+            ExportUiHelper.ShowWorkOrderExportMenu(_btnGenerateExcel, this, _ctx.DocumentExportService, order, GetSelectedSignature());
         }
         catch (Exception ex)
         {
@@ -1196,20 +1175,16 @@ public sealed class WorkOrdersForm : UserControl
         }
     }
 
-    private static string SanitizeFileName(string raw)
-    {
-        foreach (char c in Path.GetInvalidFileNameChars())
-        {
-            raw = raw.Replace(c, '_');
-        }
-
-        return string.IsNullOrWhiteSpace(raw) ? "Proveedor" : raw.Trim();
-    }
-
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            if (_syncSubscribed)
+            {
+                _ctx.SyncHub.DataChanged -= OnSyncChanged;
+                _syncSubscribed = false;
+            }
+
             _toolTip.Dispose();
         }
 
