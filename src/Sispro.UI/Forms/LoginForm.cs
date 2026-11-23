@@ -33,49 +33,54 @@ public sealed class LoginForm : Form
         Font = CambiasoTheme.BodyFont;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        // Corporate Banner
+        // Corporate Banner with Petrol-Navy gradient & transparent gold Cambiaso logo
         Panel banner = new()
         {
             Dock = DockStyle.Top,
-            Height = 132,
-            BackColor = CambiasoTheme.Primary
+            Height = 142,
+            BackColor = CambiasoTheme.PrimaryDark
         };
-
-        Panel logoBadge = new()
+        CambiasoTheme.EnableDoubleBuffering(banner);
+        banner.Paint += (_, e) =>
         {
-            Size = new Size(256, 80),
-            Location = new Point(94, 14),
-            BackColor = Color.White,
-            Padding = new Padding(6)
+            using System.Drawing.Drawing2D.LinearGradientBrush grad = new(
+                banner.ClientRectangle,
+                CambiasoTheme.Primary,
+                CambiasoTheme.PrimaryDark,
+                System.Drawing.Drawing2D.LinearGradientMode.Vertical);
+            e.Graphics.FillRectangle(grad, banner.ClientRectangle);
+            using SolidBrush accentLine = new(CambiasoTheme.Accent);
+            e.Graphics.FillRectangle(accentLine, 0, banner.Height - 3, banner.Width, 3);
         };
 
         PictureBox picLogo = new()
         {
-            Dock = DockStyle.Fill,
+            Size = new Size(230, 96),
+            Location = new Point(107, 10),
             SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Color.White,
+            BackColor = Color.Transparent,
             Image = IconCatalog.GetCompanyLogo()
         };
-        logoBadge.Controls.Add(picLogo);
 
         Label lblSubtitle = new()
         {
             Text = "SISPRO · Gestión de Proveedores y Órdenes de Trabajo",
             Font = CambiasoTheme.SmallFont,
-            ForeColor = Color.FromArgb(228, 238, 206),
+            ForeColor = Color.FromArgb(208, 228, 242),
+            BackColor = Color.Transparent,
             TextAlign = ContentAlignment.MiddleCenter,
             Dock = DockStyle.Bottom,
-            Height = 28
+            Height = 30
         };
 
-        banner.Controls.Add(logoBadge);
+        banner.Controls.Add(picLogo);
         banner.Controls.Add(lblSubtitle);
 
         // Card container
         Panel card = new()
         {
-            Location = new Point(28, 148),
-            Size = new Size(388, 198),
+            Location = new Point(28, 156),
+            Size = new Size(388, 192),
             BackColor = CambiasoTheme.CardBackground,
             Padding = new Padding(18)
         };

@@ -23,8 +23,20 @@ internal static class Program
             }
         };
 
-        AppSettings settings = AppSettingsStore.Load();
-        SisproApplicationContext context = new(settings);
+        SisproApplicationContext context;
+        using (SplashForm splash = new())
+        {
+            splash.Show();
+            splash.SetProgress(25, "Cargando configuración corporativa...");
+            AppSettings settings = AppSettingsStore.Load();
+
+            splash.SetProgress(65, "Inicializando servicios y pool de base de datos SQLite...");
+            context = new SisproApplicationContext(settings);
+
+            splash.SetProgress(100, "Sistema listo.");
+            Thread.Sleep(250);
+            splash.Close();
+        }
 
         while (true)
         {

@@ -12,8 +12,8 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class PrintService(AppSettings settings)
 {
-    private static readonly Color CambiasoGreen = Color.FromArgb(58, 74, 28);
-    private static readonly Color SubtleFill = Color.FromArgb(240, 244, 232);
+    private static readonly Color CambiasoGreen = Color.FromArgb(14, 65, 99);
+    private static readonly Color SubtleFill = Color.FromArgb(235, 244, 250);
 
     public PrintDocument CreateWorkOrderPrintDocument(
         WorkOrder order,
@@ -58,11 +58,11 @@ public sealed class PrintService(AppSettings settings)
             using SolidBrush lightBrush = new(SubtleFill);
 
             // Header Logo + Box
-            string logoPath = Path.Combine(assetsDir, "logo_cambiaso.jpg");
+            string logoPath = Path.Combine(assetsDir, "logo_cambiaso.png");
             if (File.Exists(logoPath))
             {
                 using Image logo = Image.FromFile(logoPath);
-                g.DrawImage(logo, new Rectangle(bounds.Left, (int)y, 210, 66));
+                g.DrawImage(logo, new Rectangle(bounds.Left, (int)y, 175, 86));
             }
             else
             {

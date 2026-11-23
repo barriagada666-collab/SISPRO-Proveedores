@@ -12,9 +12,9 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class ExcelExportService(AppSettings settings)
 {
-    private static readonly XLColor CambiasoOlive = XLColor.FromHtml("#3A4A1C");
-    private static readonly XLColor CambiasoLight = XLColor.FromHtml("#EEF2E4");
-    private static readonly XLColor BorderGray = XLColor.FromHtml("#B8C0A8");
+    private static readonly XLColor CambiasoOlive = XLColor.FromHtml("#0E4163");
+    private static readonly XLColor CambiasoLight = XLColor.FromHtml("#EBF4FA");
+    private static readonly XLColor BorderGray = XLColor.FromHtml("#B8CEDE");
 
     public void ExportWorkOrderDocument(
         WorkOrder order,
@@ -38,12 +38,12 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.Column(6).Width = 16;
 
         // Corporate Logo
-        string logoPath = Path.Combine(assetsDir, "logo_cambiaso.jpg");
+        string logoPath = Path.Combine(assetsDir, "logo_cambiaso.png");
         if (File.Exists(logoPath))
         {
             ws.AddPicture(logoPath)
-              .MoveTo(ws.Cell(1, 1), 4, 4)
-              .WithSize(210, 68);
+              .MoveTo(ws.Cell(1, 1), 6, 4)
+              .WithSize(165, 84);
         }
         else
         {

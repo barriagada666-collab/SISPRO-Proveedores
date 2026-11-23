@@ -23,6 +23,18 @@ public sealed class ScreenshotCaptureTests
 
         TempTestDatabase.RunOnStaThread(() =>
         {
+            // 0. Corporate Splash Screen
+            using (SplashForm splash = new())
+            {
+                splash.StartPosition = FormStartPosition.Manual;
+                splash.Location = new Point(-2000, -2000);
+                splash.Show();
+                splash.SetProgress(68, "Inicializando servicios y pool de base de datos SQLite...");
+                Application.DoEvents();
+                SaveFormBitmap(splash, Path.Combine(outDir, "00_splash.png"));
+                splash.Hide();
+            }
+
             // 1. Login Form
             using (LoginForm login = new(temp.Context))
             {

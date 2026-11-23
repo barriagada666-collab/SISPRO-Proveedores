@@ -140,11 +140,11 @@ public sealed class MainForm : Form
         PictureBox picLogo = new()
         {
             Dock = DockStyle.Top,
-            Height = 64,
+            Height = 86,
             SizeMode = PictureBoxSizeMode.Zoom,
             Image = IconCatalog.GetCompanyLogo(),
             BackColor = Color.Transparent,
-            Margin = new Padding(0, 0, 0, 12)
+            Padding = new Padding(6, 4, 6, 4)
         };
 
         Label lblUserBadge = new()
@@ -153,7 +153,7 @@ public sealed class MainForm : Form
             Height = 48,
             Text = $"{_session.Usuario.NombreCompleto}\nPerfil: {_session.Usuario.Nivel}",
             Font = CambiasoTheme.SmallFont,
-            ForeColor = Color.FromArgb(215, 228, 190),
+            ForeColor = Color.FromArgb(200, 224, 240),
             TextAlign = ContentAlignment.MiddleCenter
         };
 

@@ -10,7 +10,7 @@ Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Prove
   - `Sispro.Core`: Entidades de dominio, DTOs, validadores (RUT chileno módulo 11, IVA 19%, correo, políticas de contraseña) y seguridad criptográfica.
   - `Sispro.Data`: Motor SQLite embebido (`Microsoft.Data.Sqlite` 10.0.15 + `SQLitePCLRaw.lib.e_sqlite3` 2.1.14 parcheado contra GHSA-2m69-gcr7-jv3q) con modo WAL, claves foráneas estrictas, índices y consultas 100% parametrizadas.
   - `Sispro.Services`: Servicios de negocio, exportación Excel sin dependencia de Office COM (`ClosedXML` 0.105.1), impresión nativa `.NET 10` (`PrintDocument`) y bitácora de auditoría.
-  - `Sispro.UI`: Interfaz corporativa Cambiaso con iconografía vectorial consistente en todos los botones, grillas con doble buffer y árbol jerárquico de 10 niveles con carga diferida.
+  - `Sispro.UI`: Interfaz corporativa División Mantención Industrial Cambiaso (paleta Azul Petrol `#0A263C` / `#0E4163`, Cyan `#0089B6` y Dorado `#C8A977`), logotipo dorado transparente oficial, pantalla de arranque (`SplashForm`), iconografía vectorial Lucide 24×24 en todos los botones, grillas con doble buffer y árbol jerárquico de 10 niveles con carga diferida.
   - `Sispro.Tests`: Suite automatizada xUnit (Unit, Integration, Functional, UI STA, Regression y Stress).
 
 ### Agregado

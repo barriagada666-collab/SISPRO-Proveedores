@@ -8,7 +8,7 @@
 [![C#](https://img.shields.io/badge/C%23-14-239120?style=for-the-badge&logo=csharp)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-3%20(WAL)-003B57?style=for-the-badge&logo=sqlite)](https://www.sqlite.org/)
 [![Tests](https://img.shields.io/badge/Tests-32%2F32%20Passing-2E7D32?style=for-the-badge)](docs/REPORTE_PRUEBAS.md)
-[![Warnings](https://img.shields.io/badge/Errors%20%7C%20Warnings-0%20%7C%200-3A4A1C?style=for-the-badge)](docs/GUIA_COMPILACION.md)
+[![Warnings](https://img.shields.io/badge/Errors%20%7C%20Warnings-0%20%7C%200-0E4163?style=for-the-badge)](docs/GUIA_COMPILACION.md)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
 *Modernización integral a **.NET 10** del sistema corporativo **SISPRO (Proveedores)** para la gestión de órdenes de trabajo externas, árbol jerárquico de activos industriales, aprobaciones de visto bueno (Supervisor/Jefatura), guías de despacho, facturas, mantenedores y seguridad RBAC.*
@@ -41,19 +41,23 @@
 
 ## Capturas de Pantalla
 
-### Acceso al Sistema y Panel de Control
-| Inicio de Sesión | Panel de Control (Dashboard) |
+### Arranque Corporativo, Acceso y Panel de Control
+| Pantalla de Arranque Corporativa | Acceso al Sistema |
 | :---: | :---: |
-| ![Acceso al Sistema](docs/screenshots/01_login.png) | ![Panel de Control](docs/screenshots/02_dashboard.png) |
+| ![Pantalla de Arranque](docs/screenshots/00_splash.png) | ![Acceso al Sistema](docs/screenshots/01_login.png) |
 
-### Módulos Operativos y Administrativos
-| Órdenes de Trabajo y Árbol de Activos | Facturas y Guías de Despacho |
+| Panel de Control (Dashboard) | Órdenes de Trabajo y Árbol de Activos |
 | :---: | :---: |
-| ![Órdenes de Trabajo](docs/screenshots/03_ordenes_trabajo.png) | ![Facturas y Guías](docs/screenshots/04_facturas_guias.png) |
+| ![Panel de Control](docs/screenshots/02_dashboard.png) | ![Órdenes de Trabajo](docs/screenshots/03_ordenes_trabajo.png) |
 
-| Mantenedores (Proveedores, Solicitantes y Activos) | Administración de Usuarios y Permisos RBAC |
+### Facturación, Mantenedores y Seguridad RBAC
+| Facturas y Guías de Despacho | Mantenedores (Proveedores, Solicitantes y Activos) |
 | :---: | :---: |
-| ![Mantenedores](docs/screenshots/05_mantenedores.png) | ![Usuarios y Permisos](docs/screenshots/06_usuarios_rbac.png) |
+| ![Facturas y Guías](docs/screenshots/04_facturas_guias.png) | ![Mantenedores](docs/screenshots/05_mantenedores.png) |
+
+| Administración de Usuarios y Permisos RBAC |
+| :---: |
+| ![Usuarios y Permisos](docs/screenshots/06_usuarios_rbac.png) |
 
 ---
 

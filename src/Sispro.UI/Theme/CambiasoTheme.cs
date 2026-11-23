@@ -12,23 +12,28 @@ public enum ButtonTone
     NavItem
 }
 
+/// <summary>
+/// Paleta corporativa oficial División Mantención Industrial — Cambiaso Hnos S.A.C. (2026):
+/// Azul Petrol Profundo (#0A263C), Azul Industrial (#0E4163), Cyan Corporativo (#0089B6) y Dorado Cambiaso (#C8A977).
+/// </summary>
 public static class CambiasoTheme
 {
-    public static readonly Color PrimaryDark = Color.FromArgb(42, 54, 20);
-    public static readonly Color Primary = Color.FromArgb(58, 74, 28);
-    public static readonly Color PrimaryHover = Color.FromArgb(74, 94, 36);
-    public static readonly Color Accent = Color.FromArgb(128, 154, 34);
-    public static readonly Color AccentHover = Color.FromArgb(110, 134, 26);
-    public static readonly Color Surface = Color.FromArgb(245, 247, 242);
+    public static readonly Color PrimaryDark = Color.FromArgb(10, 38, 60);      // #0A263C
+    public static readonly Color Primary = Color.FromArgb(14, 65, 99);          // #0E4163
+    public static readonly Color PrimaryHover = Color.FromArgb(20, 84, 126);    // #14547E
+    public static readonly Color Accent = Color.FromArgb(0, 137, 182);          // #0089B6
+    public static readonly Color AccentHover = Color.FromArgb(0, 114, 154);     // #00729A
+    public static readonly Color GoldAccent = Color.FromArgb(200, 169, 119);    // #C8A977
+    public static readonly Color Surface = Color.FromArgb(242, 246, 249);       // #F2F6F9
     public static readonly Color CardBackground = Color.White;
-    public static readonly Color BorderColor = Color.FromArgb(212, 220, 198);
-    public static readonly Color SubtleFill = Color.FromArgb(236, 241, 227);
-    public static readonly Color TextPrimary = Color.FromArgb(30, 36, 23);
-    public static readonly Color TextMuted = Color.FromArgb(90, 99, 80);
-    public static readonly Color Danger = Color.FromArgb(184, 50, 39);
-    public static readonly Color DangerHover = Color.FromArgb(156, 39, 30);
-    public static readonly Color Success = Color.FromArgb(46, 125, 50);
-    public static readonly Color Warning = Color.FromArgb(198, 122, 0);
+    public static readonly Color BorderColor = Color.FromArgb(197, 214, 226);   // #C5D6E2
+    public static readonly Color SubtleFill = Color.FromArgb(228, 239, 245);    // #E4EFF5
+    public static readonly Color TextPrimary = Color.FromArgb(13, 34, 53);      // #0D2235
+    public static readonly Color TextMuted = Color.FromArgb(74, 98, 120);       // #4A6278
+    public static readonly Color Danger = Color.FromArgb(192, 57, 43);          // #C0392B
+    public static readonly Color DangerHover = Color.FromArgb(162, 43, 31);     // #A22B1F
+    public static readonly Color Success = Color.FromArgb(21, 128, 61);         // #15803D
+    public static readonly Color Warning = Color.FromArgb(198, 122, 0);         // #C67A00
 
     public static readonly Font TitleFont = new("Segoe UI", 14.5f, FontStyle.Bold);
     public static readonly Font SectionFont = new("Segoe UI", 10f, FontStyle.Bold);
@@ -74,7 +79,7 @@ public static class CambiasoTheme
                 break;
             case ButtonTone.NavItem:
                 back = PrimaryDark;
-                fore = Color.FromArgb(236, 242, 226);
+                fore = Color.FromArgb(224, 236, 245);
                 hover = Primary;
                 border = PrimaryDark;
                 break;
@@ -113,7 +118,7 @@ public static class CambiasoTheme
         {
             if (tone == ButtonTone.NavItem)
             {
-                btn.ForeColor = btn.Enabled ? fore : Color.FromArgb(128, 140, 108);
+                btn.ForeColor = btn.Enabled ? fore : Color.FromArgb(100, 126, 148);
                 btn.Image = IconCatalog.Get(icon, btn.ForeColor, 16);
                 return;
             }
@@ -126,7 +131,7 @@ public static class CambiasoTheme
             }
             else
             {
-                btn.BackColor = Color.FromArgb(224, 228, 218);
+                btn.BackColor = Color.FromArgb(220, 229, 236);
                 btn.ForeColor = TextMuted;
                 btn.Image = IconCatalog.Get(icon, TextMuted, 16);
             }
@@ -177,7 +182,7 @@ public static class CambiasoTheme
             BackColor = CardBackground,
             ForeColor = TextPrimary,
             Font = BodyFont,
-            SelectionBackColor = Color.FromArgb(217, 230, 190),
+            SelectionBackColor = Color.FromArgb(207, 232, 245),
             SelectionForeColor = TextPrimary,
             Padding = new Padding(6, 2, 6, 2)
         };
@@ -186,7 +191,7 @@ public static class CambiasoTheme
         {
             BackColor = Surface,
             ForeColor = TextPrimary,
-            SelectionBackColor = Color.FromArgb(217, 230, 190),
+            SelectionBackColor = Color.FromArgb(207, 232, 245),
             SelectionForeColor = TextPrimary
         };
     }
