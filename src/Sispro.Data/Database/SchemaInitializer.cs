@@ -533,6 +533,34 @@ public static class SchemaInitializer
                 ExecuteNonQuery(conn, $"ALTER TABLE Activos ADD COLUMN {name} {ddl};");
             }
         }
+
+        // Normalización idempotente de variantes históricas de categoría sin alterar jerarquía ni niveles
+        ExecuteNonQuery(conn, "UPDATE Activos SET categoria = 'MAQUINA' WHERE categoria IN ('MÁQUINA', 'Máquina', 'Maquina', 'maquina');");
+        ExecuteNonQuery(conn, "UPDATE Activos SET categoria = 'EMPRESA' WHERE parent_id IS NULL AND categoria = '';");
+
+        bool hasParentIndex = false;
+        using (SqliteCommand idxCmd = conn.CreateCommand())
+        {
+            idxCmd.CommandText = "PRAGMA index_list('Activos');";
+            using SqliteDataReader idxRdr = idxCmd.ExecuteReader();
+            while (idxRdr.Read())
+            {
+                string idxName = idxRdr.GetString(1);
+                using SqliteCommand colCmd = conn.CreateCommand();
+                colCmd.CommandText = $"PRAGMA index_info('{idxName.Replace("'", "''")}');";
+                using SqliteDataReader colRdr = colCmd.ExecuteReader();
+                if (colRdr.Read() && string.Equals(colRdr.GetString(2), "parent_id", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasParentIndex = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasParentIndex)
+        {
+            ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Activos_ParentId ON Activos(parent_id);");
+        }
     }
 
     private static void MigrateUsuariosSchema(SqliteConnection conn)

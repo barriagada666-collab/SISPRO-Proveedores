@@ -140,7 +140,7 @@ public sealed class GroupsAndBatchOperationsTests
 
         // Create a provider & WorkOrder linked to tec1 as requester to verify historical preservation after group move
         int provId = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROVEEDOR HISTORIAL SPA" });
-        int plantId = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA TEST");
+        int plantId = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA TEST");
         Requester sol = temp.Context.Requesters.GetByAlias("tec1")!;
         int otId = temp.Context.WorkOrderService.Create(admin, new WorkOrder
         {

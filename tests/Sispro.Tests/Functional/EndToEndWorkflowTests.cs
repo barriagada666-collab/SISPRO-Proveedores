@@ -40,8 +40,8 @@ public sealed class EndToEndWorkflowTests
             Correo = "msilva@cambiaso.cl"
         });
 
-        int plantaId = ctx.MaintainerService.AddAssetChild(admin, 1, "PLANTA TÉ");
-        int maqId = ctx.MaintainerService.AddAssetChild(admin, plantaId, "MÁQUINA MAI 01");
+        int plantaId = ctx.AssetTreeService.AddChild(admin, 1, "PLANTA TÉ");
+        int maqId = ctx.AssetTreeService.AddChild(admin, plantaId, "MÁQUINA MAI 01");
 
         // 3. Create Supervisor & Jefatura users with distinct RBAC profiles
         ctx.UserManagementService.CreateUser(admin, new User

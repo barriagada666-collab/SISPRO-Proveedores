@@ -66,7 +66,7 @@ public sealed class PerformanceStressTests
         using TempTestDatabase temp = new();
         UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
         int prov = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "STRESS PROV" });
-        int planta = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA STRESS");
+        int planta = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA STRESS");
 
         for (int i = 1; i <= 250; i++)
         {

@@ -2,6 +2,28 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.1.0] — 2026-11-23
+
+### Correcciones Críticas, Menús Contextuales de Clic Derecho, CRUD del Árbol (Solo Administrador) y Botón Visible de OT Externa
+- **Reparación crítica de exportaciones (`ContextMenuHelper` + `ExportUiHelper`)**: eliminado `ObjectDisposedException` (`Cannot access a disposed object. Object name: 'System.Windows.Forms.ContextMenuStrip'`) ocurrido al hacer clic en opciones de exportación. En WinForms, `Closed` se dispara antes que `Click`, por lo que ahora tanto la acción elegida como el `Dispose()` del menú se difieren vía `BeginInvoke` y las imágenes cacheadas de `IconCatalog` se desvinculan (`ClearImages`) antes de liberar el menú.
+- **Menús de clic derecho en todo el sistema (`ContextMenuHelper.AttachToGrid` / `AttachToListBox` / `AssetTreePanel`)**:
+  - **Árbol de Activos**: menú completo para **Administradores** (*Agregar nodo hijo…*, *Editar nodo…*, *Mover a otro nodo padre…*, *Activar nodo*, *Desactivar nodo*, *Eliminar nodo…*, separador, *Expandir rama*, *Contraer rama*, *Copiar ruta*, *Actualizar árbol*) y modo lectura segura para demás perfiles (+ *Buscar OTs de este nodo* en Trabajos Externos).
+  - **Usuarios y Grupos (`UsersForm`)**: acciones contextuales en la grilla de usuarios (*Editar*, *Activar/Desactivar*, *Mover a grupo…*, *Cambiar perfil…*, *Restablecer contraseña…*, *Permisos…*, *Eliminar*) y en el panel de grupos (*Nuevo grupo…*, *Editar grupo…*, *Activar/Desactivar grupo*, *Historial de movimientos…*, *Eliminar grupo…*).
+  - **Trabajos Externos, Facturas, Mantenedores y Dashboard**: menús contextuales rápidos sobre grillas de OTs recientes, resultados de búsqueda, detalles de OT ingreso/impresión, facturas/ítems asociados, proveedores y solicitantes (incluyendo *Activar/Desactivar* directo).
+- **Módulo Especial `Editor de Árbol` (Exclusivo Administrador)**:
+  - Nuevo servicio `AssetTreeService` (verificación RBAC estricta en BD, auditoría de intentos `ACCESO_NO_AUTORIZADO` y publicación en `SisproSyncHub`), catálogo estructural normalizado `AssetNodeTypes` (`Empresa`, `Planta`, `Sección / Área`, `Máquina`, `Módulo`, `Componente`), diálogos `AssetNodeEditorDialog` y `AssetNodeMoveDialog`, vista dedicada `AssetTreeEditorView` con leyenda de íconos, contador de anomalías, botón **Normalizar Niveles** y **Exportar Rama** (Excel, PDF, Word, CSV).
+  - Bloqueo de eliminación para nodos con hijos o referencias en OTs/Mantención (`OrdenesTrabajo`, `Mant_OT`, `Mant_MP`, `Mant_TareasMP`, `Mant_Checklist`), prevención de ciclos al mover, límite estricto de 10 niveles y desactivación en cascada.
+  - Removidos métodos de escritura sobre el árbol desde `MaintainerService` y bloqueada edición visual del árbol para perfiles no administradores en `MaintainersForm`.
+- **Botón visible `+ Nueva OT Externa` y flujo rápido de exportación/impresión**:
+  - Nuevos botones dorados visibles (`ButtonTone.Gold`) **+ Nueva OT Externa** en la barra superior de `MainForm`, en el Dashboard y en la franja superior de `WorkOrdersForm`, junto con **Exportar / Imprimir OT** y **Guardar y Exportar** en el pie del ingreso de OT.
+- **Preservación de selecciones durante captura y sincronización**:
+  - Corregido el reinicio involuntario del árbol y de los combos de proveedor/solicitante ante eventos `SyncHub` o al limpiar formularios (`BindCombo`, `InvoicesForm.LoadProviders`, `ClearEntryForm`, `ReloadPreservingSelection`), eliminando la doble recarga en `MainForm.OnSyncDataChanged`.
+- **Corrección de jerarquía y búsquedas del árbol (`Activos`)**:
+  - `AssetTreeRepository.GetPathToRoot` ahora ordena por profundidad recursiva real (`depth DESC`) en lugar de `nivel ASC`, evitando rutas corruptas en nodos heredados con anomalías de nivel; `WorkOrdersForm.ExecuteSearch` filtra por la profundidad real del nodo seleccionado y `SchemaInitializer` normaliza variantes tipográficas históricas de categoría (`MAQUINA`, `EMPRESA`).
+- **Calidad, Empaquetado y Pruebas**:
+  - Catálogo `IconCatalog` ampliado a 51 íconos Lucide (`Copy`, `Expand`, `Collapse`).
+  - Debug y Release compilando con **0 errores, 0 advertencias y 0 vulnerabilidades NuGet**; suite ampliada a **59/59 pruebas xUnit aprobadas**; ciclo completo de actualización `v4.0.0 → v4.1.0` y desinstalación verificado en `C:\Temp`.
+
 ## [4.0.0] — 2026-11-23
 
 ### Reingeniería Integral, Gestión Dinámica de Usuarios y Grupos, Exportaciones Multiformato y Preparación para Producción

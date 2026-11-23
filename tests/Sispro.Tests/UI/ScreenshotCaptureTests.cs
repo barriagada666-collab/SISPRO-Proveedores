@@ -81,6 +81,15 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "06_usuarios_rbac.png"));
 
+            main.ShowTreeEditor();
+            Application.DoEvents();
+            SaveFormBitmap(main, Path.Combine(outDir, "09_editor_arbol.png"));
+
+            main.ShowWorkOrders();
+            main.BtnTopNewExternalOt.PerformClick();
+            Application.DoEvents();
+            SaveFormBitmap(main, Path.Combine(outDir, "10_ot_externa.png"));
+
             using (Sispro.UI.Dialogs.AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService))
             {
                 auditDlg.ShowInTaskbar = false;

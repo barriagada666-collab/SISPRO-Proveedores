@@ -53,7 +53,10 @@ public enum AppIcon
     Globe,
     Gauge,
     Download,
-    Calendar
+    Calendar,
+    Copy,
+    Expand,
+    Collapse
 }
 
 /// <summary>
@@ -426,6 +429,21 @@ public static class IconCatalog
                 g.DrawLine(pen, 16, 2, 16, 6);
                 g.DrawLine(pen, 8, 2, 8, 6);
                 g.DrawLine(pen, 3, 10, 21, 10);
+                break;
+
+            case AppIcon.Copy: // lucide: copy
+                DrawRoundedRect(g, pen, 8, 8, 13, 13, 2);
+                g.DrawLines(pen, [new PointF(5, 16), new PointF(4, 16), new PointF(3, 15), new PointF(3, 4), new PointF(4, 3), new PointF(15, 3), new PointF(16, 4), new PointF(16, 5)]);
+                break;
+
+            case AppIcon.Expand: // lucide: chevrons-up-down
+                g.DrawLines(pen, [new PointF(7, 15), new PointF(12, 20), new PointF(17, 15)]);
+                g.DrawLines(pen, [new PointF(7, 9), new PointF(12, 4), new PointF(17, 9)]);
+                break;
+
+            case AppIcon.Collapse: // lucide: chevrons-down-up
+                g.DrawLines(pen, [new PointF(7, 20), new PointF(12, 15), new PointF(17, 20)]);
+                g.DrawLines(pen, [new PointF(7, 4), new PointF(12, 9), new PointF(17, 4)]);
                 break;
         }
 

@@ -293,6 +293,37 @@ public sealed class UsersForm : UserControl
         _btnHistorialGrupos = CreateCompactButton("Historial Mov.", AppIcon.Audit, ButtonTone.Accent, "Consultar historial auditable de movimientos entre grupos");
         _btnHistorialGrupos.Click += (_, _) => OpenGroupHistoryDialog();
 
+        ContextMenuHelper.AttachToListBox(ListGroups, idx =>
+        {
+            GroupListEntry? entry = idx >= 0 && idx < ListGroups.Items.Count
+                ? ListGroups.Items[idx] as GroupListEntry
+                : null;
+
+            UserGroup? grp = entry?.GroupModel;
+            if (grp is null)
+            {
+                return
+                [
+                    ContextMenuHelper.Item("Nuevo grupo…", AppIcon.Add, CambiasoTheme.Primary, CreateGroup)
+                ];
+            }
+
+            return
+            [
+                ContextMenuHelper.Item("Nuevo grupo…", AppIcon.Add, CambiasoTheme.Primary, CreateGroup),
+                ContextMenuHelper.Item("Editar grupo…", AppIcon.Edit, CambiasoTheme.Accent, EditSelectedGroup, enabled: _btnEditarGrupo.Enabled),
+                ContextMenuHelper.Item(
+                    grp.Activo ? "Desactivar grupo" : "Activar grupo",
+                    grp.Activo ? AppIcon.Ban : AppIcon.Power,
+                    grp.Activo ? CambiasoTheme.Warning : CambiasoTheme.Success,
+                    ToggleSelectedGroupActive,
+                    enabled: _btnEstadoGrupo.Enabled),
+                ContextMenuHelper.Item("Historial de movimientos…", AppIcon.Audit, CambiasoTheme.Accent, OpenGroupHistoryDialog),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Eliminar grupo…", AppIcon.Delete, CambiasoTheme.Danger, DeleteSelectedGroup, enabled: _btnEliminarGrupo.Enabled)
+            ];
+        });
+
         // --- EDITOR BUTTONS ---
         BtnNuevo = CreateAutoButton("Nuevo", AppIcon.UserPlus, ButtonTone.Primary, "Registrar un nuevo usuario");
         BtnNuevo.Click += (_, _) => EnterCreateMode();
@@ -435,6 +466,27 @@ public sealed class UsersForm : UserControl
         GridUsers.CellFormatting += OnGridCellFormatting;
         GridUsers.MouseDown += OnGridMouseDown;
         GridUsers.MouseMove += OnGridMouseMove;
+        ContextMenuHelper.AttachToGrid(GridUsers, idx =>
+        {
+            if (idx < 0 || idx >= _users.Count)
+            {
+                return [];
+            }
+
+            User rowUser = _users[idx];
+            return
+            [
+                ContextMenuHelper.Item("Editar usuario", AppIcon.Edit, CambiasoTheme.Primary, EnterEditMode, enabled: BtnEditar.Enabled),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => RunBatchSetActive(activate: true), enabled: BtnActivar.Enabled && (!rowUser.Activo || _checkedUserIds.Count > 0)),
+                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => RunBatchSetActive(activate: false, isDeleteAction: false), enabled: BtnDesactivar.Enabled && (rowUser.Activo || _checkedUserIds.Count > 0)),
+                ContextMenuHelper.Item("Mover a grupo…", AppIcon.MoveRight, CambiasoTheme.Accent, OpenMoveUsersDialog, enabled: BtnMover.Enabled),
+                ContextMenuHelper.Item("Cambiar perfil…", AppIcon.Shield, CambiasoTheme.Primary, RunBatchChangeRole, enabled: BtnCambiarPerfil.Enabled),
+                ContextMenuHelper.Item("Restablecer contraseña…", AppIcon.Key, CambiasoTheme.Accent, OpenResetPasswordDialog, enabled: BtnCambiarPassword.Enabled),
+                ContextMenuHelper.Item("Permisos…", AppIcon.Template, CambiasoTheme.Primary, OpenPermissionsDialog, enabled: _btnPermisos.Enabled),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => RunBatchSetActive(activate: false, isDeleteAction: true), enabled: BtnEliminar.Enabled)
+            ];
+        });
 
         _grpListado = CambiasoTheme.CreateGroupBox("ÁREA 2 — LISTADO DE USUARIOS");
         _grpListado.Dock = DockStyle.Fill;

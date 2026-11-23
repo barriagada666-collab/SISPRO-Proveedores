@@ -219,6 +219,42 @@ public sealed class DocumentExportService(
         }).ToList()
     };
 
+    public static TabularReportData BuildAssetTreeReport(IReadOnlyList<AssetTreeExportRow> nodes, string? filterSummary = null) => new()
+    {
+        Title = "ESTRUCTURA JERÁRQUICA DEL ÁRBOL DE ACTIVOS",
+        SheetName = "Árbol de Activos",
+        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Subárbol completo (orden jerárquico)" : filterSummary,
+        Landscape = true,
+        Columns =
+        [
+            new("ID", ExportColumnKind.Integer, 0.55),
+            new("Nivel", ExportColumnKind.Integer, 0.55),
+            new("Tipo", ExportColumnKind.Text, 1.0),
+            new("Descripción", ExportColumnKind.Text, 2.2),
+            new("Ruta Jerárquica", ExportColumnKind.Text, 3.0),
+            new("Código SAP", ExportColumnKind.Text, 1.0),
+            new("Fabricante", ExportColumnKind.Text, 1.1),
+            new("Modelo", ExportColumnKind.Text, 1.0),
+            new("Estado", ExportColumnKind.Text, 0.7)
+        ],
+        Rows = nodes.Select(n =>
+        {
+            string prefix = n.Depth > 1 ? string.Concat(Enumerable.Repeat("· ", n.Depth - 1)) : string.Empty;
+            return new object?[]
+            {
+                n.IdActivo,
+                n.Depth,
+                AssetNodeTypes.GetLabel(n.Categoria),
+                $"{prefix}{n.Descripcion}",
+                n.Ruta,
+                n.CodSap,
+                n.Fabricante,
+                n.Modelo,
+                n.Activo ? "Activo" : "Inactivo"
+            };
+        }).ToList()
+    };
+
     public static TabularReportData BuildMaintenanceOrdersReport(IReadOnlyList<MantWorkOrderRow> rows, string? filterSummary = null) => new()
     {
         Title = "REPORTE DE OTs DE MANTENCIÓN INTERNA (BD MANTENCION)",

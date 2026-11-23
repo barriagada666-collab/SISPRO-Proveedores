@@ -75,6 +75,19 @@ public sealed class MaintainerService(
         syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "ELIMINAR_PROVEEDOR");
     }
 
+    public void SetProviderActive(UserSession session, int idProv, bool active)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor, active ? "Activar proveedor" : "Desactivar proveedor");
+        Provider existing = providers.GetById(idProv)
+            ?? throw new InvalidOperationException("El proveedor seleccionado no existe.");
+
+        existing.Activo = active;
+        providers.Update(existing);
+        string accion = active ? "ACTIVAR_PROVEEDOR" : "DESACTIVAR_PROVEEDOR";
+        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", accion, $"Proveedor '{existing.Nombre}' {(active ? "activado" : "desactivado")}.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, accion);
+    }
+
     // --- SOLICITANTES ---
     public IReadOnlyList<Requester> GetRequesters(bool includeInactive = false, string? search = null) =>
         requesters.GetAll(includeInactive, search);
@@ -138,7 +151,20 @@ public sealed class MaintainerService(
         syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "ELIMINAR_SOLICITANTE");
     }
 
-    // --- ÁRBOL DE ACTIVOS (10 NIVELES) ---
+    public void SetRequesterActive(UserSession session, int idSol, bool active)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor, active ? "Activar solicitante" : "Desactivar solicitante");
+        Requester existing = requesters.GetById(idSol)
+            ?? throw new InvalidOperationException("El solicitante seleccionado no existe.");
+
+        existing.Activo = active;
+        requesters.Update(existing);
+        string accion = active ? "ACTIVAR_SOLICITANTE" : "DESACTIVAR_SOLICITANTE";
+        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", accion, $"Solicitante '{existing.Alias}' {(active ? "activado" : "desactivado")}.");
+        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, accion);
+    }
+
+    // --- ÁRBOL DE ACTIVOS (CONSULTAS DE SOLO LECTURA; ESCRITURA EXCLUSIVA EN AssetTreeService) ---
     public IReadOnlyList<AssetNode> GetAssetChildren(int? parentId, bool includeInactive = false) =>
         assetTree.GetChildren(parentId, includeInactive);
 
@@ -147,93 +173,4 @@ public sealed class MaintainerService(
 
     public IReadOnlyList<AssetNode> GetAssetPath(int idActivo) =>
         assetTree.GetPathToRoot(idActivo);
-
-    public int AddAssetChild(UserSession session, int parentId, string descripcion)
-    {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Administrar árbol de activos");
-        if (string.IsNullOrWhiteSpace(descripcion))
-        {
-            throw new ArgumentException("Debe ingresar la descripción del activo.");
-        }
-
-        AssetNode parent = assetTree.GetById(parentId)
-            ?? throw new InvalidOperationException("El nodo padre seleccionado no existe.");
-
-        if (parent.Nivel >= 10)
-        {
-            throw new InvalidOperationException("El árbol de activos admite un máximo de 10 niveles de profundidad.");
-        }
-
-        AssetNode node = new()
-        {
-            ParentId = parent.IdActivo,
-            Nivel = parent.Nivel + 1,
-            Descripcion = descripcion.Trim(),
-            Activo = true
-        };
-
-        int id = assetTree.Create(node);
-        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_ACTIVO",
-            $"Nodo '{node.Descripcion}' (Nivel {node.Nivel}, ID {id}) creado bajo '{parent.Descripcion}'.");
-        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "CREAR_ACTIVO");
-        return id;
-    }
-
-    public void RenameAsset(UserSession session, int idActivo, string nuevaDescripcion, bool activo)
-    {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Modificar árbol de activos");
-        if (string.IsNullOrWhiteSpace(nuevaDescripcion))
-        {
-            throw new ArgumentException("La descripción no puede estar vacía.");
-        }
-
-        AssetNode node = assetTree.GetById(idActivo)
-            ?? throw new InvalidOperationException("El activo seleccionado no existe.");
-
-        if (node.IdActivo == 1 && !activo)
-        {
-            throw new InvalidOperationException("No es posible desactivar el nodo raíz de la empresa.");
-        }
-
-        node.Descripcion = nuevaDescripcion.Trim();
-        node.Activo = activo;
-        assetTree.Update(node);
-        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
-            $"Activo ID {idActivo} actualizado a '{node.Descripcion}' (Activo={activo}).");
-        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_ACTIVO");
-    }
-
-    public void UpdateAssetDetails(UserSession session, AssetNode updated)
-    {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Modificar ficha técnica de activo");
-        if (string.IsNullOrWhiteSpace(updated.Descripcion))
-        {
-            throw new ArgumentException("La descripción del activo no puede estar vacía.");
-        }
-
-        AssetNode existing = assetTree.GetById(updated.IdActivo)
-            ?? throw new InvalidOperationException("El activo seleccionado no existe.");
-
-        if (existing.IdActivo == 1 && !updated.Activo)
-        {
-            throw new InvalidOperationException("No es posible desactivar el nodo raíz de la empresa.");
-        }
-
-        existing.Descripcion = updated.Descripcion.Trim();
-        existing.Activo = updated.Activo;
-        existing.CodSap = updated.CodSap.Trim();
-        existing.Fabricante = updated.Fabricante.Trim();
-        existing.Modelo = updated.Modelo.Trim();
-        existing.Serie = updated.Serie.Trim();
-        existing.TipoEquipo = updated.TipoEquipo.Trim();
-        existing.EstadoOperativo = updated.EstadoOperativo.Trim();
-        existing.Categoria = updated.Categoria.Trim();
-        existing.Prioridad = Math.Clamp(updated.Prioridad, 0, 10);
-        existing.Observacion = updated.Observacion.Trim();
-
-        assetTree.Update(existing);
-        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
-            $"Ficha técnica de activo ID {existing.IdActivo} ('{existing.Descripcion}', SAP='{existing.CodSap}') actualizada.");
-        syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_ACTIVO");
-    }
 }

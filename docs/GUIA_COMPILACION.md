@@ -1,4 +1,4 @@
-# Guía de Compilación, Pruebas y Empaquetado — SISPRO v3.0
+# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.1.0
 
 ## 1. Requisitos del Entorno de Desarrollo
 
@@ -35,8 +35,8 @@ dotnet build SISPRO.sln -c Release --no-restore
 La suite `tests/Sispro.Tests` cubre 6 categorías:
 - **Unit**: RUT chileno, PBKDF2 + compatibilidad VB6, IVA 19%, jerarquía de permisos.
 - **Integration**: base SQLite real unificada (`7.284` OTs, `1.824` activos, `43.989` OTs mantención, `208.121` tareas MP, `2.462` insumos SAP), árbol 10 niveles y respaldos en caliente.
-- **Functional**: flujo E2E (OT → VBS/VBJ → Factura → Excel → Seguridad/Lockout/SQLi) + módulo CRUD `GESTIÓN DE USUARIOS` (eliminación lógica, cambio obligatorio en primer acceso, RBAC exclusivo Administrador y auditoría de código fuente).
-- **UI**: auditoría en hilo STA de todos los formularios (incluyendo `MaintenanceHubForm` y `UsersForm`), iconos Lucide en botones, ortografía y RBAC.
+- **Functional**: flujo E2E (OT → VBS/VBJ → Factura → Excel → Seguridad/Lockout/SQLi), módulo CRUD `GESTIÓN DE USUARIOS` y `GESTIÓN DE GRUPOS` (eliminación lógica, lotes, movimientos), administración del Árbol de Activos (`AssetTreeAdministrationTests`: CRUD, mover subárbol, protección ciclos/OTs, RBAC estricto y normalización) y exportaciones multiformato (`MultiFormatExportTests`: Excel, PDF, Word, CSV).
+- **UI**: auditoría en hilo STA de todos los formularios (incluyendo `MaintenanceHubForm`, `UsersForm` y `AssetTreeEditorView`) y diálogos (`AssetNodeEditorDialog`, `AssetNodeMoveDialog`, etc.), menús contextuales seguros (`ContextMenuHelperTests`), iconos Lucide en botones, ortografía y RBAC.
 - **Regression**: validación explícita contra todos los defectos históricos de VB6.
 - **Stress**: concurrencia multi-hilo (16 hilos), analítica Dashboard, consulta en `43.989` OTs internas, inserción masiva y exportación de `1.500` filas.
 
@@ -65,7 +65,7 @@ dotnet publish src\Sispro.UI\Sispro.UI.csproj -c Release -r win-x64 --self-conta
 ```
 
 El instalador resultante se genera en:
-- `installer\Output\SISPRO_Setup_v3.0.0_win-x64.exe`
+- `installer\Output\SISPRO_Setup_v4.1.0_win-x64.exe`
 - `installer\Output\checksums_sha256.txt`
 
 ---

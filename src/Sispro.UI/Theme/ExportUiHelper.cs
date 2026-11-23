@@ -19,23 +19,18 @@ public static class ExportUiHelper
         Func<TabularReportData> reportBuilder,
         Action<string>? onCompleted = null)
     {
-        ContextMenuStrip menu = new() { Font = CambiasoTheme.BodyFont };
-
-        ToolStripMenuItem mExcel = new("Exportar a Excel (.xlsx)", IconCatalog.Get(AppIcon.Excel, CambiasoTheme.Success, 16));
-        mExcel.Click += (_, _) => RunReportExport(owner, exportService, ExportFormat.Excel, baseFileName, reportBuilder, onCompleted);
-
-        ToolStripMenuItem mPdf = new("Exportar a PDF (.pdf)", IconCatalog.Get(AppIcon.FileText, CambiasoTheme.Danger, 16));
-        mPdf.Click += (_, _) => RunReportExport(owner, exportService, ExportFormat.Pdf, baseFileName, reportBuilder, onCompleted);
-
-        ToolStripMenuItem mWord = new("Exportar a Word (.docx)", IconCatalog.Get(AppIcon.FileText, CambiasoTheme.Primary, 16));
-        mWord.Click += (_, _) => RunReportExport(owner, exportService, ExportFormat.Word, baseFileName, reportBuilder, onCompleted);
-
-        ToolStripMenuItem mCsv = new("Exportar a CSV (.csv)", IconCatalog.Get(AppIcon.Download, CambiasoTheme.Accent, 16));
-        mCsv.Click += (_, _) => RunReportExport(owner, exportService, ExportFormat.Csv, baseFileName, reportBuilder, onCompleted);
-
-        menu.Items.AddRange([mExcel, mPdf, mWord, new ToolStripSeparator(), mCsv]);
-        menu.Closed += (_, _) => menu.Dispose();
-        menu.Show(anchor, new Point(0, anchor.Height));
+        ContextMenuHelper.ShowBelow(anchor,
+        [
+            ContextMenuHelper.Item("Exportar a Excel (.xlsx)", AppIcon.Excel, CambiasoTheme.Success,
+                () => RunReportExport(owner, exportService, ExportFormat.Excel, baseFileName, reportBuilder, onCompleted)),
+            ContextMenuHelper.Item("Exportar a PDF (.pdf)", AppIcon.FileText, CambiasoTheme.Danger,
+                () => RunReportExport(owner, exportService, ExportFormat.Pdf, baseFileName, reportBuilder, onCompleted)),
+            ContextMenuHelper.Item("Exportar a Word (.docx)", AppIcon.FileText, CambiasoTheme.Primary,
+                () => RunReportExport(owner, exportService, ExportFormat.Word, baseFileName, reportBuilder, onCompleted)),
+            ContextMenuHelper.Separator(),
+            ContextMenuHelper.Item("Exportar a CSV (.csv)", AppIcon.Download, CambiasoTheme.Accent,
+                () => RunReportExport(owner, exportService, ExportFormat.Csv, baseFileName, reportBuilder, onCompleted))
+        ]);
     }
 
     public static void ShowWorkOrderExportMenu(
@@ -45,24 +40,19 @@ public static class ExportUiHelper
         WorkOrder order,
         SignatureOption signatureOption)
     {
-        ContextMenuStrip menu = new() { Font = CambiasoTheme.BodyFont };
         string baseName = $"OT_{order.NumeroOt:D6}_Cambiaso";
-
-        ToolStripMenuItem mExcel = new("Orden en Excel (.xlsx)", IconCatalog.Get(AppIcon.Excel, CambiasoTheme.Success, 16));
-        mExcel.Click += (_, _) => RunWorkOrderExport(owner, exportService, order, ExportFormat.Excel, baseName, signatureOption);
-
-        ToolStripMenuItem mPdf = new("Orden en PDF (.pdf)", IconCatalog.Get(AppIcon.FileText, CambiasoTheme.Danger, 16));
-        mPdf.Click += (_, _) => RunWorkOrderExport(owner, exportService, order, ExportFormat.Pdf, baseName, signatureOption);
-
-        ToolStripMenuItem mWord = new("Orden en Word (.docx)", IconCatalog.Get(AppIcon.FileText, CambiasoTheme.Primary, 16));
-        mWord.Click += (_, _) => RunWorkOrderExport(owner, exportService, order, ExportFormat.Word, baseName, signatureOption);
-
-        ToolStripMenuItem mCsv = new("Ítems en CSV (.csv)", IconCatalog.Get(AppIcon.Download, CambiasoTheme.Accent, 16));
-        mCsv.Click += (_, _) => RunWorkOrderExport(owner, exportService, order, ExportFormat.Csv, baseName, signatureOption);
-
-        menu.Items.AddRange([mExcel, mPdf, mWord, new ToolStripSeparator(), mCsv]);
-        menu.Closed += (_, _) => menu.Dispose();
-        menu.Show(anchor, new Point(0, anchor.Height));
+        ContextMenuHelper.ShowBelow(anchor,
+        [
+            ContextMenuHelper.Item("Orden en Excel (.xlsx)", AppIcon.Excel, CambiasoTheme.Success,
+                () => RunWorkOrderExport(owner, exportService, order, ExportFormat.Excel, baseName, signatureOption)),
+            ContextMenuHelper.Item("Orden en PDF (.pdf)", AppIcon.FileText, CambiasoTheme.Danger,
+                () => RunWorkOrderExport(owner, exportService, order, ExportFormat.Pdf, baseName, signatureOption)),
+            ContextMenuHelper.Item("Orden en Word (.docx)", AppIcon.FileText, CambiasoTheme.Primary,
+                () => RunWorkOrderExport(owner, exportService, order, ExportFormat.Word, baseName, signatureOption)),
+            ContextMenuHelper.Separator(),
+            ContextMenuHelper.Item("Ítems en CSV (.csv)", AppIcon.Download, CambiasoTheme.Accent,
+                () => RunWorkOrderExport(owner, exportService, order, ExportFormat.Csv, baseName, signatureOption))
+        ]);
     }
 
     private static void RunReportExport(

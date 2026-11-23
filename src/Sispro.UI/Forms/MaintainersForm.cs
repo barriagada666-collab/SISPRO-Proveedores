@@ -18,6 +18,9 @@ public sealed class MaintainersForm : UserControl
     private readonly ToolTip _toolTip = new();
 
     public event EventHandler? CatalogsChanged;
+    public event EventHandler? OpenTreeEditorRequested;
+    private bool _syncSubscribed;
+    private bool _suppressTreeSync;
 
     // Proveedores controls
     private readonly TextBox _txtProvSearch;
@@ -56,9 +59,10 @@ public sealed class MaintainersForm : UserControl
     private readonly TextBox _txtAssetSerie;
     private readonly TextBox _txtAssetTipo;
     private readonly TextBox _txtAssetEstadoOp;
-    private readonly TextBox _txtAssetCategoria;
+    private readonly ComboBox _cmbAssetTipoNodo;
     private readonly TextBox _txtAssetObs;
     private readonly TextBox _txtNewChildName;
+    private readonly ComboBox _cmbNewChildTipo;
     private readonly CheckBox _chkAssetActive;
     private readonly Label _lblAssetMeta;
 
@@ -89,6 +93,24 @@ public sealed class MaintainersForm : UserControl
         _gridProviders = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridProviders);
         _gridProviders.CellClick += (_, _) => SelectProviderFromGrid();
+        ContextMenuHelper.AttachToGrid(_gridProviders, idx =>
+        {
+            if (idx < 0 || idx >= _providers.Count)
+            {
+                return [];
+            }
+
+            Provider prov = _providers[idx];
+            return
+            [
+                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectProviderFromGrid(); _txtProvNombre.Focus(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetProviderActiveFromGrid(idx, true), enabled: !prov.Activo),
+                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetProviderActiveFromGrid(idx, false), enabled: prov.Activo),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectProviderFromGrid(); DeleteProvider(); }),
+                ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearProviderForm(); _txtProvNombre.Focus(); })
+            ];
+        });
         BuildProvidersTab(tabProv);
 
         // --- TAB SOLICITANTES ---
@@ -105,24 +127,57 @@ public sealed class MaintainersForm : UserControl
         _gridRequesters = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridRequesters);
         _gridRequesters.CellClick += (_, _) => SelectRequesterFromGrid();
+        ContextMenuHelper.AttachToGrid(_gridRequesters, idx =>
+        {
+            if (idx < 0 || idx >= _requesters.Count)
+            {
+                return [];
+            }
+
+            Requester req = _requesters[idx];
+            return
+            [
+                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectRequesterFromGrid(); _txtSolAlias.Focus(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetRequesterActiveFromGrid(idx, true), enabled: !req.Activo),
+                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetRequesterActiveFromGrid(idx, false), enabled: req.Activo),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectRequesterFromGrid(); DeleteRequester(); }),
+                ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearRequesterForm(); _txtSolAlias.Focus(); })
+            ];
+        });
         BuildRequestersTab(tabSol);
 
         // --- TAB ÁRBOL DE ACTIVOS ---
         TabPage tabAssets = new("Árbol de Activos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
-        _assetTree = new AssetTreePanel(_ctx.MaintainerService) { Dock = DockStyle.Fill, IncludeInactive = true };
-        _txtAssetName = new TextBox { Dock = DockStyle.Fill };
-        _txtAssetSap = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Código SAP" };
-        _txtAssetFabricante = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Fabricante / Marca" };
-        _txtAssetModelo = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Modelo" };
-        _txtAssetSerie = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "N° Serie" };
-        _txtAssetTipo = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Tipo de equipo" };
-        _txtAssetEstadoOp = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Ej. Operativa / No Operativa" };
-        _txtAssetCategoria = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Categoría" };
-        _txtAssetObs = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Observaciones técnicas del activo..." };
-        _txtNewChildName = new TextBox { Width = 340, PlaceholderText = "Nombre del nuevo subnivel (planta, línea, máquina...)" };
-        _chkAssetActive = new CheckBox { Text = "Nodo activo en árbol", Checked = true, AutoSize = true };
+        _assetTree = new AssetTreePanel(_ctx.MaintainerService, _ctx.AssetTreeService, _session) { Dock = DockStyle.Fill, IncludeInactive = true };
+        bool canEditTree = _assetTree.CanEdit;
+        _txtAssetName = new TextBox { Dock = DockStyle.Fill, ReadOnly = !canEditTree };
+        _txtAssetSap = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Código SAP", ReadOnly = !canEditTree };
+        _txtAssetFabricante = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Fabricante / Marca", ReadOnly = !canEditTree };
+        _txtAssetModelo = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Modelo", ReadOnly = !canEditTree };
+        _txtAssetSerie = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "N° Serie", ReadOnly = !canEditTree };
+        _txtAssetTipo = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Tipo de equipo", ReadOnly = !canEditTree };
+        _txtAssetEstadoOp = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Ej. Operativa / No Operativa", ReadOnly = !canEditTree };
+        _cmbAssetTipoNodo = new ComboBox { Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = canEditTree };
+        foreach ((string code, string label) in AssetNodeTypes.All)
+        {
+            _cmbAssetTipoNodo.Items.Add(new AssetTypeItem(code, label));
+        }
+        _txtAssetObs = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Observaciones técnicas del activo...", ReadOnly = !canEditTree };
+        _txtNewChildName = new TextBox { Width = 280, PlaceholderText = "Nombre del nuevo subnivel...", Enabled = canEditTree };
+        _cmbNewChildTipo = new ComboBox { Width = 148, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = canEditTree };
+        foreach ((string code, string label) in AssetNodeTypes.All)
+        {
+            _cmbNewChildTipo.Items.Add(new AssetTypeItem(code, label));
+        }
+        _chkAssetActive = new CheckBox { Text = "Nodo activo en árbol", Checked = true, AutoSize = true, Enabled = canEditTree };
         _lblAssetMeta = new Label { AutoSize = true, Font = CambiasoTheme.LabelFont, ForeColor = CambiasoTheme.Primary };
         _assetTree.SelectedAssetChanged += (_, node) => BindSelectedAsset(node);
+        _assetTree.TreeModified += (_, _) =>
+        {
+            BindSelectedAsset(_assetTree.SelectedAsset);
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        };
         BuildAssetsTab(tabAssets);
 
         tabs.TabPages.AddRange([tabProv, tabSol, tabAssets]);
@@ -131,6 +186,27 @@ public sealed class MaintainersForm : UserControl
         LoadProviders();
         LoadRequesters();
         BindSelectedAsset(_assetTree.SelectedAsset);
+
+        _ctx.SyncHub.DataChanged += OnSyncChanged;
+        _syncSubscribed = true;
+    }
+
+    private void OnSyncChanged(object? sender, DataChangedEventArgs e)
+    {
+        if (IsDisposed || _suppressTreeSync || (e.Kind & Sispro.Core.Enums.DataChangeKind.Catalogs) == 0)
+        {
+            return;
+        }
+
+        void RefreshCatalogs()
+        {
+            if (IsDisposed) return;
+            _assetTree.ReloadPreservingSelection();
+            BindSelectedAsset(_assetTree.SelectedAsset);
+        }
+
+        if (InvokeRequired && IsHandleCreated) BeginInvoke(RefreshCatalogs);
+        else if (!InvokeRequired) RefreshCatalogs();
     }
 
     private void BuildProvidersTab(TabPage page)
@@ -219,6 +295,7 @@ public sealed class MaintainersForm : UserControl
 
     private void BuildAssetsTab(TabPage page)
     {
+        bool canEdit = _assetTree.CanEdit;
         SplitContainer split = new() { Size = new Size(1080, 680), Dock = DockStyle.Fill, Panel1MinSize = 320, SplitterDistance = 380 };
         split.Panel1.Controls.Add(_assetTree);
 
@@ -226,15 +303,15 @@ public sealed class MaintainersForm : UserControl
 
         GroupBox grpEdit = CambiasoTheme.CreateGroupBox("Ficha Técnica del Activo Seleccionado (BD Mantención)");
         grpEdit.Dock = DockStyle.Top;
-        grpEdit.Height = 328;
+        grpEdit.Height = 338;
 
         TableLayoutPanel techGrid = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 7, Padding = new Padding(6) };
-        techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
-        techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
+        techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         for (int r = 0; r < 6; r++) techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
 
         techGrid.Controls.Add(_lblAssetMeta, 0, 0);
         techGrid.SetColumnSpan(_lblAssetMeta, 2);
@@ -257,31 +334,53 @@ public sealed class MaintainersForm : UserControl
 
         techGrid.Controls.Add(CambiasoTheme.CreateFieldLabel("N° Serie:"), 0, 4);
         techGrid.Controls.Add(_txtAssetSerie, 1, 4);
-        techGrid.Controls.Add(CambiasoTheme.CreateFieldLabel("Tipo / Categoría:"), 2, 4);
+        techGrid.Controls.Add(CambiasoTheme.CreateFieldLabel("Tipo Eq. / Nodo:"), 2, 4);
         TableLayoutPanel tipoCat = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = Padding.Empty };
         tipoCat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         tipoCat.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         tipoCat.Controls.Add(_txtAssetTipo, 0, 0);
-        tipoCat.Controls.Add(_txtAssetCategoria, 1, 0);
+        tipoCat.Controls.Add(_cmbAssetTipoNodo, 1, 0);
         techGrid.Controls.Add(tipoCat, 3, 4);
 
         techGrid.Controls.Add(CambiasoTheme.CreateFieldLabel("Observación:"), 0, 5);
         techGrid.Controls.Add(_txtAssetObs, 1, 5);
         techGrid.SetColumnSpan(_txtAssetObs, 3);
 
+        FlowLayoutPanel editButtons = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 4, 0, 0) };
         Button btnUpdateNode = CambiasoTheme.CreateButton("Guardar Ficha del Activo", AppIcon.Cpu, ButtonTone.Primary, _toolTip, "Guardar descripción, estado y ficha técnica del activo", width: 204);
+        btnUpdateNode.Visible = canEdit;
         btnUpdateNode.Click += (_, _) => SaveSelectedAsset();
-        techGrid.Controls.Add(btnUpdateNode, 0, 6);
-        techGrid.SetColumnSpan(btnUpdateNode, 4);
+
+        Button btnOpenTreeEditor = CambiasoTheme.CreateButton("Abrir Editor de Árbol", AppIcon.Tree, ButtonTone.Accent, _toolTip, "Abrir módulo completo de edición estructural del árbol (solo Administrador)", width: 196);
+        btnOpenTreeEditor.Visible = canEdit;
+        btnOpenTreeEditor.Click += (_, _) => OpenTreeEditorRequested?.Invoke(this, EventArgs.Empty);
+
+        Label lblReadOnlyHint = new()
+        {
+            Text = "Solo lectura — la modificación del árbol es exclusiva del perfil Administrador.",
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.Warning,
+            AutoSize = true,
+            Visible = !canEdit,
+            Margin = new Padding(4, 8, 4, 0)
+        };
+
+        editButtons.Controls.AddRange([btnUpdateNode, btnOpenTreeEditor, lblReadOnlyHint]);
+        techGrid.Controls.Add(editButtons, 0, 6);
+        techGrid.SetColumnSpan(editButtons, 4);
         grpEdit.Controls.Add(techGrid);
 
         GroupBox grpAdd = CambiasoTheme.CreateGroupBox("Agregar Subnivel (Hijo)");
         grpAdd.Dock = DockStyle.Top;
-        grpAdd.Height = 114;
+        grpAdd.Height = 122;
+        grpAdd.Visible = canEdit;
         FlowLayoutPanel addFlow = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+        FlowLayoutPanel addInputs = new() { AutoSize = true, WrapContents = false };
+        addInputs.Controls.AddRange([Wrap("Nuevo Activo:", _txtNewChildName), Wrap("Tipo:", _cmbNewChildTipo)]);
         Button btnAddChild = CambiasoTheme.CreateButton("Agregar Hijo", AppIcon.Add, ButtonTone.Accent, _toolTip, "Crear un nuevo nodo hijo bajo el nodo seleccionado", width: 146);
+        btnAddChild.Visible = canEdit;
         btnAddChild.Click += (_, _) => AddAssetChild();
-        addFlow.Controls.AddRange([Wrap("Nuevo Activo:", _txtNewChildName), btnAddChild]);
+        addFlow.Controls.AddRange([addInputs, btnAddChild]);
         grpAdd.Controls.Add(addFlow);
 
         right.Controls.Add(grpAdd);
@@ -400,6 +499,30 @@ public sealed class MaintainersForm : UserControl
         }
     }
 
+    private void SetProviderActiveFromGrid(int idx, bool active)
+    {
+        if (idx < 0 || idx >= _providers.Count)
+        {
+            return;
+        }
+
+        try
+        {
+            Provider p = _providers[idx];
+            _ctx.MaintainerService.SetProviderActive(_session, p.IdProv, active);
+            LoadProviders();
+            if (_selectedProvId == p.IdProv)
+            {
+                _chkProvActivo.Checked = active;
+            }
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
     private void ClearProviderForm()
     {
         _selectedProvId = 0;
@@ -507,6 +630,30 @@ public sealed class MaintainersForm : UserControl
         }
     }
 
+    private void SetRequesterActiveFromGrid(int idx, bool active)
+    {
+        if (idx < 0 || idx >= _requesters.Count)
+        {
+            return;
+        }
+
+        try
+        {
+            Requester r = _requesters[idx];
+            _ctx.MaintainerService.SetRequesterActive(_session, r.IdSol, active);
+            LoadRequesters();
+            if (_selectedSolId == r.IdSol)
+            {
+                _chkSolActivo.Checked = active;
+            }
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
     private void ClearRequesterForm()
     {
         _selectedSolId = 0;
@@ -531,12 +678,15 @@ public sealed class MaintainersForm : UserControl
             _txtAssetSerie.Clear();
             _txtAssetTipo.Clear();
             _txtAssetEstadoOp.Clear();
-            _txtAssetCategoria.Clear();
+            SelectNodeTypeCombo(_cmbAssetTipoNodo, AssetNodeTypes.SinClasificar);
+            SelectNodeTypeCombo(_cmbNewChildTipo, AssetNodeTypes.SinClasificar);
             _txtAssetObs.Clear();
             return;
         }
 
-        _lblAssetMeta.Text = $"ID #{node.IdActivo}  ·  Nivel {node.Nivel} de 10";
+        IReadOnlyList<AssetNode> path = _ctx.MaintainerService.GetAssetPath(node.IdActivo);
+        int realDepth = Math.Max(1, path.Count);
+        _lblAssetMeta.Text = $"ID #{node.IdActivo}  ·  Nivel {realDepth} de 10";
         _txtAssetName.Text = node.Descripcion;
         _txtAssetSap.Text = node.CodSap;
         _txtAssetFabricante.Text = node.Fabricante;
@@ -544,9 +694,28 @@ public sealed class MaintainersForm : UserControl
         _txtAssetSerie.Text = node.Serie;
         _txtAssetTipo.Text = node.TipoEquipo;
         _txtAssetEstadoOp.Text = node.EstadoOperativo;
-        _txtAssetCategoria.Text = node.Categoria;
+        SelectNodeTypeCombo(_cmbAssetTipoNodo, AssetNodeTypes.Normalize(node.Categoria));
+        SelectNodeTypeCombo(_cmbNewChildTipo, AssetNodeTypes.SuggestChildType(node.Categoria));
         _txtAssetObs.Text = node.Observacion;
         _chkAssetActive.Checked = node.Activo;
+    }
+
+    private static void SelectNodeTypeCombo(ComboBox combo, string code)
+    {
+        string normalized = AssetNodeTypes.Normalize(code);
+        for (int i = 0; i < combo.Items.Count; i++)
+        {
+            if (combo.Items[i] is AssetTypeItem item && string.Equals(item.Code, normalized, StringComparison.Ordinal))
+            {
+                combo.SelectedIndex = i;
+                return;
+            }
+        }
+
+        if (combo.Items.Count > 0)
+        {
+            combo.SelectedIndex = combo.Items.Count - 1;
+        }
     }
 
     private void SaveSelectedAsset()
@@ -558,29 +727,40 @@ public sealed class MaintainersForm : UserControl
             return;
         }
 
+        _suppressTreeSync = true;
         try
         {
+            bool targetActive = _chkAssetActive.Checked;
+            bool activeChanged = node.Activo != targetActive;
+
             node.Descripcion = _txtAssetName.Text;
-            node.Activo = _chkAssetActive.Checked;
             node.CodSap = _txtAssetSap.Text;
             node.Fabricante = _txtAssetFabricante.Text;
             node.Modelo = _txtAssetModelo.Text;
             node.Serie = _txtAssetSerie.Text;
             node.TipoEquipo = _txtAssetTipo.Text;
             node.EstadoOperativo = _txtAssetEstadoOp.Text;
-            node.Categoria = _txtAssetCategoria.Text;
+            node.Categoria = (_cmbAssetTipoNodo.SelectedItem as AssetTypeItem)?.Code ?? AssetNodeTypes.SinClasificar;
             node.Observacion = _txtAssetObs.Text;
 
-            _ctx.MaintainerService.UpdateAssetDetails(_session, node);
+            _ctx.AssetTreeService.UpdateNode(_session, node);
+            if (activeChanged)
+            {
+                _ctx.AssetTreeService.SetActive(_session, node.IdActivo, targetActive, includeDescendants: true);
+            }
+
             CambiasoTheme.ShowInfo(this, "Ficha técnica del activo actualizada correctamente.");
-            IReadOnlyList<int> path = _assetTree.GetSelectedPathIds();
-            _assetTree.LoadRoot();
-            _assetTree.SelectNodeByPath(path);
+            _assetTree.ReloadPreservingSelection();
+            BindSelectedAsset(_assetTree.SelectedAsset);
             CatalogsChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+        finally
+        {
+            _suppressTreeSync = false;
         }
     }
 
@@ -593,9 +773,11 @@ public sealed class MaintainersForm : UserControl
             return;
         }
 
+        _suppressTreeSync = true;
         try
         {
-            int newId = _ctx.MaintainerService.AddAssetChild(_session, node.IdActivo, _txtNewChildName.Text);
+            string childType = (_cmbNewChildTipo.SelectedItem as AssetTypeItem)?.Code ?? AssetNodeTypes.SinClasificar;
+            int newId = _ctx.AssetTreeService.AddChild(_session, node.IdActivo, _txtNewChildName.Text, childType);
             _txtNewChildName.Clear();
             _assetTree.RefreshSelectedNode();
             CambiasoTheme.ShowInfo(this, $"Subnivel agregado correctamente (ID #{newId}).");
@@ -604,6 +786,10 @@ public sealed class MaintainersForm : UserControl
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+        finally
+        {
+            _suppressTreeSync = false;
         }
     }
 
@@ -621,9 +807,20 @@ public sealed class MaintainersForm : UserControl
     {
         if (disposing)
         {
+            if (_syncSubscribed)
+            {
+                _ctx.SyncHub.DataChanged -= OnSyncChanged;
+                _syncSubscribed = false;
+            }
+
             _toolTip.Dispose();
         }
 
         base.Dispose(disposing);
+    }
+
+    private sealed record AssetTypeItem(string Code, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

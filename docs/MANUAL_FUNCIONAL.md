@@ -1,4 +1,4 @@
-# Manual Funcional de Usuario — SISPRO v3.0
+# Manual Funcional de Usuario — SISPRO v4.1.0
 
 ## 1. Acceso al Sistema
 
@@ -24,6 +24,11 @@ Al iniciar sesión se despliega el **Panel de Control** con cinco indicadores KP
 ## 3. Módulo Trabajos Externos — Órdenes de Trabajo (`M1`)
 
 En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** con búsqueda rápida por nombre o ID y ruta completa (*breadcrumb*) en la parte inferior.
+
+### 3.0 Barra Rápida "Nueva OT Externa" y Menús de Clic Derecho
+- Tanto en la barra superior principal como en el Dashboard y en la franja superior de **Trabajos Externos** dispone del botón dorado **+ Nueva OT Externa**, que posiciona inmediatamente el módulo en modo de creación conservando el activo seleccionado y los catálogos sin interrupciones de sincronización.
+- En el pie del ingreso dispone de **Guardar y Exportar** (guarda la nueva OT y abre al instante las opciones de exportación oficial) además del botón **Exportar / Imprimir OT** en la barra superior del módulo.
+- Haciendo **clic derecho** sobre el árbol o cualquier grilla (resultados, ítems, facturas, proveedores, solicitantes, usuarios y grupos) se accede al menú contextual de edición, apertura, exportación o eliminación rápida.
 
 ### 3.1 Pestaña Ingreso / Edición de OT (`tab_0_1`)
 - **Crear nueva OT**:
@@ -71,9 +76,25 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
 
 ## 5. Módulo Mantenedores (`M3`)
 
-- **Proveedores**: alta, edición, búsqueda instantánea, exportación Excel y desactivación segura (si tiene OTs históricas, se marca inactivo sin romper integridad referencial).
-- **Solicitantes**: gestión completa del catálogo de solicitantes de mantención.
-- **Árbol de Activos**: edición de nombre, estado y **Ficha Técnica completa** (`Código SAP`, `Fabricante`, `Modelo`, `Serie`, `Tipo Equipo`, `Estado Operativo`, `Categoría`, `Observación`), más creación de subniveles hasta **10 niveles de profundidad**.
+- **Proveedores y Solicitantes**: alta, edición, activación/desactivación rápida mediante menú de clic derecho, búsqueda instantánea, exportación multiformato (Excel, PDF, Word, CSV) y eliminación lógica automática si existen OTs históricas.
+- **Árbol de Activos (Solo Lectura / Edición Administrador)**: visualización del árbol industrial de 10 niveles con íconos por tipo estructural (`Empresa`, `Planta`, `Sección / Área`, `Máquina`, `Módulo`, `Componente`). Solo usuarios con perfil **Administrador** pueden modificar la ficha técnica, crear hijos o acceder al módulo dedicado **Editor de Árbol**.
+
+---
+
+## 5.1 Módulo Especial Editor del Árbol de Activos (Exclusivo Administrador)
+
+Accesible desde **Editor de Árbol** en el menú lateral izquierdo o mediante **Abrir Editor de Árbol** en Mantenedores (visible y habilitado únicamente para cuentas con perfil **Administrador**, revalidado en base de datos):
+- **Menú de Clic Derecho en el Árbol**:
+  - *Administradores*: **Agregar nodo hijo…**, **Editar nodo…**, **Mover a otro nodo padre…**, **Activar nodo**, **Desactivar nodo**, **Eliminar nodo…**, separador, **Expandir rama**, **Contraer rama**, **Copiar ruta** y **Actualizar árbol**.
+  - *Operadores y otros perfiles*: vista de solo lectura con **Expandir rama**, **Contraer rama**, **Copiar ruta**, **Buscar OTs de este nodo** (en Trabajos Externos) y **Actualizar árbol**.
+- **Reglas de Integridad Estructural**:
+  - Profundidad máxima estricta de **10 niveles** (validada tanto al crear como al mover subárboles).
+  - Prevención automática de nombres duplicados entre nodos hermanos y prevención de ciclos al mover nodos.
+  - Desactivación en cascada de subnodos, bloqueo de reactivación si el nodo padre está inactivo y protección absoluta del nodo raíz de la empresa.
+  - Eliminación física bloqueada si el nodo posee subnodos o referencias históricas en OTs/Mantención.
+- **Normalización y Exportación**:
+  - Botón **Normalizar Niveles** recalcula la columna `nivel` según la profundidad jerárquica real desde la raíz.
+  - Botón **Exportar Rama** exporta el subárbol seleccionado en Excel (`.xlsx`), PDF (`.pdf`), Word (`.docx`) o CSV (`.csv`).
 
 ---
 

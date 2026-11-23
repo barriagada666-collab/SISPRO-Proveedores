@@ -130,4 +130,30 @@ public sealed class CoreUnitTests
         Assert.NotNull(DomainValidator.ValidatePasswordPolicy("abcdef", "abcdeg"));
         Assert.Null(DomainValidator.ValidatePasswordPolicy("Segura123", "Segura123"));
     }
+
+    [Theory]
+    [InlineData("Máquina", AssetNodeTypes.Maquina)]
+    [InlineData("MÁQUINA", AssetNodeTypes.Maquina)]
+    [InlineData("área", AssetNodeTypes.Seccion)]
+    [InlineData("sección", AssetNodeTypes.Seccion)]
+    [InlineData("", AssetNodeTypes.SinClasificar)]
+    [InlineData("   ", AssetNodeTypes.SinClasificar)]
+    [InlineData("Planta", AssetNodeTypes.Planta)]
+    [InlineData("Subestación Eléctrica", "SUBESTACION ELECTRICA")]
+    public void AssetNodeTypes_NormalizesVariantsWithoutDataLoss(string input, string expected)
+    {
+        Assert.Equal(expected, AssetNodeTypes.Normalize(input));
+    }
+
+    [Fact]
+    public void AssetNodeTypes_SuggestsExpectedChildLevel()
+    {
+        Assert.Equal(AssetNodeTypes.Planta, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Empresa));
+        Assert.Equal(AssetNodeTypes.Seccion, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Planta));
+        Assert.Equal(AssetNodeTypes.Maquina, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Seccion));
+        Assert.Equal(AssetNodeTypes.Modulo, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Maquina));
+        Assert.Equal(AssetNodeTypes.Componente, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Modulo));
+        Assert.Equal(AssetNodeTypes.Componente, AssetNodeTypes.SuggestChildType(AssetNodeTypes.Componente));
+        Assert.Equal(AssetNodeTypes.SinClasificar, AssetNodeTypes.SuggestChildType(""));
+    }
 }

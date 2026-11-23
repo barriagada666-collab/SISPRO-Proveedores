@@ -69,7 +69,18 @@ public interface IAssetTreeRepository
     int Create(AssetNode node);
     void Update(AssetNode node);
     void SetActive(int idActivo, bool active);
+    int SetActiveMany(IReadOnlyCollection<int> ids, bool active);
     int GetTotalCount();
+    int CountChildren(int idActivo, bool includeInactive = true);
+    int CountWorkOrderReferences(int idActivo);
+    IReadOnlyList<int> GetDescendantIds(int idActivo);
+    int GetSubtreeHeight(int idActivo);
+    int GetDepth(int idActivo);
+    void Delete(int idActivo);
+    void MoveSubtree(int idActivo, int newParentId, int newLevel);
+    int CountLevelAnomalies();
+    int NormalizeLevels();
+    IReadOnlyList<AssetTreeExportRow> GetSubtreeRows(int rootId, bool includeInactive = true);
 }
 
 public interface IWorkOrderRepository

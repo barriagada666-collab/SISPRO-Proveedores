@@ -192,6 +192,31 @@ public sealed class BatchOperationResult
 
 public sealed class ConcurrencyConflictException(string message) : InvalidOperationException(message);
 
+public sealed class AssetNodeInfo
+{
+    public required AssetNode Node { get; init; }
+    public int Depth { get; init; }
+    public int ActiveChildren { get; init; }
+    public int TotalChildren { get; init; }
+    public int WorkOrderReferences { get; init; }
+    public string Path { get; init; } = string.Empty;
+}
+
+public sealed class AssetTreeExportRow
+{
+    public int IdActivo { get; init; }
+    public int? ParentId { get; init; }
+    public int Depth { get; init; }
+    public string Categoria { get; init; } = string.Empty;
+    public string Descripcion { get; init; } = string.Empty;
+    public string Ruta { get; init; } = string.Empty;
+    public string CodSap { get; init; } = string.Empty;
+    public string Fabricante { get; init; } = string.Empty;
+    public string Modelo { get; init; } = string.Empty;
+    public string Serie { get; init; } = string.Empty;
+    public bool Activo { get; init; }
+}
+
 public sealed class AppSettings
 {
     public string DatabasePath { get; set; } = string.Empty;

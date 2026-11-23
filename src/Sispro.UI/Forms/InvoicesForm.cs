@@ -111,6 +111,10 @@ public sealed class InvoicesForm : UserControl
 
         _gridAssociated = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridAssociated);
+        ContextMenuHelper.AttachToGrid(_gridAssociated, idx =>
+            idx >= 0 && idx < _associatedItems.Count
+                ? [ContextMenuHelper.Item("Quitar ítem", AppIcon.Remove, CambiasoTheme.Danger, RemoveAssociatedItem)]
+                : []);
 
         _btnSaveInvoice = CambiasoTheme.CreateButton("Localizar / Guardar", AppIcon.Save, ButtonTone.Primary, _toolTip, "Registrar documento y asociar OTs seleccionadas", width: 168);
         _btnSaveInvoice.Click += (_, _) => SaveInvoice();
@@ -154,6 +158,14 @@ public sealed class InvoicesForm : UserControl
         _gridInvoices = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridInvoices);
         _gridInvoices.SelectionChanged += (_, _) => LoadSelectedInvoiceItems();
+        ContextMenuHelper.AttachToGrid(_gridInvoices, idx =>
+            idx >= 0 && idx < _invoiceRows.Count
+                ?
+                [
+                    ContextMenuHelper.Item("Ver ítems", AppIcon.Preview, CambiasoTheme.Primary, LoadSelectedInvoiceItems),
+                    ContextMenuHelper.Item("Eliminar factura", AppIcon.Delete, CambiasoTheme.Danger, DeleteSelectedInvoice, enabled: _btnDeleteInvoice.Enabled)
+                ]
+                : []);
 
         _gridInvoiceItems = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridInvoiceItems);
@@ -354,10 +366,21 @@ public sealed class InvoicesForm : UserControl
         IReadOnlyList<Provider> providers = _ctx.MaintainerService.GetProviders();
         foreach (ComboBox cmb in new[] { _cmbProvider, _cmbSearchProv })
         {
+            object? previousValue = cmb.SelectedValue;
             cmb.DataSource = null;
             cmb.DisplayMember = nameof(Provider.Nombre);
             cmb.ValueMember = nameof(Provider.IdProv);
             cmb.DataSource = providers.ToList();
+
+            if (previousValue is not null)
+            {
+                cmb.SelectedValue = previousValue;
+            }
+
+            if (cmb.SelectedIndex < 0 && cmb.Items.Count > 0)
+            {
+                cmb.SelectedIndex = 0;
+            }
         }
     }
 

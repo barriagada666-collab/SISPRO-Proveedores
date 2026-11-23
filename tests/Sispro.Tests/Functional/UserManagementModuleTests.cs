@@ -197,7 +197,7 @@ public sealed class UserManagementModuleTests
 
         // Registrar operación histórica (VBJ en una OT) antes de eliminación lógica
         int provId = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV HISTORIAL" });
-        int plantaId = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA HISTORIAL");
+        int plantaId = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA HISTORIAL");
         WorkOrder historicalOt = new()
         {
             NumeroOt = 9501,

@@ -58,6 +58,8 @@ public sealed class WinFormsUiAuditTests
 
             main.ShowDashboard();
             AssertAllButtonsValid(main, "MainForm.Dashboard");
+            Assert.True(main.NavTreeEditor.Enabled);
+            Assert.True(main.BtnTopNewExternalOt.Enabled);
 
             main.ShowWorkOrders(14752);
             AssertAllButtonsValid(main, "MainForm.WorkOrders");
@@ -71,6 +73,10 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.Maintainers");
             AssertNoForbiddenTypos(main, "MainForm.Maintainers");
 
+            main.ShowTreeEditor();
+            AssertAllButtonsValid(main, "MainForm.TreeEditor");
+            AssertNoForbiddenTypos(main, "MainForm.TreeEditor");
+
             main.ShowMaintenanceHub();
             AssertAllButtonsValid(main, "MainForm.MaintenanceHub");
             AssertNoForbiddenTypos(main, "MainForm.MaintenanceHub");
@@ -78,6 +84,10 @@ public sealed class WinFormsUiAuditTests
             main.ShowUsers();
             AssertAllButtonsValid(main, "MainForm.Users");
             AssertNoForbiddenTypos(main, "MainForm.Users");
+
+            using WorkOrdersForm directWorkOrders = new(temp.Context, admin);
+            Assert.Equal("Nueva OT Externa", directWorkOrders.BtnNewExternalOt.Text);
+            AssertAllButtonsValid(directWorkOrders, "WorkOrdersForm.Direct");
 
             using UsersForm directUsers = new(temp.Context, admin);
             AssertAllButtonsValid(directUsers, "UsersForm.Direct");
@@ -128,6 +138,16 @@ public sealed class WinFormsUiAuditTests
 
             using BatchConfirmDialog batchDlg = new("Desactivar Usuarios", "Confirmación", 1, [admin.Usuario], [], requireRoleSelection: true, isDestructive: true);
             AssertAllButtonsValid(batchDlg, "BatchConfirmDialog");
+
+            AssetNode rootNode = temp.Context.AssetTree.GetById(1)!;
+            IReadOnlyList<AssetNode> rootChildren = temp.Context.MaintainerService.GetAssetChildren(1, includeInactive: false);
+            AssetNode childNode = rootChildren[0];
+
+            using AssetNodeEditorDialog assetEditDlg = new(null, rootNode, rootNode.Descripcion);
+            AssertAllButtonsValid(assetEditDlg, "AssetNodeEditorDialog");
+
+            using AssetNodeMoveDialog assetMoveDlg = new(temp.Context.MaintainerService, childNode, $"{rootNode.Descripcion} \\ {childNode.Descripcion}");
+            AssertAllButtonsValid(assetMoveDlg, "AssetNodeMoveDialog");
         });
     }
 
@@ -156,11 +176,13 @@ public sealed class WinFormsUiAuditTests
             Assert.True(main.NavWorkOrders.Enabled);
             Assert.False(main.NavInvoices.Enabled);
             Assert.False(main.NavMaintainers.Enabled);
+            Assert.False(main.NavTreeEditor.Enabled);
             Assert.False(main.NavUsers.Enabled);
             Assert.False(main.NavAudit.Enabled);
 
-            // Intento directo de instanciar el formulario de Gestión de Usuarios por un no-administrador debe bloquearse
+            // Intento directo de instanciar módulos exclusivos de Administrador debe bloquearse
             Assert.Throws<UnauthorizedAccessException>(() => new UsersForm(temp.Context, opSession));
+            Assert.Throws<UnauthorizedAccessException>(() => new AssetTreeEditorView(temp.Context, opSession));
         });
 
         Assert.Contains(temp.Context.Audit.GetRecent(20), e => e.Accion == "ACCESO_NO_AUTORIZADO" && e.Usuario == "operador1");

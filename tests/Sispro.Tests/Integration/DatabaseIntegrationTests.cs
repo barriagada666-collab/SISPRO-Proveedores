@@ -82,7 +82,7 @@ public sealed class DatabaseIntegrationTests
         int parentId = 1;
         for (int level = 2; level <= 10; level++)
         {
-            parentId = temp.Context.MaintainerService.AddAssetChild(session, parentId, $"Nivel {level} Test");
+            parentId = temp.Context.AssetTreeService.AddChild(session, parentId, $"Nivel {level} Test");
         }
 
         IReadOnlyList<AssetNode> path = temp.Context.MaintainerService.GetAssetPath(parentId);
@@ -91,7 +91,7 @@ public sealed class DatabaseIntegrationTests
         Assert.Equal(10, path[^1].Nivel);
 
         Assert.Throws<InvalidOperationException>(() =>
-            temp.Context.MaintainerService.AddAssetChild(session, parentId, "Nivel 11 Inválido"));
+            temp.Context.AssetTreeService.AddChild(session, parentId, "Nivel 11 Inválido"));
     }
 
     [Fact]

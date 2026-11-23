@@ -51,7 +51,7 @@ public sealed class LegacyBugRegressionTests
         using TempTestDatabase temp = new();
         UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
         int prov = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV FECHA" });
-        int planta = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA A");
+        int planta = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA A");
 
         WorkOrder ot = new()
         {
@@ -86,7 +86,7 @@ public sealed class LegacyBugRegressionTests
         using TempTestDatabase temp = new();
         UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
         int prov = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV DUP" });
-        int planta = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA B");
+        int planta = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA B");
 
         WorkOrder ot = new()
         {

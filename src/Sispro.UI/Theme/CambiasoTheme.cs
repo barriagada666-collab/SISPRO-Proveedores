@@ -9,7 +9,8 @@ public enum ButtonTone
     Accent,
     Secondary,
     Danger,
-    NavItem
+    NavItem,
+    Gold
 }
 
 /// <summary>
@@ -82,6 +83,12 @@ public static class CambiasoTheme
                 fore = Color.FromArgb(224, 236, 245);
                 hover = Primary;
                 border = PrimaryDark;
+                break;
+            case ButtonTone.Gold:
+                back = GoldAccent;
+                fore = PrimaryDark;
+                hover = Color.FromArgb(182, 150, 98);
+                border = Color.FromArgb(160, 130, 80);
                 break;
             default:
                 back = Color.White;

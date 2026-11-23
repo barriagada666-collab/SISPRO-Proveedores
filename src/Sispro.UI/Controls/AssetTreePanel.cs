@@ -1,20 +1,26 @@
 using System.Drawing;
+using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Services;
+using Sispro.UI.Dialogs;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Controls;
 
 /// <summary>
-/// Árbol jerárquico de activos de 10 niveles con carga diferida (lazy loading), búsqueda rápida
-/// y selección programática de rutas de OT sin parpadeos.
+/// Árbol jerárquico de activos de 10 niveles con carga diferida (lazy loading), búsqueda rápida,
+/// íconos vectoriales por tipo de nodo, selección programática sin parpadeos y menú contextual
+/// completo con operaciones CRUD exclusivas para perfil Administrador.
 /// </summary>
 public sealed class AssetTreePanel : UserControl
 {
     private const string DummyKey = "__DUMMY__";
 
     private readonly MaintainerService _maintainerService;
+    private readonly AssetTreeService? _treeAdmin;
+    private readonly UserSession? _session;
     private readonly ToolTip _toolTip = new();
+    private readonly ImageList _nodeIcons;
     private readonly TextBox _txtSearch;
     private readonly Button _btnSearch;
     private readonly Button _btnReset;
@@ -22,7 +28,13 @@ public sealed class AssetTreePanel : UserControl
     private readonly Label _lblBreadcrumb;
     private bool _includeInactive;
 
+    public bool CanEdit { get; }
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public Func<AssetNode, IEnumerable<ToolStripItem>>? ExtraMenuItemsProvider { get; set; }
+
     public event EventHandler<AssetNode?>? SelectedAssetChanged;
+    public event EventHandler<int?>? TreeModified;
 
     public AssetNode? SelectedAsset => _treeView.SelectedNode?.Tag as AssetNode;
 
@@ -34,19 +46,32 @@ public sealed class AssetTreePanel : UserControl
         get => _includeInactive;
         set
         {
+            if (_includeInactive == value)
+            {
+                return;
+            }
+
             _includeInactive = value;
             LoadRoot();
         }
     }
 
-    public AssetTreePanel(MaintainerService maintainerService)
+    public AssetTreePanel(
+        MaintainerService maintainerService,
+        AssetTreeService? treeAdmin = null,
+        UserSession? session = null)
     {
         _maintainerService = maintainerService;
-        CambiasoTheme.EnableDoubleBuffering(this);
+        _treeAdmin = treeAdmin;
+        _session = session;
+        CanEdit = treeAdmin is not null && treeAdmin.IsAdministrator(session);
 
+        CambiasoTheme.EnableDoubleBuffering(this);
         BackColor = CambiasoTheme.CardBackground;
         Padding = new Padding(8);
         MinimumSize = new Size(250, 300);
+
+        _nodeIcons = BuildNodeImageList();
 
         Label lblHeader = new()
         {
@@ -109,10 +134,13 @@ public sealed class AssetTreePanel : UserControl
             ShowLines = true,
             ShowPlusMinus = true,
             ShowRootLines = true,
+            ShowNodeToolTips = true,
+            ImageList = _nodeIcons,
             ItemHeight = 22
         };
         _treeView.BeforeExpand += OnBeforeExpand;
         _treeView.AfterSelect += OnAfterSelect;
+        _treeView.NodeMouseClick += OnTreeNodeMouseClick;
 
         _lblBreadcrumb = new Label
         {
@@ -160,6 +188,17 @@ public sealed class AssetTreePanel : UserControl
         }
     }
 
+    public void ReloadPreservingSelection()
+    {
+        IReadOnlyList<int> pathIds = SelectedAsset is not null ? GetSelectedPathIds() : [];
+        _txtSearch.Clear();
+        LoadRoot();
+        if (pathIds.Count > 0)
+        {
+            SelectNodeByPath(pathIds);
+        }
+    }
+
     public IReadOnlyList<int> GetSelectedPathIds()
     {
         if (SelectedAsset is null)
@@ -168,7 +207,7 @@ public sealed class AssetTreePanel : UserControl
         }
 
         IReadOnlyList<AssetNode> path = _maintainerService.GetAssetPath(SelectedAsset.IdActivo);
-        return path.Select(n => n.IdActivo).ToList();
+        return path.Count > 0 ? path.Select(n => n.IdActivo).ToList() : [SelectedAsset.IdActivo];
     }
 
     public void SelectNodeByPath(IReadOnlyList<int> levelIds)
@@ -238,6 +277,332 @@ public sealed class AssetTreePanel : UserControl
         }
     }
 
+    public void AddChildToSelected()
+    {
+        if (!EnsureEditable() || _treeAdmin is null || _session is null)
+        {
+            return;
+        }
+
+        AssetNode? parent = SelectedAsset;
+        if (parent is null)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione el nodo padre donde desea agregar el subnivel.");
+            return;
+        }
+
+        IReadOnlyList<AssetNode> pathNodes = _maintainerService.GetAssetPath(parent.IdActivo);
+        string parentPath = pathNodes.Count > 0
+            ? string.Join(" \\ ", pathNodes.Select(n => n.Descripcion))
+            : parent.Descripcion;
+
+        using AssetNodeEditorDialog dlg = new(existing: null, parent, parentPath);
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            int newId = _treeAdmin.AddChild(_session, parent.IdActivo, dlg.Result);
+            ReloadAndSelect(newId);
+            TreeModified?.Invoke(this, newId);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    public void EditSelected()
+    {
+        if (!EnsureEditable() || _treeAdmin is null || _session is null)
+        {
+            return;
+        }
+
+        AssetNode? node = SelectedAsset;
+        if (node is null)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione un nodo del árbol para editar.");
+            return;
+        }
+
+        IReadOnlyList<AssetNode> pathNodes = _maintainerService.GetAssetPath(node.IdActivo);
+        AssetNode parent = pathNodes.Count > 1 ? pathNodes[^2] : node;
+        string parentPath = pathNodes.Count > 1
+            ? string.Join(" \\ ", pathNodes.Take(pathNodes.Count - 1).Select(n => n.Descripcion))
+            : string.Empty;
+
+        using AssetNodeEditorDialog dlg = new(node, parent, parentPath);
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _treeAdmin.UpdateNode(_session, dlg.Result);
+            ReloadAndSelect(node.IdActivo);
+            TreeModified?.Invoke(this, node.IdActivo);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    public void MoveSelected()
+    {
+        if (!EnsureEditable() || _treeAdmin is null || _session is null)
+        {
+            return;
+        }
+
+        AssetNode? node = SelectedAsset;
+        if (node is null)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione un nodo del árbol para mover.");
+            return;
+        }
+
+        if (!node.ParentId.HasValue)
+        {
+            CambiasoTheme.ShowWarning(this, "No es posible mover el nodo raíz de la empresa.");
+            return;
+        }
+
+        using AssetNodeMoveDialog dlg = new(_maintainerService, node, CurrentBreadcrumb);
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            _treeAdmin.MoveNode(_session, node.IdActivo, dlg.SelectedParentId);
+            ReloadAndSelect(node.IdActivo);
+            TreeModified?.Invoke(this, node.IdActivo);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    public void SetSelectedActive(bool active)
+    {
+        if (!EnsureEditable() || _treeAdmin is null || _session is null)
+        {
+            return;
+        }
+
+        AssetNode? node = SelectedAsset;
+        if (node is null)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione un nodo del árbol.");
+            return;
+        }
+
+        try
+        {
+            bool includeDescendants = true;
+            if (!active)
+            {
+                AssetNodeInfo info = _treeAdmin.GetNodeInfo(node.IdActivo);
+                string childNotice = info.ActiveChildren > 0
+                    ? $"\n\nSe desactivarán este nodo y sus subnodos activos ({info.ActiveChildren} hijo(s) directo(s))."
+                    : string.Empty;
+
+                if (!CambiasoTheme.Confirm(this, $"¿Desea desactivar el nodo '{node.Descripcion}'?{childNotice}"))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                AssetNodeInfo info = _treeAdmin.GetNodeInfo(node.IdActivo);
+                if (info.TotalChildren > 0)
+                {
+                    DialogResult ans = MessageBox.Show(
+                        this,
+                        $"El nodo '{node.Descripcion}' tiene subnodos.\n\n¿Desea activar también todos sus subnodos descendientes?",
+                        "SISPRO — Activar Nodo",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question,
+                        MessageBoxDefaultButton.Button1);
+
+                    if (ans == DialogResult.Cancel)
+                    {
+                        return;
+                    }
+
+                    includeDescendants = ans == DialogResult.Yes;
+                }
+            }
+
+            int affected = _treeAdmin.SetActive(_session, node.IdActivo, active, includeDescendants);
+            ReloadAndSelect(node.IdActivo);
+            CambiasoTheme.ShowInfo(this, $"Estado actualizado ({affected} nodo(s) {(active ? "activados" : "desactivados")}).");
+            TreeModified?.Invoke(this, node.IdActivo);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    public void DeleteSelected()
+    {
+        if (!EnsureEditable() || _treeAdmin is null || _session is null)
+        {
+            return;
+        }
+
+        AssetNode? node = SelectedAsset;
+        if (node is null)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione el nodo que desea eliminar.");
+            return;
+        }
+
+        if (!CambiasoTheme.Confirm(this, $"¿Eliminar definitivamente el nodo '{node.Descripcion}' (ID #{node.IdActivo})?"))
+        {
+            return;
+        }
+
+        int fallbackId = node.ParentId ?? 1;
+        try
+        {
+            _treeAdmin.DeleteNode(_session, node.IdActivo);
+            ReloadAndSelect(fallbackId);
+            CambiasoTheme.ShowInfo(this, $"Nodo '{node.Descripcion}' eliminado correctamente.");
+            TreeModified?.Invoke(this, fallbackId);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    public void ExpandSelected()
+    {
+        TreeNode? sel = _treeView.SelectedNode;
+        if (sel is null)
+        {
+            return;
+        }
+
+        Cursor? previous = Cursor;
+        Cursor = Cursors.WaitCursor;
+        _treeView.BeginUpdate();
+        try
+        {
+            sel.ExpandAll();
+            sel.EnsureVisible();
+        }
+        finally
+        {
+            _treeView.EndUpdate();
+            Cursor = previous;
+        }
+    }
+
+    public void CollapseSelected()
+    {
+        TreeNode? sel = _treeView.SelectedNode;
+        if (sel is null)
+        {
+            return;
+        }
+
+        _treeView.BeginUpdate();
+        try
+        {
+            sel.Collapse(ignoreChildren: false);
+        }
+        finally
+        {
+            _treeView.EndUpdate();
+        }
+    }
+
+    private void CopySelectedPath()
+    {
+        string text = string.IsNullOrWhiteSpace(CurrentBreadcrumb)
+            ? (SelectedAsset?.Descripcion ?? string.Empty)
+            : CurrentBreadcrumb;
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            Clipboard.SetText(text);
+        }
+    }
+
+    private void ReloadAndSelect(int nodeId)
+    {
+        IReadOnlyList<AssetNode> path = _maintainerService.GetAssetPath(nodeId);
+        List<int> pathIds = path.Count > 0 ? path.Select(n => n.IdActivo).ToList() : [1];
+        _txtSearch.Clear();
+        LoadRoot();
+        SelectNodeByPath(pathIds);
+    }
+
+    private bool EnsureEditable()
+    {
+        if (CanEdit)
+        {
+            return true;
+        }
+
+        CambiasoTheme.ShowWarning(this, "La modificación del árbol de activos es exclusiva para usuarios con perfil Administrador.");
+        return false;
+    }
+
+    private void OnTreeNodeMouseClick(object? sender, TreeNodeMouseClickEventArgs e)
+    {
+        if (e.Button != MouseButtons.Right || e.Node is null)
+        {
+            return;
+        }
+
+        _treeView.SelectedNode = e.Node;
+        if (e.Node.Tag is not AssetNode asset)
+        {
+            return;
+        }
+
+        List<ToolStripItem> items = [];
+
+        if (CanEdit)
+        {
+            items.Add(ContextMenuHelper.Item("Agregar nodo hijo…", AppIcon.Add, CambiasoTheme.Success, AddChildToSelected));
+            items.Add(ContextMenuHelper.Item("Editar nodo…", AppIcon.Edit, CambiasoTheme.Primary, EditSelected));
+            items.Add(ContextMenuHelper.Item("Mover a otro nodo padre…", AppIcon.MoveRight, CambiasoTheme.Accent, MoveSelected, enabled: asset.ParentId.HasValue));
+            items.Add(ContextMenuHelper.Item("Activar nodo", AppIcon.Power, CambiasoTheme.Success, () => SetSelectedActive(true), enabled: !asset.Activo));
+            items.Add(ContextMenuHelper.Item("Desactivar nodo", AppIcon.Ban, CambiasoTheme.Warning, () => SetSelectedActive(false), enabled: asset.Activo && asset.ParentId.HasValue));
+            items.Add(ContextMenuHelper.Item("Eliminar nodo…", AppIcon.Delete, CambiasoTheme.Danger, DeleteSelected, enabled: asset.ParentId.HasValue));
+            items.Add(ContextMenuHelper.Separator());
+        }
+
+        if (ExtraMenuItemsProvider is not null)
+        {
+            List<ToolStripItem> extra = ExtraMenuItemsProvider(asset).ToList();
+            if (extra.Count > 0)
+            {
+                items.AddRange(extra);
+                items.Add(ContextMenuHelper.Separator());
+            }
+        }
+
+        items.Add(ContextMenuHelper.Item("Expandir rama", AppIcon.Expand, CambiasoTheme.Primary, ExpandSelected));
+        items.Add(ContextMenuHelper.Item("Contraer rama", AppIcon.Collapse, CambiasoTheme.TextMuted, CollapseSelected));
+        items.Add(ContextMenuHelper.Item("Copiar ruta", AppIcon.Copy, CambiasoTheme.Accent, CopySelectedPath));
+        items.Add(ContextMenuHelper.Item("Actualizar árbol", AppIcon.Refresh, CambiasoTheme.Primary, ReloadPreservingSelection));
+
+        ContextMenuHelper.Show(_treeView, e.Location, items);
+    }
+
     private void ExecuteSearch()
     {
         string q = _txtSearch.Text.Trim();
@@ -262,11 +627,16 @@ public sealed class AssetTreePanel : UserControl
             foreach (AssetNode node in matches)
             {
                 IReadOnlyList<AssetNode> path = _maintainerService.GetAssetPath(node.IdActivo);
-                string label = $"{node.Descripcion}  [N{node.Nivel} · #{node.IdActivo}]";
+                int realDepth = Math.Max(1, path.Count);
+                string inactiveSuffix = node.Activo ? string.Empty : " (inactivo)";
+                string label = $"{node.Descripcion}{inactiveSuffix}  [N{realDepth} · #{node.IdActivo}]";
+                string imageKey = ResolveImageKey(node.Categoria);
                 TreeNode tn = new(label)
                 {
                     Tag = node,
-                    ToolTipText = string.Join(" \\ ", path.Select(p => p.Descripcion)),
+                    ImageKey = imageKey,
+                    SelectedImageKey = imageKey,
+                    ToolTipText = $"{string.Join(" \\ ", path.Select(p => p.Descripcion))}  |  ID #{node.IdActivo} · {AssetNodeTypes.GetLabel(node.Categoria)} · Nivel {realDepth}",
                     ForeColor = node.Activo ? CambiasoTheme.TextPrimary : Color.Gray
                 };
                 _treeView.Nodes.Add(tn);
@@ -298,7 +668,9 @@ public sealed class AssetTreePanel : UserControl
         if (e.Node?.Tag is AssetNode asset)
         {
             IReadOnlyList<AssetNode> path = _maintainerService.GetAssetPath(asset.IdActivo);
-            _lblBreadcrumb.Text = string.Join(" \\ ", path.Select(p => p.Descripcion));
+            _lblBreadcrumb.Text = path.Count > 0
+                ? string.Join(" \\ ", path.Select(p => p.Descripcion))
+                : asset.Descripcion;
             SelectedAssetChanged?.Invoke(this, asset);
         }
         else
@@ -323,26 +695,56 @@ public sealed class AssetTreePanel : UserControl
         }
     }
 
-    private static TreeNode CreateTreeNode(AssetNode node)
+    private TreeNode CreateTreeNode(AssetNode node)
     {
-        TreeNode tn = new(node.Descripcion)
+        string displayText = node.Activo ? node.Descripcion : $"{node.Descripcion} (inactivo)";
+        string imageKey = ResolveImageKey(node.Categoria);
+        TreeNode tn = new(displayText)
         {
             Tag = node,
+            ImageKey = imageKey,
+            SelectedImageKey = imageKey,
+            ToolTipText = $"ID #{node.IdActivo} · {AssetNodeTypes.GetLabel(node.Categoria)} · Nivel {node.Nivel}",
             ForeColor = node.Activo ? CambiasoTheme.TextPrimary : Color.Gray
         };
 
         if (node.TieneHijos)
         {
-            tn.Nodes.Add(new TreeNode("Cargando...") { Name = DummyKey });
+            tn.Nodes.Add(new TreeNode("Cargando...") { Name = DummyKey, ImageKey = imageKey, SelectedImageKey = imageKey });
         }
 
         return tn;
+    }
+
+    private static ImageList BuildNodeImageList()
+    {
+        ImageList list = new()
+        {
+            ColorDepth = ColorDepth.Depth32Bit,
+            ImageSize = new Size(16, 16)
+        };
+
+        list.Images.Add(AssetNodeTypes.Empresa, IconCatalog.Get(AppIcon.Factory, CambiasoTheme.GoldAccent, 16));
+        list.Images.Add(AssetNodeTypes.Planta, IconCatalog.Get(AppIcon.Factory, CambiasoTheme.Primary, 16));
+        list.Images.Add(AssetNodeTypes.Seccion, IconCatalog.Get(AppIcon.Layers, CambiasoTheme.Accent, 16));
+        list.Images.Add(AssetNodeTypes.Maquina, IconCatalog.Get(AppIcon.Cpu, CambiasoTheme.Primary, 16));
+        list.Images.Add(AssetNodeTypes.Modulo, IconCatalog.Get(AppIcon.Package, CambiasoTheme.TextPrimary, 16));
+        list.Images.Add(AssetNodeTypes.Componente, IconCatalog.Get(AppIcon.Gauge, CambiasoTheme.TextMuted, 16));
+        list.Images.Add(AssetNodeTypes.SinClasificar, IconCatalog.Get(AppIcon.Tree, Color.Gray, 16));
+        return list;
+    }
+
+    private string ResolveImageKey(string? categoria)
+    {
+        string normalized = AssetNodeTypes.Normalize(categoria);
+        return _nodeIcons.Images.ContainsKey(normalized) ? normalized : AssetNodeTypes.SinClasificar;
     }
 
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
+            _nodeIcons.Dispose();
             _toolTip.Dispose();
         }
 

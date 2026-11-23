@@ -1,4 +1,4 @@
-# Arquitectura Técnica — SISPRO v3.0 (.NET 10)
+# Arquitectura Técnica — SISPRO v4.1.0 (.NET 10)
 
 ## 1. Visión General
 
@@ -26,11 +26,11 @@ flowchart TD
 
 | Proyecto | Target | Responsabilidad Principal |
 |---|---|---|
-| `src/Sispro.Core` | `net10.0` | Entidades de dominio, enumeraciones, DTOs, interfaces de repositorio, seguridad (`PasswordSecurity`, `PermissionPresets`) y validadores (`RutValidator`, `TaxCalculator`, `DomainValidator`). |
-| `src/Sispro.Data` | `net10.0` | Fábrica de conexiones SQLite (`SqliteConnectionFactory`), inicializador de esquema (`SchemaInitializer`), aprovisionador seguro (`InitialAdminProvisioner`) y repositorios parametrizados (incluyendo `MaintenanceRepository` sobre `Mant_*`). |
-| `src/Sispro.Services` | `net10.0-windows` | Servicios de aplicación (`AuthService`, `WorkOrderService`, `InvoiceService`, `MaintainerService`, `MaintenanceService`, `UserManagementService`), exportación Excel (`ExcelExportService` vía `ClosedXML`) e impresión nativa (`PrintService` vía `PrintDocument`). |
-| `src/Sispro.UI` | `net10.0-windows` | Interfaz de escritorio Windows Forms con tema corporativo Cambiaso, gráficas vectoriales analíticas (`ModernChartPanel`), catálogo Lucide 24×24 (`IconCatalog`), árbol de activos de 10 niveles (`AssetTreePanel`), módulo `MaintenanceHubForm`, `UsersForm` CRUD exclusivo Administrador y diálogos seguros. |
-| `tests/Sispro.Tests` | `net10.0-windows` | Suite xUnit completa: pruebas unitarias, integración (incluyendo base real migrada), funcionales E2E, auditoría UI/UX en hilo STA, regresión de defectos VB6 y estrés/rendimiento. |
+| `src/Sispro.Core` | `net10.0` | Entidades de dominio (`AssetNode`, `AssetNodeTypes`, `UserGroup`), enumeraciones, DTOs (`ExportDtos`, `AssetNodeInfo`, `AssetTreeExportRow`), interfaces de repositorio, seguridad (`PasswordSecurity`, `PermissionPresets`) y validadores (`RutValidator`, `TaxCalculator`, `DomainValidator`). |
+| `src/Sispro.Data` | `net10.0` | Fábrica de conexiones SQLite (`SqliteConnectionFactory`), inicializador de esquema (`SchemaInitializer`), aprovisionador seguro (`InitialAdminProvisioner`) y repositorios parametrizados (`AssetTreeRepository`, `UserRepository`, `GroupRepository`, `WorkOrderRepository`, `InvoiceRepository`, `AuditRepository`, `MaintenanceRepository`, `ProviderRepository`, `RequesterRepository`). |
+| `src/Sispro.Services` | `net10.0-windows` | Servicios transaccionales con RBAC (`AuthService`, `WorkOrderService`, `InvoiceService`, `MaintainerService`, `AssetTreeService`, `MaintenanceService`, `UserManagementService`, `GroupManagementService`), sincronización reactiva (`SisproSyncHub`), exportadores multiformato (`DocumentExportService`, `ExcelExportService` vía `ClosedXML`, `PdfExportService`, `WordExportService`, `CsvExportService`) e impresión (`PrintService`). |
+| `src/Sispro.UI` | `net10.0-windows` | Interfaz Windows Forms con tema Cambiaso (`CambiasoTheme`, `ContextMenuHelper` seguro con ejecución diferida, `ExportUiHelper`), gráficas analíticas (`ModernChartPanel`), 51 íconos Lucide (`IconCatalog`), árbol 10 niveles con CRUD (`AssetTreePanel`, `AssetTreeEditorView`), módulo `UsersForm` de 3 áreas, `WorkOrdersForm` con acciones directas, `MaintenanceHubForm` y diálogos seguros (`AssetNodeEditorDialog`, `AssetNodeMoveDialog`, etc.). |
+| `tests/Sispro.Tests` | `net10.0-windows` | Suite xUnit completa (**59 pruebas**): pruebas unitarias, integración, sincronización/concurrencia, administración CRUD del árbol, operaciones por lotes, exportaciones multiformato, auditoría UI/UX y menús contextuales en hilo STA, regresión VB6 y estrés/rendimiento. |
 
 ---
 

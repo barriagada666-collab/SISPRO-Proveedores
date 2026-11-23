@@ -9,7 +9,7 @@ using Sispro.UI.Theme;
 namespace Sispro.UI.Forms;
 
 /// <summary>
-/// Ventana principal corporativa de SISPRO v3.0 (.NET 10).
+/// Ventana principal corporativa de SISPRO v4.1 (.NET 10).
 /// Provee barra lateral con control estricto RBAC, Panel de Control con gráficas vectoriales
 /// analíticas en vivo e integración total con BD Mantención Industrial.
 /// </summary>
@@ -33,15 +33,18 @@ public sealed class MainForm : Form
     internal Button NavWorkOrders { get; }
     internal Button NavInvoices { get; }
     internal Button NavMaintainers { get; }
+    internal Button NavTreeEditor { get; }
     internal Button NavMaintenance { get; }
     internal Button NavUsers { get; }
     internal Button NavAudit { get; }
+    internal Button BtnTopNewExternalOt { get; }
 
     // Cached module views for instant tab-switching without slow reloads
     private Panel? _dashboardView;
     private WorkOrdersForm? _workOrdersView;
     private InvoicesForm? _invoicesView;
     private MaintainersForm? _maintainersView;
+    private AssetTreeEditorView? _treeEditorView;
     private MaintenanceHubForm? _maintenanceHubView;
     private UsersForm? _usersView;
 
@@ -65,7 +68,7 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v4.0 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Text = $"SISPRO v4.1 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -137,7 +140,15 @@ public sealed class MainForm : Form
             }
         };
 
-        topActions.Controls.AddRange([btnLogout, btnChangePwd, btnSettings]);
+        BtnTopNewExternalOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Crear inmediatamente una nueva Orden de Trabajo externa", width: 156, height: 32);
+        BtnTopNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
+        BtnTopNewExternalOt.Click += (_, _) =>
+        {
+            ShowWorkOrders();
+            _workOrdersView?.StartNewExternalOrder();
+        };
+
+        topActions.Controls.AddRange([btnLogout, btnChangePwd, btnSettings, BtnTopNewExternalOt]);
         topBar.Controls.Add(_lblModuleTitle);
         topBar.Controls.Add(topActions);
 
@@ -193,6 +204,10 @@ public sealed class MainForm : Form
         NavMaintainers.Enabled = _session.Permisos.MenuMantenedor;
         NavMaintainers.Click += (_, _) => ShowMaintainers();
 
+        NavTreeEditor = CreateNavButton("Editor de Árbol", AppIcon.Tree, "Crear, editar, mover, activar/desactivar y eliminar nodos del árbol de activos (exclusivo Administrador)");
+        NavTreeEditor.Enabled = isAdmin;
+        NavTreeEditor.Click += (_, _) => ShowTreeEditor();
+
         NavMaintenance = CreateNavButton("Mantención Industrial", AppIcon.Wrench, "OTs internas, planes preventivos MP, insumos SAP y personal técnico");
         NavMaintenance.Enabled = _session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor;
         NavMaintenance.Click += (_, _) => ShowMaintenanceHub();
@@ -209,7 +224,7 @@ public sealed class MainForm : Form
             dlg.ShowDialog(this);
         };
 
-        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavMaintenance, NavUsers, NavAudit]);
+        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavTreeEditor, NavMaintenance, NavUsers, NavAudit]);
         navContainer.Controls.Add(navFlow);
 
         Button btnExit = CreateNavButton("Salir del Sistema", AppIcon.Exit, "Cerrar completamente SISPRO");
@@ -274,12 +289,6 @@ public sealed class MainForm : Form
             {
                 RefreshDashboard();
             }
-
-            if ((e.Kind & DataChangeKind.Catalogs) != 0)
-            {
-                _workOrdersView?.ReloadCatalogs();
-                _invoicesView?.ReloadCatalogs();
-            }
         }
 
         if (InvokeRequired && IsHandleCreated)
@@ -303,7 +312,7 @@ public sealed class MainForm : Form
 
     private void HighlightNav(Button active)
     {
-        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavMaintenance, NavUsers, NavAudit })
+        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavTreeEditor, NavMaintenance, NavUsers, NavAudit })
         {
             b.BackColor = b == active ? CambiasoTheme.Accent : CambiasoTheme.PrimaryDark;
         }
@@ -342,6 +351,12 @@ public sealed class MainForm : Form
         }
     }
 
+    public void ShowWorkOrderPrint(int numeroOt)
+    {
+        ShowWorkOrders();
+        _workOrdersView?.ShowPrintForOrder(numeroOt);
+    }
+
     public void ShowInvoices()
     {
         if (!_session.Permisos.MenuFacturas)
@@ -369,15 +384,25 @@ public sealed class MainForm : Form
         if (_maintainersView is null)
         {
             _maintainersView = new MaintainersForm(_ctx, _session);
-            _maintainersView.CatalogsChanged += (_, _) =>
-            {
-                _workOrdersView?.ReloadCatalogs();
-                _invoicesView?.ReloadCatalogs();
-                RefreshDashboard();
-            };
+            _maintainersView.CatalogsChanged += (_, _) => RefreshDashboard();
+            _maintainersView.OpenTreeEditorRequested += (_, _) => ShowTreeEditor();
         }
 
         HostControl(_maintainersView);
+    }
+
+    public void ShowTreeEditor()
+    {
+        if (!_ctx.AssetTreeService.IsAdministrator(_session))
+        {
+            CambiasoTheme.ShowWarning(this, "Acceso denegado: el Editor del Árbol de Activos es exclusivo del perfil Administrador.");
+            return;
+        }
+
+        HighlightNav(NavTreeEditor);
+        _lblModuleTitle.Text = "Editor del Árbol de Activos (Administrador)";
+        _treeEditorView ??= new AssetTreeEditorView(_ctx, _session);
+        HostControl(_treeEditorView);
     }
 
     public void ShowMaintenanceHub()
@@ -464,9 +489,13 @@ public sealed class MainForm : Form
 
         // 3. Quick Action Bar
         FlowLayoutPanel quickBar = new() { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 4) };
-        Button btnNewOt = CambiasoTheme.CreateButton("Nueva OT", AppIcon.Add, ButtonTone.Primary, _toolTip, "Ir al ingreso de Órdenes de Trabajo", width: 124, height: 32);
+        Button btnNewOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Crear inmediatamente una nueva Orden de Trabajo externa", width: 156, height: 32);
         btnNewOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
-        btnNewOt.Click += (_, _) => ShowWorkOrders();
+        btnNewOt.Click += (_, _) =>
+        {
+            ShowWorkOrders();
+            _workOrdersView?.StartNewExternalOrder();
+        };
 
         Button btnMaint = CambiasoTheme.CreateButton("Explorar BD Mantención", AppIcon.Wrench, ButtonTone.Accent, _toolTip, "Abrir OTs internas, Planes MP, Insumos SAP y Personal Técnico", width: 196, height: 32);
         btnMaint.Enabled = _session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor;
@@ -495,6 +524,20 @@ public sealed class MainForm : Form
                 ShowWorkOrders(_recentOts[idx].NumeroOt);
             }
         };
+        ContextMenuHelper.AttachToGrid(_gridRecentOts, rowIndex =>
+        {
+            if (rowIndex < 0 || rowIndex >= _recentOts.Count)
+            {
+                return [];
+            }
+
+            int numOt = _recentOts[rowIndex].NumeroOt;
+            return
+            [
+                ContextMenuHelper.Item("Abrir OT", AppIcon.Edit, CambiasoTheme.Primary, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt)
+            ];
+        });
         grpRecent.Controls.Add(_gridRecentOts);
 
         layout.Controls.Add(kpis, 0, 0);
@@ -599,6 +642,7 @@ public sealed class MainForm : Form
             _workOrdersView?.Dispose();
             _invoicesView?.Dispose();
             _maintainersView?.Dispose();
+            _treeEditorView?.Dispose();
             _maintenanceHubView?.Dispose();
             _usersView?.Dispose();
         }

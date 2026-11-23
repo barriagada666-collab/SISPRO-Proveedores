@@ -111,6 +111,7 @@ public sealed class SisproApplicationContext : IDisposable
     public WorkOrderService WorkOrderService { get; private set; }
     public InvoiceService InvoiceService { get; private set; }
     public MaintainerService MaintainerService { get; private set; }
+    public AssetTreeService AssetTreeService { get; private set; }
     public UserManagementService UserManagementService { get; private set; }
     public GroupManagementService GroupManagementService { get; private set; }
     public MaintenanceService MaintenanceService { get; private set; }
@@ -144,6 +145,7 @@ public sealed class SisproApplicationContext : IDisposable
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
         InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
+        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         MaintenanceService = new MaintenanceService(Maintenance);
@@ -178,6 +180,7 @@ public sealed class SisproApplicationContext : IDisposable
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
         InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
+        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         MaintenanceService = new MaintenanceService(Maintenance);

@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Globalization;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
@@ -25,6 +26,10 @@ public sealed class WorkOrdersForm : UserControl
     private readonly TabPage _tabEntry;
     private readonly TabPage _tabSearch;
     private readonly TabPage _tabPrint;
+    private readonly Label _lblNextOtHeader;
+
+    internal Button BtnNewExternalOt { get; }
+    internal Button BtnExportPrintOt { get; }
 
     // Tab 0 (Ingreso / Edición OT)
     private readonly TextBox _txtNumeroOt;
@@ -41,6 +46,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly Button _btnRemoveDetail;
     private readonly DataGridView _gridEntryDetails;
     private readonly Button _btnSaveOt;
+    private readonly Button _btnSaveAndExportOt;
     private readonly Button _btnUpdateOt;
     private readonly Button _btnDeleteOt;
     private readonly Button _btnClearEntry;
@@ -117,8 +123,50 @@ public sealed class WorkOrdersForm : UserControl
             }
         };
 
-        _assetTree = new AssetTreePanel(_ctx.MaintainerService) { Dock = DockStyle.Fill };
+        _assetTree = new AssetTreePanel(_ctx.MaintainerService, _ctx.AssetTreeService, _session) { Dock = DockStyle.Fill };
+        _assetTree.ExtraMenuItemsProvider = node =>
+        [
+            ContextMenuHelper.Item(
+                "Buscar OTs de este nodo",
+                AppIcon.Search,
+                CambiasoTheme.Accent,
+                () => SearchByTreeNode(node),
+                enabled: _session.Permisos.BusquedaOt)
+        ];
         split.Panel1.Controls.Add(_assetTree);
+
+        Panel topActionStrip = new()
+        {
+            Dock = DockStyle.Top,
+            Height = 50,
+            BackColor = CambiasoTheme.CardBackground,
+            Padding = new Padding(10, 7, 10, 6)
+        };
+        topActionStrip.Paint += (_, e) =>
+        {
+            using Pen borderPen = new(CambiasoTheme.BorderColor, 1);
+            e.Graphics.DrawLine(borderPen, 0, topActionStrip.Height - 1, topActionStrip.Width, topActionStrip.Height - 1);
+        };
+
+        BtnNewExternalOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Iniciar inmediatamente una nueva Orden de Trabajo externa", width: 176, height: 36);
+        BtnNewExternalOt.Enabled = _session.Permisos.IngresoOt;
+        BtnNewExternalOt.Click += (_, _) => StartNewExternalOrder();
+
+        BtnExportPrintOt = CambiasoTheme.CreateButton("Exportar / Imprimir OT", AppIcon.Print, ButtonTone.Accent, _toolTip, "Abrir documento oficial de OT para exportar (Excel, PDF, Word, CSV) o imprimir", width: 192, height: 36);
+        BtnExportPrintOt.Enabled = _session.Permisos.ImpresionOt;
+        BtnExportPrintOt.Click += (_, _) => OpenPrintFromHeader();
+
+        _lblNextOtHeader = new Label
+        {
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.Primary,
+            Margin = new Padding(14, 9, 4, 0)
+        };
+
+        FlowLayoutPanel actionFlow = new() { Dock = DockStyle.Fill, WrapContents = false };
+        actionFlow.Controls.AddRange([BtnNewExternalOt, BtnExportPrintOt, _lblNextOtHeader]);
+        topActionStrip.Controls.Add(actionFlow);
 
         _tabs = new TabControl
         {
@@ -180,9 +228,21 @@ public sealed class WorkOrdersForm : UserControl
         _gridEntryDetails = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridEntryDetails);
         _gridEntryDetails.CellDoubleClick += (_, _) => EditSelectedEntryDetail();
+        ContextMenuHelper.AttachToGrid(_gridEntryDetails, idx =>
+            idx >= 0 && idx < _entryDetails.Count
+                ?
+                [
+                    ContextMenuHelper.Item("Editar ítem", AppIcon.Edit, CambiasoTheme.Primary, EditSelectedEntryDetail, enabled: !_entryDetails[idx].AsociadoAFactura),
+                    ContextMenuHelper.Item("Quitar ítem", AppIcon.Remove, CambiasoTheme.Danger, RemoveSelectedEntryDetail, enabled: !_entryDetails[idx].AsociadoAFactura)
+                ]
+                : []);
 
         _btnSaveOt = CambiasoTheme.CreateButton("Guardar Nueva", AppIcon.Save, ButtonTone.Primary, _toolTip, "Guardar nueva orden de trabajo en base de datos", width: 146);
         _btnSaveOt.Click += (_, _) => SaveNewOrder();
+
+        _btnSaveAndExportOt = CambiasoTheme.CreateButton("Guardar y Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Guardar la nueva OT y abrir inmediatamente el menú de exportación", width: 174);
+        _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
+        _btnSaveAndExportOt.Click += (_, _) => SaveAndExportNewOrder();
 
         _btnUpdateOt = CambiasoTheme.CreateButton("Modificar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Guardar cambios en la orden cargada", width: 124);
         _btnUpdateOt.Enabled = false;
@@ -244,6 +304,22 @@ public sealed class WorkOrdersForm : UserControl
         _gridSearchResults = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridSearchResults);
         _gridSearchResults.CellDoubleClick += (_, _) => OpenSelectedSearchOrder();
+        ContextMenuHelper.AttachToGrid(_gridSearchResults, idx =>
+        {
+            if (idx < 0 || idx >= _lastSearchResults.Count)
+            {
+                return [];
+            }
+
+            int numOt = _lastSearchResults[idx].NumeroOt;
+            return
+            [
+                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Primary, () => OpenOrderByNumber(numOt), enabled: _session.Permisos.IngresoOt),
+                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowPrintForOrder(numOt), enabled: _session.Permisos.ImpresionOt),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Eliminar OT", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteSearchOrder(numOt), enabled: _session.Permisos.IngresoOt)
+            ];
+        });
 
         _exportProgress = new ProgressBar { Width = 220, Height = 20, Visible = false, Minimum = 0, Maximum = 100 };
         _lblSearchSummary = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted, Text = "Use los filtros y presione Buscar." };
@@ -289,6 +365,15 @@ public sealed class WorkOrdersForm : UserControl
 
         _gridPrintItems = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridPrintItems);
+        _gridPrintItems.CellDoubleClick += (_, _) => EditSelectedPrintDetail();
+        ContextMenuHelper.AttachToGrid(_gridPrintItems, idx =>
+            idx >= 0 && idx < _printDetails.Count
+                ?
+                [
+                    ContextMenuHelper.Item("Editar línea", AppIcon.Edit, CambiasoTheme.Primary, EditSelectedPrintDetail),
+                    ContextMenuHelper.Item("Quitar línea", AppIcon.Remove, CambiasoTheme.Danger, RemovePrintDetail)
+                ]
+                : []);
 
         _btnGenerateExcel = CambiasoTheme.CreateButton("Exportar OT", AppIcon.Download, ButtonTone.Primary, _toolTip, "Exportar documento oficial de OT a Excel, PDF, Word o CSV", width: 136);
         _btnGenerateExcel.Click += (_, _) => OpenWorkOrderExportMenu();
@@ -321,10 +406,12 @@ public sealed class WorkOrdersForm : UserControl
         }
 
         split.Panel2.Controls.Add(_tabs);
+        split.Panel2.Controls.Add(topActionStrip);
         Controls.Add(split);
 
         LoadCatalogs();
-        _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString();
+        RefreshNextOtBadge();
+        _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
         RefreshEntryDetailsGrid();
         RefreshPrintDetailsGrid();
 
@@ -348,21 +435,90 @@ public sealed class WorkOrdersForm : UserControl
         if (_tabs.TabPages.Contains(_tabEntry))
         {
             _tabs.SelectedTab = _tabEntry;
-            _txtNumeroOt.Text = numeroOt.ToString();
+            _txtNumeroOt.Text = numeroOt.ToString(CultureInfo.InvariantCulture);
             LookupEntryOrder();
         }
         else if (_tabs.TabPages.Contains(_tabPrint))
         {
             _tabs.SelectedTab = _tabPrint;
-            _txtPrintOtNumber.Text = numeroOt.ToString();
+            _txtPrintOtNumber.Text = numeroOt.ToString(CultureInfo.InvariantCulture);
             LookupPrintOrder();
+        }
+    }
+
+    public void StartNewExternalOrder()
+    {
+        if (_tabs.TabPages.Contains(_tabEntry))
+        {
+            _tabs.SelectedTab = _tabEntry;
+            ClearEntryForm();
+            _cmbProviderEntry.Focus();
+        }
+    }
+
+    public void ShowPrintForOrder(int numeroOt)
+    {
+        if (_tabs.TabPages.Contains(_tabPrint))
+        {
+            _tabs.SelectedTab = _tabPrint;
+            _txtPrintOtNumber.Text = numeroOt.ToString(CultureInfo.InvariantCulture);
+            LookupPrintOrder();
+        }
+    }
+
+    private void OpenPrintFromHeader()
+    {
+        if (_loadedOrder is not null)
+        {
+            ShowPrintForOrder(_loadedOrder.NumeroOt);
+        }
+        else if (_tabs.TabPages.Contains(_tabPrint))
+        {
+            _tabs.SelectedTab = _tabPrint;
         }
     }
 
     public void ReloadCatalogs()
     {
         LoadCatalogs();
-        _assetTree.LoadRoot();
+        _assetTree.ReloadPreservingSelection();
+    }
+
+    private void RefreshNextOtBadge()
+    {
+        int next = _ctx.WorkOrderService.GetNextWorkOrderNumber();
+        _lblNextOtHeader.Text = $"Siguiente N° OT disponible: {next.ToString(CultureInfo.InvariantCulture)}";
+    }
+
+    private void SearchByTreeNode(AssetNode node)
+    {
+        if (!_session.Permisos.BusquedaOt || !_tabs.TabPages.Contains(_tabSearch))
+        {
+            return;
+        }
+
+        _chkFilterTree.Checked = true;
+        _tabs.SelectedTab = _tabSearch;
+        int realDepth = _ctx.MaintainerService.GetAssetPath(node.IdActivo).Count;
+        if (realDepth < 2)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione al menos una planta (nivel 2 o superior) para filtrar por rama.");
+            return;
+        }
+
+        ExecuteSearch();
+    }
+
+    private void DeleteSearchOrder(int numeroOt)
+    {
+        if (!_session.Permisos.IngresoOt)
+        {
+            return;
+        }
+
+        OpenOrderByNumber(numeroOt);
+        DeleteLoadedOrder();
+        ExecuteSearch();
     }
 
     private void BuildEntryTabLayout()
@@ -437,7 +593,7 @@ public sealed class WorkOrdersForm : UserControl
         grpGrid.Controls.Add(_gridEntryDetails);
 
         FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 8, 2, 4) };
-        footer.Controls.AddRange([_btnSaveOt, _btnUpdateOt, _btnDeleteOt, _btnClearEntry, _lblEntryStatus]);
+        footer.Controls.AddRange([_btnSaveOt, _btnSaveAndExportOt, _btnUpdateOt, _btnDeleteOt, _btnClearEntry, _lblEntryStatus]);
 
         layout.Controls.Add(grpHeader, 0, 0);
         layout.Controls.Add(grpDetail, 0, 1);
@@ -564,10 +720,21 @@ public sealed class WorkOrdersForm : UserControl
 
     private static void BindCombo<T>(ComboBox combo, IReadOnlyList<T> items, string display, string value)
     {
+        object? previousValue = combo.SelectedValue;
         combo.DataSource = null;
         combo.DisplayMember = display;
         combo.ValueMember = value;
         combo.DataSource = items.ToList();
+
+        if (previousValue is not null)
+        {
+            combo.SelectedValue = previousValue;
+            if (combo.SelectedIndex >= 0)
+            {
+                return;
+            }
+        }
+
         if (combo.Items.Count > 0)
         {
             combo.SelectedIndex = 0;
@@ -588,6 +755,7 @@ public sealed class WorkOrdersForm : UserControl
             CambiasoTheme.ShowInfo(this, $"La OT N° {numOt} no existe aún. Puede ingresarla como nueva.");
             _loadedOrder = null;
             _btnSaveOt.Enabled = true;
+            _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
             _btnUpdateOt.Enabled = false;
             _btnDeleteOt.Enabled = false;
             return;
@@ -613,6 +781,7 @@ public sealed class WorkOrdersForm : UserControl
         _suppressApprovalEvents = false;
 
         _btnSaveOt.Enabled = false;
+        _btnSaveAndExportOt.Enabled = false;
         _btnUpdateOt.Enabled = true;
         _btnDeleteOt.Enabled = true;
         _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · Solicitante: {order.AliasSolicitante} · {order.Detalles.Count} ítem(s) · VBS: {(order.TieneVbs ? "Sí" : "No")} · VBJ: {(order.TieneVbj ? "Sí" : "No")}";
@@ -704,16 +873,41 @@ public sealed class WorkOrdersForm : UserControl
 
     private void SaveNewOrder()
     {
+        SaveNewOrderCore(promptToPrint: true);
+    }
+
+    private void SaveAndExportNewOrder()
+    {
+        int? savedNum = SaveNewOrderCore(promptToPrint: false);
+        if (savedNum.HasValue && _session.Permisos.ImpresionOt)
+        {
+            ShowPrintForOrder(savedNum.Value);
+            BeginInvoke(OpenWorkOrderExportMenu);
+        }
+    }
+
+    private int? SaveNewOrderCore(bool promptToPrint)
+    {
         try
         {
             WorkOrder order = BuildOrderFromEntryForm();
             int id = _ctx.WorkOrderService.Create(_session, order);
             CambiasoTheme.ShowInfo(this, $"Orden de Trabajo N° {order.NumeroOt} guardada correctamente (ID #{id}).");
             ClearEntryForm();
+
+            if (promptToPrint &&
+                _session.Permisos.ImpresionOt &&
+                CambiasoTheme.Confirm(this, $"¿Desea abrir la OT N° {order.NumeroOt} para exportar o imprimir ahora?"))
+            {
+                ShowPrintForOrder(order.NumeroOt);
+            }
+
+            return order.NumeroOt;
         }
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
+            return null;
         }
     }
 
@@ -828,7 +1022,8 @@ public sealed class WorkOrdersForm : UserControl
     {
         _loadedOrder = null;
         _entryDetails.Clear();
-        _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString();
+        _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
+        RefreshNextOtBadge();
         _dtFechaOt.Value = DateTime.Today;
         _numCantidad.Value = 1;
         _txtDetalle.Clear();
@@ -837,10 +1032,10 @@ public sealed class WorkOrdersForm : UserControl
         _chkVbj.Checked = false;
         _suppressApprovalEvents = false;
         _btnSaveOt.Enabled = true;
+        _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
         _btnUpdateOt.Enabled = false;
         _btnDeleteOt.Enabled = false;
-        _lblEntryStatus.Text = "Modo ingreso de nueva Orden de Trabajo.";
-        _assetTree.LoadRoot();
+        _lblEntryStatus.Text = $"Modo ingreso de nueva OT · Activo actual: {_assetTree.SelectedAsset?.Descripcion ?? "CAMBIASO HNOS S.A.C."}";
         RefreshEntryDetailsGrid();
     }
 
@@ -866,13 +1061,14 @@ public sealed class WorkOrdersForm : UserControl
             if (_chkFilterTree.Checked)
             {
                 AssetNode? node = _assetTree.SelectedAsset;
-                if (node is null || node.Nivel < 2)
+                int realDepth = node is null ? 0 : _ctx.MaintainerService.GetAssetPath(node.IdActivo).Count;
+                if (node is null || realDepth < 2)
                 {
                     CambiasoTheme.ShowWarning(this, "Seleccione al menos una planta (nivel 2 o superior) en el árbol izquierdo.");
                     return;
                 }
 
-                filter.AssetLevel = node.Nivel;
+                filter.AssetLevel = realDepth;
                 filter.AssetNodeId = node.IdActivo;
             }
 
@@ -1021,6 +1217,24 @@ public sealed class WorkOrdersForm : UserControl
         _numPrintCantidad.Value = 1;
         _txtPrintWork.Clear();
         RefreshPrintDetailsGrid();
+    }
+
+    private void EditSelectedPrintDetail()
+    {
+        if (_gridPrintItems.CurrentRow is null)
+        {
+            return;
+        }
+
+        int idx = _gridPrintItems.CurrentRow.Index;
+        if (idx >= 0 && idx < _printDetails.Count)
+        {
+            WorkOrderDetail item = _printDetails[idx];
+            _numPrintCantidad.Value = Math.Clamp(item.Cantidad, 1, 99999);
+            _txtPrintWork.Text = item.Descripcion;
+            _printDetails.RemoveAt(idx);
+            RefreshPrintDetailsGrid();
+        }
     }
 
     private void RemovePrintDetail()

@@ -110,7 +110,7 @@ public sealed class SyncConcurrencyAndDatesTests
         UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
 
         int provId = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV CRONOLOGICO" });
-        int plantId = temp.Context.MaintainerService.AddAssetChild(admin, 1, "PLANTA CRONO");
+        int plantId = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA CRONO");
 
         // Create 3 OTs on different dates (out of order)
         temp.Context.WorkOrderService.Create(admin, new WorkOrder
