@@ -1,0 +1,32 @@
+name: CI — Build & Test (.NET 10)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore SISPRO.sln
+
+      - name: Build Debug (0 errors, 0 warnings)
+        run: dotnet build SISPRO.sln -c Debug --no-restore
+
+      - name: Build Release (0 errors, 0 warnings)
+        run: dotnet build SISPRO.sln -c Release --no-restore
+
+      - name: Run Automated Test Suite
+        run: dotnet test SISPRO.sln -c Release --no-build --verbosity normal

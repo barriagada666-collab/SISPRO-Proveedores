@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <RootNamespace>Sispro.UI</RootNamespace>
+    <AssemblyName>SISPRO</AssemblyName>
+    <ApplicationIcon>Assets\sispro.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Sispro.Core\Sispro.Core.csproj" />
+    <ProjectReference Include="..\Sispro.Data\Sispro.Data.csproj" />
+    <ProjectReference Include="..\Sispro.Services\Sispro.Services.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\data\sispro.db" Condition="Exists('..\..\data\sispro.db')">
+      <Link>Data\sispro.db</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Sispro.Tests" />
+  </ItemGroup>
+</Project>

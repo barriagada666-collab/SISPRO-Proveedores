@@ -1,0 +1,34 @@
+# .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+TestResults/
+coverage/
+publish/
+
+# Installer outputs (compiled binaries)
+installer/Output/
+
+# Legacy backup & runtime temporary data
+data/legacy/
+*.mdb
+*.ldb
+*.laccdb
+*.db-wal
+*.db-shm
+*.bak
+
+# Logs & OS junk
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Secrets
+*.token
+.github_token
+.env

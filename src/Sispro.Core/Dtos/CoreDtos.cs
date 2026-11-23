@@ -1,0 +1,97 @@
+using Sispro.Core.Entities;
+
+namespace Sispro.Core.Dtos;
+
+public sealed class UserSession
+{
+    public required User Usuario { get; init; }
+    public DateTime InicioSesion { get; init; } = DateTime.Now;
+    public UserPermissions Permisos => Usuario.Permisos;
+}
+
+public sealed class AuthResult
+{
+    public bool Success { get; init; }
+    public string Message { get; init; } = string.Empty;
+    public UserSession? Session { get; init; }
+    public bool PasswordUpgraded { get; init; }
+
+    public static AuthResult Ok(UserSession session, bool passwordUpgraded = false) =>
+        new() { Success = true, Session = session, PasswordUpgraded = passwordUpgraded };
+
+    public static AuthResult Fail(string message) =>
+        new() { Success = false, Message = message };
+}
+
+public sealed class WorkOrderSearchFilter
+{
+    public DateTime? FechaInicio { get; set; }
+    public DateTime? FechaFin { get; set; }
+    public int? IdProv { get; set; }
+    public string? TextoBusqueda { get; set; }
+    public int? NumeroOt { get; set; }
+    public int? AssetLevel { get; set; }
+    public int? AssetNodeId { get; set; }
+    public bool SoloPendientesVb { get; set; }
+}
+
+public sealed class WorkOrderSearchRow
+{
+    public int IdOt { get; set; }
+    public int NumeroOt { get; set; }
+    public string Proveedor { get; set; } = string.Empty;
+    public string Solicitante { get; set; } = string.Empty;
+    public DateTime Fecha { get; set; }
+    public int Cantidad { get; set; }
+    public string Detalle { get; set; } = string.Empty;
+    public string RutaActivo { get; set; } = string.Empty;
+    public bool TieneVbs { get; set; }
+    public bool TieneVbj { get; set; }
+    public bool AsociadoAFactura { get; set; }
+    public int IdDet { get; set; }
+}
+
+public sealed class InvoiceSearchFilter
+{
+    public int? IdProv { get; set; }
+    public int? NumeroDocumento { get; set; }
+    public int? NumeroOt { get; set; }
+    public DateTime? FechaInicio { get; set; }
+    public DateTime? FechaFin { get; set; }
+}
+
+public sealed class InvoiceSearchRow
+{
+    public int IdFactura { get; set; }
+    public int NumeroDocumento { get; set; }
+    public string Proveedor { get; set; } = string.Empty;
+    public DateTime Fecha { get; set; }
+    public string RecibidoPor { get; set; } = string.Empty;
+    public decimal TotalNeto { get; set; }
+    public decimal Iva { get; set; }
+    public decimal TotalConIva { get; set; }
+    public int CantidadItems { get; set; }
+    public string Detalle { get; set; } = string.Empty;
+}
+
+public sealed class DashboardMetrics
+{
+    public int TotalOrdenesTrabajo { get; set; }
+    public int OrdenesSinVistoBueno { get; set; }
+    public int TotalProveedoresActivos { get; set; }
+    public int TotalSolicitantesActivos { get; set; }
+    public int TotalFacturas { get; set; }
+    public int TotalUsuariosActivos { get; set; }
+    public int TotalNodosActivos { get; set; }
+}
+
+public sealed class AppSettings
+{
+    public string DatabasePath { get; set; } = string.Empty;
+    public string CompanyName { get; set; } = "CAMBIASO HNOS S.A.C.";
+    public string CompanyRut { get; set; } = "91.438.000-6";
+    public string CompanyDepartment { get; set; } = "DEPARTAMENTO MANTENCIÓN";
+    public string CompanyAddress { get; set; } = "Virginia Bravo Letelier N°777, Placilla, Valparaíso";
+    public string CompanyCity { get; set; } = "VALPARAÍSO";
+    public string LegacyAccessTreePath { get; set; } = string.Empty;
+}
