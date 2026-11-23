@@ -140,7 +140,7 @@ public sealed class SplashForm : Form
 
         Label lblVersion = new()
         {
-            Text = "Versión 2.0 LTS (.NET 10)",
+            Text = "Versión 3.0 LTS (.NET 10)",
             Font = CambiasoTheme.LabelFont,
             ForeColor = CambiasoTheme.Accent,
             TextAlign = ContentAlignment.MiddleRight,

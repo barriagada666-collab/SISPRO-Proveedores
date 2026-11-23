@@ -2,6 +2,21 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [3.0.0] — 2026-11-23
+
+### Migración Integral de Datos Industriales + Modernización Visual Analítica
+- **Importación completa de `OT_PROV.mdb` (producción 2010–2026) + `BD MANTENCION.mdb` + `PERSONAL_MANTENCION.mdb`** en base SQLite unificada `data/sispro.db` (`36,79 MB`, `PRAGMA integrity_check = ok`, `0` violaciones FK, más de **343.400 registros reales**):
+  - **SISPRO Proveedores**: `7.284` órdenes de trabajo externas, `7.803` ítems de detalle, `214` proveedores activos, `11` solicitantes (`9` activos + `2` históricos rescatados para `1.506` OTs), `4` usuarios (`L Reyes`, `L Reyes M`, `BORIS` migrado a PBKDF2 con cambio obligatorio, y `barriagada` Administrador inicial).
+  - **Árbol de Activos Industrial Real (`1.824` nodos)**: importado íntegramente desde `ACTIVO` + `N1_N2..N1_N10` con ficha técnica completa (`Código SAP`, `Fabricante`, `Modelo`, `Serie`, `Tipo Equipo`, `Estado Operativo`, `Categoría`, `Prioridad`, `Observación`), resolviendo rutas reales (ej. `PLANTA PE \ RECUPERADO \ LINEA LAV. 3 \ Molino Rapid 400`).
+  - **Tablas de Mantención Industrial (`Mant_*`)**: `43.989` OTs internas (`Mant_OT`), `780` planes preventivos (`Mant_MP`), `7.704` ciclos MP (`Mant_CicloMP`), `208.121` tareas MP (`Mant_TareasMP`), `2.462` insumos SAP (`Mant_Insumos`), `3.886` consumos (`Mant_InsumosUtilizados`), `134` técnicos (`Mant_Personal`), `43` fichas RRHH (`Mant_PersonalRRHH`), `58.847` asignaciones técnicas, `99` registros EPP, `56` OTs externas históricas, `33` oficios, `41` motivos de falla y `48` tareas checklist.
+- **Nuevo Módulo `Mantención Industrial`** (`MaintenanceHubForm`): explorador de 5 pestañas con búsquedas indexadas, visor técnico detallado (técnicos e insumos por OT), drill-down de ciclos/tareas MP y exportación a Excel (`.xlsx`).
+- **Panel de Control Modernizado con Gráficas Vectoriales en Vivo** (`ModernChartPanel.cs`):
+  - 5 tarjetas KPI con insignias vectoriales Lucide (`OTs Proveedores`, `Proveedores`, `Activos Reales`, `OTs Mantención`, `Planes MP / Insumos`).
+  - 3 gráficas GDI+ High-DPI con antialiasing: **Evolución Anual de OTs** (barras verticales con gradiente), **Distribución por Planta** (gráfico de anillo/Donut) y **Top 6 Proveedores** (barras horizontales de ranking).
+- **Ficha Técnica Editable de Activos** integrada en `Mantenedores → Árbol de Activos` (`MaintainersForm`).
+- **Catálogo Lucide ampliado** (`Wrench`, `BarChart`, `Package`, `HardHat`, `ClipboardCheck`, `Factory`, `TrendingUp`, `Cpu`, `UserPlus`, `Cancel`, `Eraser`) y consistencia visual en todo el proyecto.
+- **Optimización de rendimiento**: consultas limitadas (`MaxRows`) en Dashboard (`< 5 ms`), índices compuestos en `Mant_OT`, `Mant_Insumos` y `OrdenesTrabajo`, manteniendo **37/37 pruebas xUnit aprobadas** (incluyendo estrés sobre los 7.803 detalles y 43.989 OTs internas) con **0 errores y 0 advertencias**.
+
 ## [2.1.0] — 2026-11-23
 
 ### Agregado — Módulo Profesional GESTIÓN DE USUARIOS (CRUD + RBAC Estricto)

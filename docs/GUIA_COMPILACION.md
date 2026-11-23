@@ -1,4 +1,4 @@
-# Guía de Compilación, Pruebas y Empaquetado — SISPRO v2.0
+# Guía de Compilación, Pruebas y Empaquetado — SISPRO v3.0
 
 ## 1. Requisitos del Entorno de Desarrollo
 
@@ -34,11 +34,11 @@ dotnet build SISPRO.sln -c Release --no-restore
 
 La suite `tests/Sispro.Tests` cubre 6 categorías:
 - **Unit**: RUT chileno, PBKDF2 + compatibilidad VB6, IVA 19%, jerarquía de permisos.
-- **Integration**: base SQLite real migrada (1.514 OTs), árbol 10 niveles y respaldos en caliente.
-- **Functional**: flujo E2E (OT → VBS/VBJ → Factura → Excel → Seguridad/Lockout/SQLi).
-- **UI**: auditoría en hilo STA de todos los formularios, iconos en botones, ortografía y RBAC.
+- **Integration**: base SQLite real unificada (`7.284` OTs, `1.824` activos, `43.989` OTs mantención, `208.121` tareas MP, `2.462` insumos SAP), árbol 10 niveles y respaldos en caliente.
+- **Functional**: flujo E2E (OT → VBS/VBJ → Factura → Excel → Seguridad/Lockout/SQLi) + módulo CRUD `GESTIÓN DE USUARIOS` (eliminación lógica, cambio obligatorio en primer acceso, RBAC exclusivo Administrador y auditoría de código fuente).
+- **UI**: auditoría en hilo STA de todos los formularios (incluyendo `MaintenanceHubForm` y `UsersForm`), iconos Lucide en botones, ortografía y RBAC.
 - **Regression**: validación explícita contra todos los defectos históricos de VB6.
-- **Stress**: concurrencia multi-hilo (16 hilos), inserción masiva y exportación de 1.726 filas.
+- **Stress**: concurrencia multi-hilo (16 hilos), analítica Dashboard, consulta en `43.989` OTs internas, inserción masiva y exportación de `1.500` filas.
 
 ```powershell
 dotnet test SISPRO.sln -c Release --no-build --verbosity normal
@@ -65,15 +65,22 @@ dotnet publish src\Sispro.UI\Sispro.UI.csproj -c Release -r win-x64 --self-conta
 ```
 
 El instalador resultante se genera en:
-- `installer\Output\SISPRO_Setup_v2.0.0_win-x64.exe`
+- `installer\Output\SISPRO_Setup_v3.0.0_win-x64.exe`
 - `installer\Output\checksums_sha256.txt`
 
 ---
 
-## 5. Re-ejecutar Migración de Datos desde `OT_PROV.mdb`
+## 5. Re-ejecutar Migración Integral desde Bases Access (`.mdb`)
 
-Si se dispone de una copia actualizada de `OT_PROV.mdb`:
+Si dispone de copias actualizadas de `OT_PROV.mdb`, `BD MANTENCION.mdb` y `PERSONAL_MANTENCION.mdb`:
 
 ```powershell
-.\scripts\Migrate-MdbToSqlite.ps1 -MdbPath "ruta\OT_PROV.mdb" -SqlitePath "data\sispro.db"
+.\scripts\Migrate-MdbToSqlite.ps1 `
+    -OtProvMdb "ruta\OT_PROV.mdb" `
+    -MantencionMdb "ruta\BD MANTENCION.mdb" `
+    -PersonalMdb "ruta\PERSONAL_MANTENCION.mdb" `
+    -SqlitePath "data\sispro.db"
+
+# Aprovisionar cuenta Administrador inicial de forma segura e idempotente (sin clave en código)
+.\scripts\Initialize-AdminUser.ps1 -DatabasePath "data\sispro.db" -Username "barriagada"
 ```

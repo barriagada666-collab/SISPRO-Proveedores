@@ -138,6 +138,22 @@ public sealed class AssetNode
     public bool Activo { get; set; } = true;
     public bool TieneHijos { get; set; }
 
+    // Ficha técnica enriquecida (importada de BD MANTENCION.ACTIVO)
+    public string CodSap { get; set; } = string.Empty;
+    public string Fabricante { get; set; } = string.Empty;
+    public string Serie { get; set; } = string.Empty;
+    public string Modelo { get; set; } = string.Empty;
+    public string TipoEquipo { get; set; } = string.Empty;
+    public string EstadoOperativo { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public int Prioridad { get; set; }
+    public string Material { get; set; } = string.Empty;
+    public string VidaUtil { get; set; } = string.Empty;
+    public string Observacion { get; set; } = string.Empty;
+    public string FechaInstalacion { get; set; } = string.Empty;
+    public decimal ValorCompra { get; set; }
+    public string InfoTecnicaJson { get; set; } = string.Empty;
+
     public override string ToString() => Descripcion;
 }
 

@@ -1,8 +1,8 @@
 <div align="center">
 
-# SISPRO — Sistema de Gestión de Proveedores y Órdenes de Trabajo
+# SISPRO v3.0 — Sistema Integral de Proveedores y Mantención Industrial
 
-**Cambiaso Hnos S.A.C. · Departamento de Mantención**
+**Cambiaso Hnos S.A.C. · División Mantención Industrial (Placilla, Valparaíso)**
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-14-239120?style=for-the-badge&logo=csharp)](https://learn.microsoft.com/dotnet/csharp/)
@@ -11,7 +11,7 @@
 [![Warnings](https://img.shields.io/badge/Errors%20%7C%20Warnings-0%20%7C%200-0E4163?style=for-the-badge)](docs/GUIA_COMPILACION.md)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-*Modernización integral a **.NET 10** del sistema corporativo **SISPRO (Proveedores)** para la gestión de órdenes de trabajo externas, árbol jerárquico de activos industriales, aprobaciones de visto bueno (Supervisor/Jefatura), guías de despacho, facturas, mantenedores y seguridad RBAC.*
+*Modernización integral a **.NET 10** de **SISPRO (Proveedores)** unificando la base histórica completa de `OT_PROV.mdb` (2010–2026), `BD MANTENCION.mdb` y `PERSONAL_MANTENCION.mdb` en un motor embebido **SQLite WAL** de alto rendimiento con analítica visual moderna, iconografía vectorial Lucide 24×24 y seguridad RBAC empresarial.*
 
 </div>
 
@@ -19,45 +19,48 @@
 
 ## Características Principales
 
-- **Panel de Control en Vivo**: KPIs instantáneos (Órdenes de Trabajo, Pendientes de VB Jefatura, Proveedores Activos, Facturas/Guías) y acceso rápido por doble clic a las últimas 40 OTs.
+- **Panel de Control y Analítica en Vivo**:
+  - 5 tarjetas KPI con insignias vectoriales Lucide (**7.284** OTs Proveedores, **214** Proveedores activos, **1.823** Activos reales, **43.989** OTs Mantención, **780** Planes MP / **2.462** Insumos SAP).
+  - 3 gráficas vectoriales High-DPI con antialiasing: **Evolución Anual de OTs**, **Distribución por Planta Industrial** (gráfico Donut) y **Top 6 Proveedores Históricos** (ranking horizontal).
+  - Grilla instantánea (`< 5 ms`) con las últimas 40 OTs registradas y apertura directa por doble clic.
 - **Órdenes de Trabajo Externas (`M1`)**:
-  - Árbol jerárquico de **Activos de 10 niveles** con carga diferida (*lazy loading*), búsqueda rápida y sincronización automática al abrir cualquier OT histórica.
-  - Ingreso, modificación, eliminación protegida y control de aprobaciones **VB Supervisor (`VBS`)** y **VB Jefatura (`VBJ`)** con trazabilidad de usuario y fecha.
-  - Búsqueda combinada por rango de fechas, proveedor, palabra clave/N° OT, nodo del árbol y estado de VB.
-  - Generación de documentos oficiales de OT en **Excel (`.xlsx`)** con logotipo corporativo y firmas digitales (`JR` / `MS`) sin requerir Microsoft Office instalado (**ClosedXML**), además de **Vista Previa e Impresión nativa**.
+  - Árbol jerárquico real de **1.824 activos industriales (10 niveles)** importado de `BD MANTENCION.mdb`, con carga diferida, búsqueda por nombre/SAP/modelo/serie y sincronización automática.
+  - Ingreso, modificación, eliminación protegida y aprobaciones **VB Supervisor (`VBS`)** y **VB Jefatura (`VBJ`)** con trazabilidad auditable.
+  - Generación de documentos oficiales de OT en **Excel (`.xlsx`)** con logotipo corporativo y firmas digitales (`JR` / `MS`) sin Microsoft Office (**ClosedXML**), además de **Vista Previa e Impresión nativa**.
 - **Facturas y Guías de Despacho (`M2`)**:
-  - Asociación de ítems de OT a Guías de Despacho y Facturas con validación estricta de proveedor y prevención de ítems duplicados.
-  - Cálculo automático de **Neto, IVA 19% y Total c/IVA**, búsqueda maestro-detalle, eliminación con reversa transaccional y exportación Excel.
-- **Mantenedores (`M3`)**:
-  - Gestión completa (CRUD) de **Proveedores**, **Solicitantes** y **Árbol de Activos (hasta 10 niveles)** con protección de integridad referencial.
+  - Asociación validada por proveedor, prevención de ítems duplicados, cálculo automático de **Neto, IVA 19% y Total c/IVA**, eliminación con reversa transaccional y exportación Excel.
+- **Mantenedores y Ficha Técnica de Activos (`M3`)**:
+  - CRUD completo de **Proveedores (214)**, **Solicitantes (11)** y **Árbol de Activos** con edición de ficha técnica industrial (`Código SAP`, `Fabricante`, `Modelo`, `Serie`, `Tipo Equipo`, `Estado Operativo`, `Categoría`, `Observación`).
+- **Mantención Industrial (Integración `BD MANTENCION.mdb` + `PERSONAL_MANTENCION.mdb`)**:
+  - **OTs de Mantención Interna (`43.989`)**: búsqueda indexada por texto, oficio, estado y año, con detalle de informe técnico, técnicos asignados e insumos consumidos + exportación Excel.
+  - **Planes Preventivos MP (`780` planes · `7.704` ciclos · `208.121` tareas)**: exploración jerárquica de planes, ciclos y tareas.
+  - **Insumos y Repuestos SAP (`2.462` ítems · `3.886` consumos)**: consulta instantánea por SAP, proveedor o descripción + exportación Excel.
+  - **Personal Técnico y RRHH (`134` técnicos · `43` fichas RRHH)** y **Catálogos** (`56` OTs externas históricas, `41` motivos de falla, `33` oficios, `48` tareas checklist).
 - **Gestión de Usuarios y Seguridad RBAC (`M4` — Exclusivo Administrador)**:
-  - Módulo CRUD completo (**DATOS DEL USUARIO** + **LISTADO DE USUARIOS**) con ID automático, búsqueda multicampo, filtros por perfil y estado, indicadores visuales Activo/Inactivo, eliminación lógica (preservando historial) y cambio de credenciales seguro.
-  - Control de acceso exclusivo para perfil `Administrador` validado tanto en interfaz como en backend/servicio, impidiendo que otros perfiles abran el módulo o invoquen operaciones administrativas.
-  - Aprovisionamiento seguro e idempotente de Administrador inicial (`scripts/Initialize-AdminUser.ps1`), cambio obligatorio de contraseña en el primer inicio de sesión, cero credenciales en texto plano en código fuente, cifrado **PBKDF2-HMAC-SHA256** (100.000 iteraciones + salt aleatorio), bloqueo ante fuerza bruta y **Bitácora de Auditoría (`AuditLog`)** completa.
-- **Base de Datos Embebida y Respaldos**:
-  - SQLite 3 en modo WAL con claves foráneas activas, consultas 100% parametrizadas (inmune a inyección SQL), migración completa de los **1.514 registros históricos** de `OT_PROV.mdb` y herramienta integrada de respaldo en caliente.
+  - Módulo CRUD completo de dos secciones (`DATOS DEL USUARIO` + `LISTADO DE USUARIOS`) con los 10 botones operativos, ID automático, búsqueda y filtros combinados, indicadores visuales Activo/Inactivo, eliminación lógica y gestión segura de contraseñas.
+  - Validación exclusiva de perfil `Administrador` en interfaz y backend (revalidado contra BD), aprovisionamiento seguro e idempotente (`scripts/Initialize-AdminUser.ps1`), cambio obligatorio de contraseña en primer inicio de sesión, cifrado **PBKDF2-HMAC-SHA256** (`100.000` iteraciones + salt aleatorio), cero contraseñas en texto plano en código fuente, bloqueo ante fuerza bruta y **Bitácora de Auditoría (`AuditLog`)**.
 
 ---
 
 ## Capturas de Pantalla
 
-### Arranque Corporativo, Acceso y Panel de Control
+### Arranque Corporativo, Acceso y Panel Analítico
 | Pantalla de Arranque Corporativa | Acceso al Sistema |
 | :---: | :---: |
 | ![Pantalla de Arranque](docs/screenshots/00_splash.png) | ![Acceso al Sistema](docs/screenshots/01_login.png) |
 
-| Panel de Control (Dashboard) | Órdenes de Trabajo y Árbol de Activos |
+| Panel de Control y Analítica en Vivo | Órdenes de Trabajo y Árbol de Activos Real |
 | :---: | :---: |
 | ![Panel de Control](docs/screenshots/02_dashboard.png) | ![Órdenes de Trabajo](docs/screenshots/03_ordenes_trabajo.png) |
 
-### Facturación, Mantenedores y Seguridad RBAC
+### Facturación, Mantenedores, Mantención Industrial y Gestión de Usuarios
 | Facturas y Guías de Despacho | Mantenedores (Proveedores, Solicitantes y Activos) |
 | :---: | :---: |
 | ![Facturas y Guías](docs/screenshots/04_facturas_guias.png) | ![Mantenedores](docs/screenshots/05_mantenedores.png) |
 
-| Administración de Usuarios y Permisos RBAC |
-| :---: |
-| ![Usuarios y Permisos](docs/screenshots/06_usuarios_rbac.png) |
+| Mantención Industrial (`BD MANTENCION.mdb`) | Gestión de Usuarios (CRUD + RBAC Exclusivo Admin) |
+| :---: | :---: |
+| ![Mantención Industrial](docs/screenshots/07_mantencion_industrial.png) | ![Gestión de Usuarios](docs/screenshots/06_usuarios_rbac.png) |
 
 ---
 
@@ -66,29 +69,30 @@
 ```text
 SISPRO/
 ├── SISPRO.sln                       # Solución principal .NET 10
-├── Directory.Build.props            # Configuración global (C# latest, Nullable, 0 Warnings)
+├── Directory.Build.props            # Configuración global (v3.0.0, C# latest, Nullable, 0 Warnings)
 ├── src/
-│   ├── Sispro.Core/                 # Entidades, DTOs, RBAC, PBKDF2, RUT y Validadores
-│   ├── Sispro.Data/                 # SQLite WAL, SchemaInitializer y Repositorios Parametrizados
-│   ├── Sispro.Services/             # Lógica de negocio, ClosedXML Excel y PrintDocument
-│   └── Sispro.UI/                   # Aplicación WinForms .NET 10 (PerMonitorV2, IconCatalog)
+│   ├── Sispro.Core/                 # Entidades, DTOs analíticos/mantención, RBAC, PBKDF2 y Validadores
+│   ├── Sispro.Data/                 # SQLite WAL, SchemaInitializer, InitialAdminProvisioner y Repositorios
+│   ├── Sispro.Services/             # Lógica de negocio, MaintenanceService, ClosedXML y PrintDocument
+│   └── Sispro.UI/                   # WinForms .NET 10, ModernChartPanel, IconCatalog Lucide y Diálogos
 ├── tests/
-│   └── Sispro.Tests/                # Suite xUnit (Unit, Integration, Functional, UI, Regression, Stress)
+│   └── Sispro.Tests/                # 37 pruebas xUnit (Unit, Integration, Functional, UI, Regression, Stress)
 ├── data/
-│   └── sispro.db                    # Base SQLite migrada desde OT_PROV.mdb (1.514 OTs, 73 Prov.)
+│   └── sispro.db                    # Base SQLite unificada (343.400+ filas reales, 0 violaciones FK)
 ├── installer/
-│   └── Setup_SISPRO.iss             # Script Inno Setup 6 (instalador autocontenido win-x64)
+│   └── Setup_SISPRO.iss             # Instalador profesional Inno Setup 6 autocontenido win-x64
 ├── scripts/
-│   ├── Build-Release.ps1            # Automatización: Debug + Release + Tests + Publish + Setup
-│   ├── Migrate-MdbToSqlite.ps1      # Migración desde Microsoft Access OT_PROV.mdb
-│   └── build_sqlite.py              # Constructor e integrador SQLite
+│   ├── Build-Release.ps1            # Automatización: Debug + Release + Tests + Publish + Setup + SHA-256
+│   ├── Initialize-AdminUser.ps1     # Aprovisionamiento seguro e idempotente de Administrador inicial
+│   ├── Migrate-MdbToSqlite.ps1      # Migración streaming desde OT_PROV.mdb + BD MANTENCION.mdb + PERSONAL
+│   └── build_sqlite.py              # Constructor, normalizador e integrador SQLite unificado
 └── docs/
     ├── AUDITORIA_MIGRACION.md       # Auditoría completa VB6 y matriz de correcciones
     ├── ARQUITECTURA_TECNICA.md      # Diseño en capas, diagrama ER y modelo de seguridad
     ├── MANUAL_FUNCIONAL.md          # Guía de usuario módulo por módulo
     ├── GUIA_COMPILACION.md          # Compilación, pruebas y empaquetado
     ├── GUIA_DESPLIEGUE.md           # Instalación, actualización, red compartida y respaldos
-    └── REPORTE_PRUEBAS.md           # Resultados detallados de la suite de 32 pruebas
+    └── REPORTE_PRUEBAS.md           # Resultados detallados de las 37 pruebas automatizadas
 ```
 
 ---
@@ -101,22 +105,26 @@ SISPRO/
 
 ### Para Desarrollo / Compilación
 - **.NET 10 SDK** (`10.0.100+`).
-- **Inno Setup 6** (solo para compilar el instalador `.exe`).
+- **Inno Setup 6** (solo para generar el instalador `.exe`).
 
 ---
 
 ## Instalación y Uso
 
 ### Instalación Rápida (Producción)
-1. Descargue `SISPRO_Setup_v2.1.0_win-x64.exe` desde la sección de **Releases** o compílelo con `.\scripts\Build-Release.ps1`.
-2. Ejecute el instalador (compatible con instalación sin permisos de administrador o para todos los usuarios).
+1. Descargue `SISPRO_Setup_v3.0.0_win-x64.exe` desde la sección de **Releases** o compílelo con `.\scripts\Build-Release.ps1`.
+2. Ejecute el instalador (compatible con instalación de usuario o de sistema; preserva intacta la base `Data\sispro.db` durante actualizaciones).
 3. Inicie **SISPRO** desde el Menú Inicio:
-   - La base `data/sispro.db` incluye la cuenta Administrador inicial aprovisionada con cambio obligatorio de contraseña en el primer inicio de sesión, además de las cuentas históricas migradas desde `OT_PROV.mdb` (que actualizan su cifrado a PBKDF2 automáticamente).
-   - Para aprovisionar una cuenta Administrador inicial en una base nueva vacía (sin exponer contraseñas en código fuente), ejecute `.\scripts\Initialize-AdminUser.ps1 -DatabasePath "<ruta_sispro.db>" -Username "<usuario>"` o configure las variables de entorno `SISPRO_INIT_ADMIN_USER` y `SISPRO_INIT_ADMIN_PASSWORD`.
+   - La base `data/sispro.db` incluye la cuenta Administrador inicial aprovisionada con cambio obligatorio de contraseña en el primer inicio de sesión, además de las cuentas migradas de `OT_PROV.mdb`.
+   - Para aprovisionar una cuenta Administrador inicial en una base nueva vacía (sin exponer contraseñas en código fuente):
+     ```powershell
+     .\scripts\Initialize-AdminUser.ps1 -DatabasePath ".\data\sispro.db" -Username "<usuario>"
+     ```
+     o defina las variables de entorno `SISPRO_INIT_ADMIN_USER` y `SISPRO_INIT_ADMIN_PASSWORD` / `SISPRO_INIT_ADMIN_HASH`.
 
 ### Compilación y Pruebas desde Código Fuente
 ```powershell
-# Restaurar, compilar Debug y Release con 0 errores y 0 advertencias
+# Restaurar y compilar Debug + Release (0 errores, 0 advertencias)
 dotnet restore SISPRO.sln
 dotnet build SISPRO.sln -c Debug --no-restore
 dotnet build SISPRO.sln -c Release --no-restore
@@ -124,7 +132,7 @@ dotnet build SISPRO.sln -c Release --no-restore
 # Ejecutar las 37 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build --verbosity normal
 
-# Generar compilación autocontenida e instalador Inno Setup 6
+# Generar compilación autocontenida win-x64 e instalador Inno Setup 6
 .\scripts\Build-Release.ps1
 ```
 
@@ -132,35 +140,24 @@ dotnet test SISPRO.sln -c Release --no-build --verbosity normal
 
 ## Configuración
 
-El archivo de configuración se guarda en `%LOCALAPPDATA%\Cambiaso\SISPRO\settings.json` y se edita gráficamente desde **Configuración**:
-- **Base de datos activa**: por defecto `%LOCALAPPDATA%\Cambiaso\SISPRO\sispro.db` (copiada automáticamente desde `Data\sispro.db` al primer arranque; puede apuntar a una ruta de red compartida para operación multiusuario).
-- **Datos corporativos**: Razón Social, RUT, Departamento y Dirección de Planta usados en reportes Excel e impresión.
+La configuración se almacena en `%LOCALAPPDATA%\Cambiaso\SISPRO\settings.json` y se edita gráficamente desde **Configuración** (solo Administradores):
+- **Base de datos activa**: por defecto `%LOCALAPPDATA%\Cambiaso\SISPRO\sispro.db` (copiada automáticamente desde `Data\sispro.db` en el primer arranque; puede apuntar a una carpeta de red compartida para uso multiusuario).
+- **Datos corporativos**: Razón Social, RUT, Departamento y Dirección utilizados en reportes Excel e impresión.
 - **Respaldo en caliente**: botón **Respaldar BD** que genera copias consistentes sin detener el sistema.
-
----
-
-## Documentación Técnica y Funcional
-
-- [Auditoría Completa y Migración VB6 → .NET 10](docs/AUDITORIA_MIGRACION.md)
-- [Arquitectura Técnica y Modelo de Datos](docs/ARQUITECTURA_TECNICA.md)
-- [Manual Funcional de Usuario](docs/MANUAL_FUNCIONAL.md)
-- [Guía de Compilación y Empaquetado](docs/GUIA_COMPILACION.md)
-- [Guía de Despliegue, Actualización y Respaldo](docs/GUIA_DESPLIEGUE.md)
-- [Reporte de Pruebas Automatizadas](docs/REPORTE_PRUEBAS.md)
 
 ---
 
 ## Versionado e Historial de Cambios
 
-Este proyecto sigue **Semantic Versioning (`MAJOR.MINOR.PATCH`)**. Consulte el detalle completo en [CHANGELOG.md](CHANGELOG.md).
-
-- **v2.0.0** *(2026-11-23)* — Migración completa a **.NET 10 (C# WinForms)**, motor **SQLite WAL** con 1.514 OTs históricas migradas, corrección total de permisos RBAC y seguridad PBKDF2, exportación Excel sin Office (`ClosedXML`), impresión nativa, 32 pruebas automatizadas (0 errores / 0 advertencias) e instalador Inno Setup 6.
-- **v1.0.0** *(2011-11-03)* — Versión original en Visual Basic 6 (`Proveedores.exe`) con Microsoft Access `OT_PROV.mdb`.
+Este proyecto sigue [Semantic Versioning](https://semver.org/). Consulte el historial completo en [CHANGELOG.md](CHANGELOG.md):
+- **v3.0.0 (2026-11-23)**: Importación integral de `OT_PROV.mdb` (7.284 OTs), `BD MANTENCION.mdb` (1.824 activos reales, 43.989 OTs internas, 780 planes MP, 208.121 tareas MP, 2.462 insumos SAP, 134 técnicos) y `PERSONAL_MANTENCION.mdb`, nuevo módulo **Mantención Industrial**, gráficas vectoriales modernas en el Dashboard, ficha técnica de activos y 37/37 pruebas.
+- **v2.1.0 (2026-11-23)**: Módulo profesional **GESTIÓN DE USUARIOS** (CRUD completo, eliminación lógica, RBAC exclusivo Administrador y aprovisionamiento seguro con cambio obligatorio en primer acceso).
+- **v2.0.0 (2026-11-23)**: Migración completa de VB6 + Access a .NET 10 + SQLite WAL con marca corporativa Cambiaso.
+- **v1.0.0 (2011-11-03)**: Versión original en Visual Basic 6 (`Proveedores.exe`).
 
 ---
 
-## Créditos
+## Créditos y Licencia
 
-- **Organización**: Cambiaso Hnos S.A.C. — Departamento de Mantención, Placilla, Valparaíso, Chile.
-- **Mantenimiento y Modernización .NET 10**: Equipo de Ingeniería / `barriagada666-collab`.
-- **Licencia**: [MIT](LICENSE).
+Desarrollado y modernizado para **Cambiaso Hnos S.A.C. — División Mantención Industrial (Placilla, Valparaíso, Chile)**.
+Distribuido bajo licencia **MIT** — consulte [LICENSE](LICENSE).

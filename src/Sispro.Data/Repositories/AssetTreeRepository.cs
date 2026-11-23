@@ -7,12 +7,19 @@ namespace Sispro.Data.Repositories;
 
 public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAssetTreeRepository
 {
+    private const string SelectFields = """
+        a.id_activo, a.parent_id, a.nivel, a.descripcion, a.activo,
+        a.cod_sap, a.fabricante, a.serie, a.modelo, a.tipo_equipo,
+        a.estado_operativo, a.categoria, a.prioridad, a.material,
+        a.vida_util, a.observacion, a.fecha_instalacion, a.valor_compra, a.info_tecnica_json
+        """;
+
     public AssetNode? GetById(int idActivo)
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT a.id_activo, a.parent_id, a.nivel, a.descripcion, a.activo,
+        cmd.CommandText = $"""
+            SELECT {SelectFields},
                    EXISTS(SELECT 1 FROM Activos c WHERE c.parent_id = a.id_activo AND c.activo = 1)
             FROM Activos a
             WHERE a.id_activo = $id LIMIT 1;
@@ -29,11 +36,11 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         string parentClause = parentId.HasValue ? "a.parent_id = $pid" : "a.parent_id IS NULL";
         string activeClause = includeInactive ? string.Empty : "AND a.activo = 1";
         cmd.CommandText = $"""
-            SELECT a.id_activo, a.parent_id, a.nivel, a.descripcion, a.activo,
+            SELECT {SelectFields},
                    EXISTS(SELECT 1 FROM Activos c WHERE c.parent_id = a.id_activo {(includeInactive ? string.Empty : "AND c.activo = 1")})
             FROM Activos a
             WHERE {parentClause} {activeClause}
-            ORDER BY a.descripcion, a.id_activo;
+            ORDER BY a.nivel ASC, a.descripcion ASC, a.id_activo ASC;
             """;
         if (parentId.HasValue)
         {
@@ -56,12 +63,17 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         using SqliteCommand cmd = conn.CreateCommand();
         string activeClause = includeInactive ? string.Empty : "AND a.activo = 1";
         cmd.CommandText = $"""
-            SELECT a.id_activo, a.parent_id, a.nivel, a.descripcion, a.activo,
+            SELECT {SelectFields},
                    EXISTS(SELECT 1 FROM Activos c WHERE c.parent_id = a.id_activo AND c.activo = 1)
             FROM Activos a
-            WHERE (a.descripcion LIKE $q OR CAST(a.id_activo AS TEXT) = $exact) {activeClause}
+            WHERE (a.descripcion LIKE $q
+                OR a.cod_sap LIKE $q
+                OR a.fabricante LIKE $q
+                OR a.modelo LIKE $q
+                OR a.serie LIKE $q
+                OR CAST(a.id_activo AS TEXT) = $exact) {activeClause}
             ORDER BY a.nivel, a.descripcion
-            LIMIT 100;
+            LIMIT 120;
             """;
         cmd.Parameters.AddWithValue("$q", $"%{query.Trim()}%");
         cmd.Parameters.AddWithValue("$exact", query.Trim());
@@ -89,7 +101,7 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
                 FROM Activos a
                 INNER JOIN tree_path tp ON a.id_activo = tp.parent_id
             )
-            SELECT id_activo, parent_id, nivel, descripcion, activo, 0
+            SELECT id_activo, parent_id, nivel, descripcion, activo
             FROM tree_path
             ORDER BY nivel ASC;
             """;
@@ -99,7 +111,14 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         using SqliteDataReader rdr = cmd.ExecuteReader();
         while (rdr.Read())
         {
-            path.Add(Map(rdr));
+            path.Add(new AssetNode
+            {
+                IdActivo = rdr.GetInt32(0),
+                ParentId = rdr.IsDBNull(1) ? null : rdr.GetInt32(1),
+                Nivel = rdr.GetInt32(2),
+                Descripcion = rdr.GetString(3),
+                Activo = rdr.GetInt32(4) != 0
+            });
         }
 
         return path;
@@ -118,14 +137,30 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         }
 
         cmd.CommandText = """
-            INSERT INTO Activos(id_activo, parent_id, nivel, descripcion, activo)
-            VALUES ($id, $pid, $lvl, $desc, $act);
+            INSERT INTO Activos(
+                id_activo, parent_id, nivel, descripcion, activo,
+                cod_sap, fabricante, serie, modelo, tipo_equipo,
+                estado_operativo, categoria, prioridad, observacion
+            ) VALUES (
+                $id, $pid, $lvl, $desc, $act,
+                $sap, $fab, $ser, $mod, $tipo,
+                $estOp, $cat, $prio, $obs
+            );
             """;
         cmd.Parameters.AddWithValue("$id", node.IdActivo);
         cmd.Parameters.AddWithValue("$pid", node.ParentId.HasValue ? node.ParentId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$lvl", Math.Clamp(node.Nivel, 1, 10));
         cmd.Parameters.AddWithValue("$desc", node.Descripcion.Trim());
         cmd.Parameters.AddWithValue("$act", node.Activo ? 1 : 0);
+        cmd.Parameters.AddWithValue("$sap", node.CodSap.Trim());
+        cmd.Parameters.AddWithValue("$fab", node.Fabricante.Trim());
+        cmd.Parameters.AddWithValue("$ser", node.Serie.Trim());
+        cmd.Parameters.AddWithValue("$mod", node.Modelo.Trim());
+        cmd.Parameters.AddWithValue("$tipo", node.TipoEquipo.Trim());
+        cmd.Parameters.AddWithValue("$estOp", node.EstadoOperativo.Trim());
+        cmd.Parameters.AddWithValue("$cat", node.Categoria.Trim());
+        cmd.Parameters.AddWithValue("$prio", node.Prioridad);
+        cmd.Parameters.AddWithValue("$obs", node.Observacion.Trim());
         cmd.ExecuteNonQuery();
         return node.IdActivo;
     }
@@ -136,12 +171,31 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = """
             UPDATE Activos
-            SET descripcion = $desc, activo = $act
+            SET descripcion = $desc,
+                activo = $act,
+                cod_sap = $sap,
+                fabricante = $fab,
+                serie = $ser,
+                modelo = $mod,
+                tipo_equipo = $tipo,
+                estado_operativo = $estOp,
+                categoria = $cat,
+                prioridad = $prio,
+                observacion = $obs
             WHERE id_activo = $id;
             """;
         cmd.Parameters.AddWithValue("$id", node.IdActivo);
         cmd.Parameters.AddWithValue("$desc", node.Descripcion.Trim());
         cmd.Parameters.AddWithValue("$act", node.Activo ? 1 : 0);
+        cmd.Parameters.AddWithValue("$sap", node.CodSap.Trim());
+        cmd.Parameters.AddWithValue("$fab", node.Fabricante.Trim());
+        cmd.Parameters.AddWithValue("$ser", node.Serie.Trim());
+        cmd.Parameters.AddWithValue("$mod", node.Modelo.Trim());
+        cmd.Parameters.AddWithValue("$tipo", node.TipoEquipo.Trim());
+        cmd.Parameters.AddWithValue("$estOp", node.EstadoOperativo.Trim());
+        cmd.Parameters.AddWithValue("$cat", node.Categoria.Trim());
+        cmd.Parameters.AddWithValue("$prio", node.Prioridad);
+        cmd.Parameters.AddWithValue("$obs", node.Observacion.Trim());
         cmd.ExecuteNonQuery();
     }
 
@@ -170,6 +224,20 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         Nivel = rdr.GetInt32(2),
         Descripcion = rdr.GetString(3),
         Activo = rdr.GetInt32(4) != 0,
-        TieneHijos = rdr.GetInt32(5) != 0
+        CodSap = rdr.IsDBNull(5) ? string.Empty : rdr.GetString(5),
+        Fabricante = rdr.IsDBNull(6) ? string.Empty : rdr.GetString(6),
+        Serie = rdr.IsDBNull(7) ? string.Empty : rdr.GetString(7),
+        Modelo = rdr.IsDBNull(8) ? string.Empty : rdr.GetString(8),
+        TipoEquipo = rdr.IsDBNull(9) ? string.Empty : rdr.GetString(9),
+        EstadoOperativo = rdr.IsDBNull(10) ? string.Empty : rdr.GetString(10),
+        Categoria = rdr.IsDBNull(11) ? string.Empty : rdr.GetString(11),
+        Prioridad = rdr.IsDBNull(12) ? 0 : rdr.GetInt32(12),
+        Material = rdr.IsDBNull(13) ? string.Empty : rdr.GetString(13),
+        VidaUtil = rdr.IsDBNull(14) ? string.Empty : rdr.GetString(14),
+        Observacion = rdr.IsDBNull(15) ? string.Empty : rdr.GetString(15),
+        FechaInstalacion = rdr.IsDBNull(16) ? string.Empty : rdr.GetString(16),
+        ValorCompra = rdr.IsDBNull(17) ? 0m : Convert.ToDecimal(rdr.GetDouble(17)),
+        InfoTecnicaJson = rdr.IsDBNull(18) ? string.Empty : rdr.GetString(18),
+        TieneHijos = rdr.GetInt32(19) != 0
     };
 }

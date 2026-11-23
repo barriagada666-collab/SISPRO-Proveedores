@@ -103,12 +103,14 @@ public sealed class SisproApplicationContext
     public IWorkOrderRepository WorkOrders { get; private set; }
     public IInvoiceRepository Invoices { get; private set; }
     public IAuditRepository Audit { get; private set; }
+    public IMaintenanceRepository Maintenance { get; private set; }
 
     public AuthService AuthService { get; private set; }
     public WorkOrderService WorkOrderService { get; private set; }
     public InvoiceService InvoiceService { get; private set; }
     public MaintainerService MaintainerService { get; private set; }
     public UserManagementService UserManagementService { get; private set; }
+    public MaintenanceService MaintenanceService { get; private set; }
     public ExcelExportService ExcelExportService { get; private set; }
     public PrintService PrintService { get; private set; }
 
@@ -127,12 +129,14 @@ public sealed class SisproApplicationContext
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
         Invoices = new InvoiceRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
+        Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit);
         InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit);
         UserManagementService = new UserManagementService(Users, Requesters, Audit);
+        MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(settings);
         PrintService = new PrintService(settings);
     }
@@ -152,12 +156,14 @@ public sealed class SisproApplicationContext
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
         Invoices = new InvoiceRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
+        Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit);
         InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit);
         UserManagementService = new UserManagementService(Users, Requesters, Audit);
+        MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(Settings);
         PrintService = new PrintService(Settings);
     }

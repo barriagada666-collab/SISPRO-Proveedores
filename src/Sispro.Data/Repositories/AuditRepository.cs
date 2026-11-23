@@ -66,7 +66,12 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
                 (SELECT COUNT(*) FROM Solicitantes WHERE activo = 1),
                 (SELECT COUNT(*) FROM Facturas),
                 (SELECT COUNT(*) FROM Usuarios WHERE activo = 1),
-                (SELECT COUNT(*) FROM Activos WHERE activo = 1);
+                (SELECT COUNT(*) FROM Activos WHERE activo = 1),
+                (SELECT COUNT(*) FROM Mant_OT),
+                (SELECT COUNT(*) FROM Mant_MP),
+                (SELECT COUNT(*) FROM Mant_TareasMP),
+                (SELECT COUNT(*) FROM Mant_Insumos),
+                (SELECT COUNT(*) FROM Mant_Personal);
             """;
         using SqliteDataReader rdr = cmd.ExecuteReader();
         if (!rdr.Read())
@@ -82,7 +87,12 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
             TotalSolicitantesActivos = rdr.GetInt32(3),
             TotalFacturas = rdr.GetInt32(4),
             TotalUsuariosActivos = rdr.GetInt32(5),
-            TotalNodosActivos = rdr.GetInt32(6)
+            TotalNodosActivos = rdr.GetInt32(6),
+            TotalMantOts = rdr.GetInt32(7),
+            TotalPlanesMp = rdr.GetInt32(8),
+            TotalTareasMp = rdr.GetInt32(9),
+            TotalInsumos = rdr.GetInt32(10),
+            TotalPersonalTecnico = rdr.GetInt32(11)
         };
     }
 }

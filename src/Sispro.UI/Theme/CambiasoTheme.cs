@@ -215,43 +215,73 @@ public static class CambiasoTheme
         AutoSize = true
     };
 
-    public static Panel CreateMetricCard(string title, out Label valueLabel, Color accentColor)
+    public static Panel CreateMetricCard(
+        string title,
+        out Label valueLabel,
+        Color accentColor,
+        AppIcon? icon = null,
+        string? subtitle = null)
     {
         Panel card = new()
         {
             BackColor = CardBackground,
-            Height = 96,
-            Padding = new Padding(14, 10, 14, 10),
-            Margin = new Padding(0, 0, 12, 12)
+            Height = 92,
+            Padding = new Padding(14, 10, 12, 8),
+            Margin = new Padding(0, 0, 10, 8)
         };
+        EnableDoubleBuffering(card);
         card.Paint += (_, e) =>
         {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using Pen borderPen = new(BorderColor, 1);
             e.Graphics.DrawRectangle(borderPen, 0, 0, card.Width - 1, card.Height - 1);
             using SolidBrush bar = new(accentColor);
-            e.Graphics.FillRectangle(bar, 0, 0, 5, card.Height);
+            e.Graphics.FillRectangle(bar, 0, 0, 4, card.Height);
+
+            if (icon.HasValue)
+            {
+                int badgeSize = 34;
+                Rectangle badgeRect = new(card.Width - badgeSize - 12, 12, badgeSize, badgeSize);
+                using SolidBrush tint = new(Color.FromArgb(26, accentColor));
+                e.Graphics.FillEllipse(tint, badgeRect);
+                Bitmap ico = IconCatalog.Get(icon.Value, accentColor, 18);
+                e.Graphics.DrawImage(ico, badgeRect.X + 8, badgeRect.Y + 8, 18, 18);
+            }
         };
 
         Label lblTitle = new()
         {
             Text = title.ToUpperInvariant(),
-            Font = SmallFont,
+            Font = new Font("Segoe UI", 7.8f, FontStyle.Bold),
             ForeColor = TextMuted,
-            Location = new Point(16, 12),
+            Location = new Point(14, 10),
             AutoSize = true
         };
 
         valueLabel = new Label
         {
             Text = "0",
-            Font = MetricNumberFont,
+            Font = new Font("Segoe UI", 19.5f, FontStyle.Bold),
             ForeColor = TextPrimary,
-            Location = new Point(16, 36),
+            Location = new Point(14, 30),
             AutoSize = true
         };
 
         card.Controls.Add(lblTitle);
         card.Controls.Add(valueLabel);
+
+        if (!string.IsNullOrWhiteSpace(subtitle))
+        {
+            card.Controls.Add(new Label
+            {
+                Text = subtitle,
+                Font = new Font("Segoe UI", 7.8f, FontStyle.Regular),
+                ForeColor = TextMuted,
+                Location = new Point(14, 67),
+                AutoSize = true
+            });
+        }
+
         return card;
     }
 

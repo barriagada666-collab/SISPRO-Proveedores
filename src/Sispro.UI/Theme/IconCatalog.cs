@@ -34,7 +34,15 @@ public enum AppIcon
     Template,
     UserPlus,
     Cancel,
-    Eraser
+    Eraser,
+    Wrench,
+    BarChart,
+    Package,
+    HardHat,
+    ClipboardCheck,
+    Factory,
+    TrendingUp,
+    Cpu
 }
 
 /// <summary>
@@ -285,6 +293,65 @@ public static class IconCatalog
                 g.DrawPolygon(pen, [new PointF(7, 21), new PointF(2, 16), new PointF(13, 5), new PointF(20, 12), new PointF(11, 21)]);
                 g.DrawLine(pen, 7, 21, 22, 21);
                 g.DrawLine(pen, 9, 9, 16, 16);
+                break;
+
+            case AppIcon.Wrench: // lucide: wrench
+                g.DrawArc(pen, 13, 2, 9, 9, -40, 260);
+                g.DrawLines(pen, [new PointF(14.5f, 9.5f), new PointF(4, 20), new PointF(2, 22), new PointF(4, 22), new PointF(14.5f, 11.5f)]);
+                g.DrawLine(pen, 17, 5, 19, 7);
+                break;
+
+            case AppIcon.BarChart: // lucide: bar-chart-3
+                g.DrawLines(pen, [new PointF(3, 3), new PointF(3, 21), new PointF(21, 21)]);
+                g.DrawLine(pen, 8, 17, 8, 12);
+                g.DrawLine(pen, 13, 17, 13, 7);
+                g.DrawLine(pen, 18, 17, 18, 10);
+                break;
+
+            case AppIcon.Package: // lucide: package
+                g.DrawPolygon(pen, [new PointF(12, 2), new PointF(21, 7), new PointF(21, 17), new PointF(12, 22), new PointF(3, 17), new PointF(3, 7)]);
+                g.DrawLines(pen, [new PointF(3, 7), new PointF(12, 12), new PointF(21, 7)]);
+                g.DrawLine(pen, 12, 12, 12, 22);
+                g.DrawLine(pen, 7.5f, 4.5f, 16.5f, 9.5f);
+                break;
+
+            case AppIcon.HardHat: // lucide: hard-hat
+                g.DrawArc(pen, 4, 6, 16, 14, 180, 180);
+                g.DrawLine(pen, 2, 15, 22, 15);
+                g.DrawLine(pen, 10, 4, 10, 15);
+                g.DrawLine(pen, 14, 4, 14, 15);
+                g.DrawLine(pen, 10, 4, 14, 4);
+                break;
+
+            case AppIcon.ClipboardCheck: // lucide: clipboard-check
+                DrawRoundedRect(g, pen, 8, 2, 8, 4, 1);
+                g.DrawLines(pen, [new PointF(16, 4), new PointF(19, 4), new PointF(20, 5), new PointF(20, 20), new PointF(19, 22), new PointF(5, 22), new PointF(4, 20), new PointF(4, 5), new PointF(5, 4), new PointF(8, 4)]);
+                g.DrawLines(pen, [new PointF(9, 14), new PointF(11, 16), new PointF(15, 11)]);
+                break;
+
+            case AppIcon.Factory: // lucide: factory
+                g.DrawLines(pen, [new PointF(2, 20), new PointF(2, 10), new PointF(8, 13), new PointF(8, 10), new PointF(14, 13), new PointF(14, 4), new PointF(20, 4), new PointF(22, 20), new PointF(2, 20)]);
+                g.DrawLine(pen, 17, 16, 18, 16);
+                g.DrawLine(pen, 12, 16, 13, 16);
+                g.DrawLine(pen, 7, 16, 8, 16);
+                break;
+
+            case AppIcon.TrendingUp: // lucide: trending-up
+                g.DrawLines(pen, [new PointF(2, 17), new PointF(8.5f, 10.5f), new PointF(13.5f, 15.5f), new PointF(22, 7)]);
+                g.DrawLines(pen, [new PointF(16, 7), new PointF(22, 7), new PointF(22, 13)]);
+                break;
+
+            case AppIcon.Cpu: // lucide: cpu
+                DrawRoundedRect(g, pen, 5, 5, 14, 14, 2);
+                g.DrawRectangle(pen, 9, 9, 6, 6);
+                g.DrawLine(pen, 9, 2, 9, 5);
+                g.DrawLine(pen, 15, 2, 15, 5);
+                g.DrawLine(pen, 9, 19, 9, 22);
+                g.DrawLine(pen, 15, 19, 15, 22);
+                g.DrawLine(pen, 2, 9, 5, 9);
+                g.DrawLine(pen, 2, 15, 5, 15);
+                g.DrawLine(pen, 19, 9, 22, 9);
+                g.DrawLine(pen, 19, 15, 22, 15);
                 break;
         }
 

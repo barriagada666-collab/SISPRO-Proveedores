@@ -1,4 +1,4 @@
-# Reporte de Pruebas y Validación — SISPRO v2.1 (.NET 10)
+# Reporte de Pruebas y Validación — SISPRO v3.0 (.NET 10)
 
 ## 1. Resumen de Ejecución
 
@@ -11,7 +11,8 @@
 | Pruebas Omitidas | **0** |
 | Errores de Compilación (Debug & Release) | **0** |
 | Advertencias de Compilación (Debug & Release) | **0** (`TreatWarningsAsErrors=true`, `WarningLevel=9999`) |
-| Vulnerabilidades NuGet (`dotnet restore` audit) | **0** |
+| Vulnerabilidades NuGet (`dotnet list --vulnerable`) | **0** |
+| Integridad SQLite (`PRAGMA integrity_check` / `foreign_key_check`) | **`ok` / `0` violaciones** (`343.400+` filas reales) |
 
 ---
 
@@ -26,12 +27,13 @@
 - Validación de correos electrónicos y política de contraseñas.
 
 ### 2.2 Pruebas de Integración (`tests/Sispro.Tests/Integration/DatabaseIntegrationTests.cs`)
-- Verificación íntegra sobre copia real de `data/sispro.db` migrada desde `OT_PROV.mdb`:
-  - 1.514 Órdenes de Trabajo, 73 Proveedores activos, 7 Solicitantes activos, 2 Usuarios activos, 272 nodos de Activos.
-  - Recuperación visible de OT histórica `2514` sin solicitante asignado (`LEFT JOIN`).
-  - Migración automática transparente de la contraseña de `L Reyes` desde `LEGACY_VB6$` a `PBKDF2$100000$` tras el primer inicio de sesión.
+- Verificación íntegra sobre copia real de `data/sispro.db` unificada (`OT_PROV.mdb` + `BD MANTENCION.mdb` + `PERSONAL_MANTENCION.mdb`):
+  - `7.284` Órdenes de Trabajo de proveedores (`7.803` detalles), `214` Proveedores activos, `9` Solicitantes activos (`11` totales), `4` Usuarios activos, `1.823` Activos activos (`1.824` totales).
+  - `43.989` OTs de Mantención interna, `780` Planes MP, `208.121` Tareas MP, `2.462` Insumos SAP, `134` Técnicos, `43` Fichas RRHH, `56` OTs externas históricas, `41` Motivos de falla y `33` Oficios.
+  - Recuperación visible de OT histórica `2514` con su ruta real resuelta desde `BD MANTENCION`: `CAMBIASO HNOS S.A.C. \ PLANTA PE \ RECUPERADO \ LINEA LAV. 3 \ Molino Rapid 400`.
+  - Validación de `GetDashboardAnalytics()` (evolución anual, distribución por planta, top proveedores y oficios) y migración transparente de `L Reyes` a `PBKDF2$100000$` + verificación de `BORIS` y `barriagada` con `PBKDF2$100000$` y cambio obligatorio en primer acceso.
 - Navegación y creación en árbol de activos hasta profundidad máxima de 10 niveles y bloqueo de nivel 11.
-- Respaldo en caliente (`SqliteConnectionFactory.BackupTo`) y restauración verificada.
+- Respaldo en caliente (`SqliteConnectionFactory.BackupTo`) y restauración verificada (`7.284` OTs íntegras).
 
 ### 2.3 Pruebas Funcionales End-to-End (`EndToEndWorkflowTests.cs` y `UserManagementModuleTests.cs`)
 - Ciclo completo: Login Admin → Creación de Proveedores, Solicitantes y Activos → Creación de usuarios `Supervisor` (con sincronización automática a `Solicitantes`) y `Jefatura` → Creación de OT con 2 ítems → Aprobación `VBS` por Supervisor + bloqueo `UnauthorizedAccessException` al intentar `VBJ` → Aprobación `VBJ` por Jefatura → Validación de rechazo por proveedor distinto en factura → Registro de factura con cálculo automático de IVA 19% → Bloqueo de eliminación de OT facturada → Exportación de OT a `.xlsx` con verificación real de celdas en `ClosedXML` → Exportación de resultados de búsqueda con progreso → Eliminación de factura con reversa de estado y eliminación final de OT.

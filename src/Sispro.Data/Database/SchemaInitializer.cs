@@ -79,14 +79,36 @@ public static class SchemaInitializer
             parent_id INTEGER REFERENCES Activos(id_activo),
             nivel INTEGER NOT NULL CHECK (nivel BETWEEN 1 AND 10),
             descripcion TEXT NOT NULL,
-            activo INTEGER NOT NULL DEFAULT 1
+            activo INTEGER NOT NULL DEFAULT 1,
+            cod_sap TEXT NOT NULL DEFAULT '',
+            fabricante TEXT NOT NULL DEFAULT '',
+            serie TEXT NOT NULL DEFAULT '',
+            modelo TEXT NOT NULL DEFAULT '',
+            fecha_compra TEXT NOT NULL DEFAULT '',
+            valor_compra REAL NOT NULL DEFAULT 0,
+            valor_actual REAL NOT NULL DEFAULT 0,
+            fecha_instalacion TEXT NOT NULL DEFAULT '',
+            tipo_equipo TEXT NOT NULL DEFAULT '',
+            estado_operativo TEXT NOT NULL DEFAULT '',
+            vida_util TEXT NOT NULL DEFAULT '',
+            observacion TEXT NOT NULL DEFAULT '',
+            prioridad INTEGER NOT NULL DEFAULT 0,
+            material TEXT NOT NULL DEFAULT '',
+            categoria TEXT NOT NULL DEFAULT '',
+            ruta_plano TEXT NOT NULL DEFAULT '',
+            nombre_plano TEXT NOT NULL DEFAULT '',
+            ruta_foto TEXT NOT NULL DEFAULT '',
+            nombre_foto TEXT NOT NULL DEFAULT '',
+            info_tecnica_json TEXT NOT NULL DEFAULT ''
         );
 
         CREATE INDEX IF NOT EXISTS IX_Activos_Parent ON Activos(parent_id, activo, descripcion);
+        CREATE INDEX IF NOT EXISTS IX_Activos_Nivel ON Activos(nivel, descripcion);
+        CREATE INDEX IF NOT EXISTS IX_Activos_CodSap ON Activos(cod_sap);
 
         CREATE TABLE IF NOT EXISTS OrdenesTrabajo (
             id_ot INTEGER PRIMARY KEY AUTOINCREMENT,
-            n_ot INTEGER NOT NULL UNIQUE,
+            n_ot INTEGER NOT NULL,
             id_prov INTEGER NOT NULL REFERENCES Proveedores(id_prov),
             id_sol INTEGER REFERENCES Solicitantes(id_sol),
             fecha_ot TEXT NOT NULL,
@@ -106,6 +128,7 @@ public static class SchemaInitializer
             ruta_activo TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE INDEX IF NOT EXISTS IX_OT_Numero ON OrdenesTrabajo(n_ot);
         CREATE INDEX IF NOT EXISTS IX_OT_Fecha ON OrdenesTrabajo(fecha_ot);
         CREATE INDEX IF NOT EXISTS IX_OT_Prov ON OrdenesTrabajo(id_prov);
         CREATE INDEX IF NOT EXISTS IX_OT_Sol ON OrdenesTrabajo(id_sol);
@@ -170,6 +193,250 @@ public static class SchemaInitializer
         );
 
         CREATE INDEX IF NOT EXISTS IX_AuditLog_Fecha ON AuditLog(fecha_utc DESC);
+
+        CREATE TABLE IF NOT EXISTS Mant_Oficios (
+            id_oficio INTEGER PRIMARY KEY,
+            desc_oficio TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Motivos (
+            id_motivo INTEGER PRIMARY KEY,
+            desc_motivo TEXT NOT NULL,
+            considerado INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Empresas (
+            id_empresa INTEGER PRIMARY KEY,
+            desc_empresa TEXT NOT NULL,
+            direccion TEXT NOT NULL DEFAULT '',
+            telefono TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            oficio TEXT NOT NULL DEFAULT '',
+            fax TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_DescInformes (
+            id_desc INTEGER PRIMARY KEY,
+            desc_inf TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Personal (
+            id_personal INTEGER PRIMARY KEY,
+            cod_personal TEXT NOT NULL DEFAULT '',
+            rut_personal TEXT NOT NULL DEFAULT '',
+            nombres TEXT NOT NULL DEFAULT '',
+            apellidos TEXT NOT NULL DEFAULT '',
+            desc_personal TEXT NOT NULL DEFAULT '',
+            oficio TEXT NOT NULL DEFAULT '',
+            email TEXT NOT NULL DEFAULT '',
+            celular TEXT NOT NULL DEFAULT '',
+            fono TEXT NOT NULL DEFAULT '',
+            direccion TEXT NOT NULL DEFAULT '',
+            fecha_ingreso TEXT NOT NULL DEFAULT '',
+            departamento TEXT NOT NULL DEFAULT '',
+            centro_trabajo TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_PersonalRRHH (
+            id_empleado TEXT PRIMARY KEY,
+            fec_alta_empleado TEXT NOT NULL DEFAULT '',
+            nombre TEXT NOT NULL DEFAULT '',
+            apellido_p TEXT NOT NULL DEFAULT '',
+            apellido_m TEXT NOT NULL DEFAULT '',
+            n_centro_costo TEXT NOT NULL DEFAULT '',
+            n_puesto TEXT NOT NULL DEFAULT '',
+            n_departamento TEXT NOT NULL DEFAULT '',
+            n_centro_trabajo TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Ropa (
+            id_registro INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_personal INTEGER NOT NULL,
+            id_item INTEGER NOT NULL DEFAULT 0,
+            descripcion TEXT NOT NULL DEFAULT '',
+            talla TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '',
+            cantidad INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Insumos (
+            id_item INTEGER PRIMARY KEY,
+            cod_sap TEXT NOT NULL DEFAULT '',
+            cod_proveedor TEXT NOT NULL DEFAULT '',
+            desc_item TEXT NOT NULL DEFAULT '',
+            stock_unidad REAL NOT NULL DEFAULT 0,
+            dias_entrega INTEGER NOT NULL DEFAULT 0,
+            prioridad_item INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_InsumosUtilizados (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_ref INTEGER NOT NULL DEFAULT 0,
+            id_item INTEGER NOT NULL DEFAULT 0,
+            origen TEXT NOT NULL DEFAULT '',
+            id_ciclo INTEGER NOT NULL DEFAULT 0,
+            cantidad REAL NOT NULL DEFAULT 0,
+            costo_unidad REAL NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_OT (
+            id INTEGER PRIMARY KEY,
+            n_ot TEXT NOT NULL DEFAULT '',
+            fecha_recepcion_ot TEXT NOT NULL DEFAULT '',
+            fechai TEXT NOT NULL DEFAULT '',
+            fechaf TEXT NOT NULL DEFAULT '',
+            fecha_pm TEXT NOT NULL DEFAULT '',
+            turno TEXT NOT NULL DEFAULT '',
+            id_motivo INTEGER NOT NULL DEFAULT 0,
+            detencion TEXT NOT NULL DEFAULT '',
+            oficio_ot TEXT NOT NULL DEFAULT '',
+            id_n1 INTEGER NOT NULL DEFAULT 1,
+            id_n2 INTEGER NOT NULL DEFAULT 0,
+            id_n3 INTEGER NOT NULL DEFAULT 0,
+            id_n4 INTEGER NOT NULL DEFAULT 0,
+            id_n5 INTEGER NOT NULL DEFAULT 0,
+            id_n6 INTEGER NOT NULL DEFAULT 0,
+            id_n7 INTEGER NOT NULL DEFAULT 0,
+            id_n8 INTEGER NOT NULL DEFAULT 0,
+            id_n9 INTEGER NOT NULL DEFAULT 0,
+            id_n10 INTEGER NOT NULL DEFAULT 0,
+            nivel INTEGER NOT NULL DEFAULT 1,
+            solicitada_por TEXT NOT NULL DEFAULT '',
+            recibido_por TEXT NOT NULL DEFAULT '',
+            entregado_a TEXT NOT NULL DEFAULT '',
+            descripcion_breve TEXT NOT NULL DEFAULT '',
+            descripcion_tecnica TEXT NOT NULL DEFAULT '',
+            estado_ot TEXT NOT NULL DEFAULT '',
+            prioridad_ot INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_OTExterna (
+            id_ote INTEGER PRIMARY KEY,
+            n_ote INTEGER NOT NULL DEFAULT 0,
+            fecha_pedido TEXT NOT NULL DEFAULT '',
+            fecha_entrega TEXT NOT NULL DEFAULT '',
+            id_empresa INTEGER NOT NULL DEFAULT 0,
+            descripcion_ote TEXT NOT NULL DEFAULT '',
+            costo REAL NOT NULL DEFAULT 0,
+            garantia TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_OTExternaMP (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_mp INTEGER NOT NULL DEFAULT 0,
+            id_ote INTEGER NOT NULL DEFAULT 0,
+            id_ciclo INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_MP (
+            id INTEGER PRIMARY KEY,
+            id_n1 INTEGER NOT NULL DEFAULT 1,
+            id_n2 INTEGER NOT NULL DEFAULT 0,
+            id_n3 INTEGER NOT NULL DEFAULT 0,
+            id_n4 INTEGER NOT NULL DEFAULT 0,
+            id_n5 INTEGER NOT NULL DEFAULT 0,
+            id_n6 INTEGER NOT NULL DEFAULT 0,
+            id_n7 INTEGER NOT NULL DEFAULT 0,
+            id_n8 INTEGER NOT NULL DEFAULT 0,
+            id_n9 INTEGER NOT NULL DEFAULT 0,
+            id_n10 INTEGER NOT NULL DEFAULT 0,
+            nivel INTEGER NOT NULL DEFAULT 1,
+            fechai_mp TEXT NOT NULL DEFAULT '',
+            fecha_cierremp TEXT NOT NULL DEFAULT '',
+            descripcionmp TEXT NOT NULL DEFAULT '',
+            estadomp TEXT NOT NULL DEFAULT '',
+            prioridad INTEGER NOT NULL DEFAULT 0,
+            ufrecuenciamp TEXT NOT NULL DEFAULT '',
+            frecuenciamp INTEGER NOT NULL DEFAULT 0,
+            diasmp INTEGER NOT NULL DEFAULT 0,
+            tiempo_previo_aviso INTEGER NOT NULL DEFAULT 0,
+            tipo_mant TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_CicloMP (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_mp INTEGER NOT NULL DEFAULT 0,
+            id_ciclo INTEGER NOT NULL DEFAULT 0,
+            fecha_inicio_ciclo TEXT NOT NULL DEFAULT '',
+            fecha_cierre_ciclo TEXT NOT NULL DEFAULT '',
+            tiempo REAL NOT NULL DEFAULT 0,
+            observacion_ciclo_mp TEXT NOT NULL DEFAULT '',
+            estado_ciclo TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_TareasMP (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_mp INTEGER NOT NULL DEFAULT 0,
+            id_tarea INTEGER NOT NULL DEFAULT 0,
+            id_ciclo INTEGER NOT NULL DEFAULT 0,
+            id_n1 INTEGER NOT NULL DEFAULT 1,
+            id_n2 INTEGER NOT NULL DEFAULT 0,
+            id_n3 INTEGER NOT NULL DEFAULT 0,
+            id_n4 INTEGER NOT NULL DEFAULT 0,
+            id_n5 INTEGER NOT NULL DEFAULT 0,
+            id_n6 INTEGER NOT NULL DEFAULT 0,
+            id_n7 INTEGER NOT NULL DEFAULT 0,
+            id_n8 INTEGER NOT NULL DEFAULT 0,
+            id_n9 INTEGER NOT NULL DEFAULT 0,
+            id_n10 INTEGER NOT NULL DEFAULT 0,
+            descripcion_tarea TEXT NOT NULL DEFAULT '',
+            observacion_tarea_ciclo TEXT NOT NULL DEFAULT '',
+            estado TEXT NOT NULL DEFAULT '',
+            duracion REAL NOT NULL DEFAULT 0,
+            oficio TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_PersonalUtilizado (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            id_ref INTEGER NOT NULL DEFAULT 0,
+            id_personal INTEGER NOT NULL DEFAULT 0,
+            origen TEXT NOT NULL DEFAULT '',
+            id_ciclo INTEGER NOT NULL DEFAULT 0,
+            lugar INTEGER NOT NULL DEFAULT 0,
+            observacion TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_Checklist (
+            id_chk INTEGER PRIMARY KEY,
+            fecha_inicio TEXT NOT NULL DEFAULT '',
+            fecha_termino TEXT NOT NULL DEFAULT '',
+            duracion REAL NOT NULL DEFAULT 0,
+            id_n1 INTEGER NOT NULL DEFAULT 1,
+            id_n2 INTEGER NOT NULL DEFAULT 0,
+            id_n3 INTEGER NOT NULL DEFAULT 0,
+            id_n4 INTEGER NOT NULL DEFAULT 0,
+            id_n5 INTEGER NOT NULL DEFAULT 0,
+            id_n6 INTEGER NOT NULL DEFAULT 0,
+            id_n7 INTEGER NOT NULL DEFAULT 0,
+            observacion TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_TareasChecklist (
+            id_tarea INTEGER PRIMARY KEY,
+            descripcion TEXT NOT NULL DEFAULT '',
+            grupo TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_ChkTareas (
+            id_reg INTEGER PRIMARY KEY AUTOINCREMENT,
+            indice_chk INTEGER NOT NULL DEFAULT 0,
+            id_chk INTEGER NOT NULL DEFAULT 0,
+            id_tarea INTEGER NOT NULL DEFAULT 0,
+            estado TEXT NOT NULL DEFAULT '',
+            observacion TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_PersonalChecklist (
+            id_checklist INTEGER NOT NULL,
+            id_personal INTEGER NOT NULL,
+            PRIMARY KEY (id_checklist, id_personal)
+        );
+
+        CREATE TABLE IF NOT EXISTS Mant_UsuariosLegacy (
+            id_usuario INTEGER PRIMARY KEY,
+            desc_usuario TEXT NOT NULL,
+            permisos_json TEXT NOT NULL DEFAULT ''
+        );
         """;
 
     public static void EnsureInitialized(SqliteConnectionFactory factory, InitialAdminSeedOptions? initialAdmin = null)
@@ -182,9 +449,56 @@ public static class SchemaInitializer
         }
 
         MigrateUsuariosSchema(conn);
+        MigrateActivosSchema(conn);
         SeedLevels(conn);
         SeedRootAsset(conn);
         InitialAdminProvisioner.EnsureInitialAdmin(conn, initialAdmin);
+    }
+
+    private static void MigrateActivosSchema(SqliteConnection conn)
+    {
+        HashSet<string> cols = new(StringComparer.OrdinalIgnoreCase);
+        using (SqliteCommand infoCmd = conn.CreateCommand())
+        {
+            infoCmd.CommandText = "PRAGMA table_info(Activos);";
+            using SqliteDataReader rdr = infoCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                cols.Add(rdr.GetString(1));
+            }
+        }
+
+        (string Name, string Ddl)[] extraColumns =
+        [
+            ("cod_sap", "TEXT NOT NULL DEFAULT ''"),
+            ("fabricante", "TEXT NOT NULL DEFAULT ''"),
+            ("serie", "TEXT NOT NULL DEFAULT ''"),
+            ("modelo", "TEXT NOT NULL DEFAULT ''"),
+            ("fecha_compra", "TEXT NOT NULL DEFAULT ''"),
+            ("valor_compra", "REAL NOT NULL DEFAULT 0"),
+            ("valor_actual", "REAL NOT NULL DEFAULT 0"),
+            ("fecha_instalacion", "TEXT NOT NULL DEFAULT ''"),
+            ("tipo_equipo", "TEXT NOT NULL DEFAULT ''"),
+            ("estado_operativo", "TEXT NOT NULL DEFAULT ''"),
+            ("vida_util", "TEXT NOT NULL DEFAULT ''"),
+            ("observacion", "TEXT NOT NULL DEFAULT ''"),
+            ("prioridad", "INTEGER NOT NULL DEFAULT 0"),
+            ("material", "TEXT NOT NULL DEFAULT ''"),
+            ("categoria", "TEXT NOT NULL DEFAULT ''"),
+            ("ruta_plano", "TEXT NOT NULL DEFAULT ''"),
+            ("nombre_plano", "TEXT NOT NULL DEFAULT ''"),
+            ("ruta_foto", "TEXT NOT NULL DEFAULT ''"),
+            ("nombre_foto", "TEXT NOT NULL DEFAULT ''"),
+            ("info_tecnica_json", "TEXT NOT NULL DEFAULT ''")
+        ];
+
+        foreach ((string name, string ddl) in extraColumns)
+        {
+            if (!cols.Contains(name))
+            {
+                ExecuteNonQuery(conn, $"ALTER TABLE Activos ADD COLUMN {name} {ddl};");
+            }
+        }
     }
 
     private static void MigrateUsuariosSchema(SqliteConnection conn)

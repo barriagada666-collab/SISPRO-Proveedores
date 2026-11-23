@@ -191,4 +191,37 @@ public sealed class MaintainerService(
         audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
             $"Activo ID {idActivo} actualizado a '{node.Descripcion}' (Activo={activo}).");
     }
+
+    public void UpdateAssetDetails(UserSession session, AssetNode updated)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Modificar ficha técnica de activo");
+        if (string.IsNullOrWhiteSpace(updated.Descripcion))
+        {
+            throw new ArgumentException("La descripción del activo no puede estar vacía.");
+        }
+
+        AssetNode existing = assetTree.GetById(updated.IdActivo)
+            ?? throw new InvalidOperationException("El activo seleccionado no existe.");
+
+        if (existing.IdActivo == 1 && !updated.Activo)
+        {
+            throw new InvalidOperationException("No es posible desactivar el nodo raíz de la empresa.");
+        }
+
+        existing.Descripcion = updated.Descripcion.Trim();
+        existing.Activo = updated.Activo;
+        existing.CodSap = updated.CodSap.Trim();
+        existing.Fabricante = updated.Fabricante.Trim();
+        existing.Modelo = updated.Modelo.Trim();
+        existing.Serie = updated.Serie.Trim();
+        existing.TipoEquipo = updated.TipoEquipo.Trim();
+        existing.EstadoOperativo = updated.EstadoOperativo.Trim();
+        existing.Categoria = updated.Categoria.Trim();
+        existing.Prioridad = Math.Clamp(updated.Prioridad, 0, 10);
+        existing.Observacion = updated.Observacion.Trim();
+
+        assetTree.Update(existing);
+        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_ACTIVO",
+            $"Ficha técnica de activo ID {existing.IdActivo} ('{existing.Descripcion}', SAP='{existing.CodSap}') actualizada.");
+    }
 }

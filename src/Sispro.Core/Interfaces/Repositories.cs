@@ -84,3 +84,23 @@ public interface IAuditRepository
     IReadOnlyList<AuditEntry> GetRecent(int limit = 200);
     DashboardMetrics GetDashboardMetrics();
 }
+
+public interface IMaintenanceRepository
+{
+    DashboardAnalytics GetDashboardAnalytics();
+    IReadOnlyList<string> GetTradeNames();
+    IReadOnlyList<string> GetWorkOrderStatuses();
+    IReadOnlyList<int> GetWorkOrderYears();
+    IReadOnlyList<MantWorkOrderRow> SearchInternalWorkOrders(MantWorkOrderFilter filter);
+    MantWorkOrderDetail? GetInternalWorkOrderDetail(int id);
+    IReadOnlyList<MantPreventivePlanRow> SearchPreventivePlans(string? search = null, string? estado = null);
+    IReadOnlyList<MantPreventiveCycleRow> GetPreventiveCycles(int idMp);
+    IReadOnlyList<MantPreventiveTaskRow> GetPreventiveTasks(int idMp, int? idCiclo = null, int maxRows = 300);
+    IReadOnlyList<MantSupplyRow> SearchSupplies(string? search = null, int maxRows = 500);
+    IReadOnlyList<MantPersonnelRow> SearchPersonnel(string? search = null, string? oficio = null);
+    IReadOnlyList<MantHrPersonnelRow> GetHrPersonnel(string? search = null);
+    IReadOnlyList<MantExternalOrderRow> GetLegacyExternalOrders();
+    IReadOnlyList<MantCatalogItem> GetFailureMotives();
+    IReadOnlyList<MantCatalogItem> GetTradesCatalog();
+    IReadOnlyList<MantCatalogItem> GetChecklistsSummary();
+}

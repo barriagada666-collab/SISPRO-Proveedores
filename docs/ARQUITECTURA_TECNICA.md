@@ -1,8 +1,8 @@
-# Arquitectura Técnica — SISPRO v2.0 (.NET 10)
+# Arquitectura Técnica — SISPRO v3.0 (.NET 10)
 
 ## 1. Visión General
 
-**SISPRO** (Sistema de Gestión de Proveedores y Órdenes de Trabajo de Cambiaso Hnos S.A.C.) está construido en **C# sobre .NET 10 (`net10.0-windows`)** bajo una arquitectura limpia en capas con separación estricta de responsabilidades, tipado estricto (`Nullable=enable`, `TreatWarningsAsErrors=true`) y cero dependencias COM externas.
+**SISPRO** (Sistema Integral de Gestión de Proveedores, Órdenes de Trabajo y Mantención Industrial de Cambiaso Hnos S.A.C.) está construido en **C# sobre .NET 10 (`net10.0-windows`)** bajo una arquitectura limpia en capas con separación estricta de responsabilidades, tipado estricto (`Nullable=enable`, `TreatWarningsAsErrors=true`) y cero dependencias COM externas. Unifica en una sola base SQLite WAL los datos históricos de `OT_PROV.mdb`, `BD MANTENCION.mdb` y `PERSONAL_MANTENCION.mdb` (`343.400+` registros).
 
 ```mermaid
 flowchart TD
@@ -27,9 +27,9 @@ flowchart TD
 | Proyecto | Target | Responsabilidad Principal |
 |---|---|---|
 | `src/Sispro.Core` | `net10.0` | Entidades de dominio, enumeraciones, DTOs, interfaces de repositorio, seguridad (`PasswordSecurity`, `PermissionPresets`) y validadores (`RutValidator`, `TaxCalculator`, `DomainValidator`). |
-| `src/Sispro.Data` | `net10.0` | Fábrica de conexiones SQLite (`SqliteConnectionFactory`), inicializador de esquema (`SchemaInitializer`) y repositorios parametrizados con transacciones ACID. |
-| `src/Sispro.Services` | `net10.0-windows` | Servicios de aplicación (`AuthService`, `WorkOrderService`, `InvoiceService`, `MaintainerService`, `UserManagementService`), exportación Excel (`ExcelExportService` vía `ClosedXML`) e impresión nativa (`PrintService` vía `PrintDocument`). |
-| `src/Sispro.UI` | `net10.0-windows` | Interfaz de escritorio Windows Forms con tema corporativo Cambiaso, catálogo de íconos vectoriales (`IconCatalog`), control de árbol de activos de 10 niveles con carga diferida (`AssetTreePanel`), módulos principales y diálogos administrativos. |
+| `src/Sispro.Data` | `net10.0` | Fábrica de conexiones SQLite (`SqliteConnectionFactory`), inicializador de esquema (`SchemaInitializer`), aprovisionador seguro (`InitialAdminProvisioner`) y repositorios parametrizados (incluyendo `MaintenanceRepository` sobre `Mant_*`). |
+| `src/Sispro.Services` | `net10.0-windows` | Servicios de aplicación (`AuthService`, `WorkOrderService`, `InvoiceService`, `MaintainerService`, `MaintenanceService`, `UserManagementService`), exportación Excel (`ExcelExportService` vía `ClosedXML`) e impresión nativa (`PrintService` vía `PrintDocument`). |
+| `src/Sispro.UI` | `net10.0-windows` | Interfaz de escritorio Windows Forms con tema corporativo Cambiaso, gráficas vectoriales analíticas (`ModernChartPanel`), catálogo Lucide 24×24 (`IconCatalog`), árbol de activos de 10 niveles (`AssetTreePanel`), módulo `MaintenanceHubForm`, `UsersForm` CRUD exclusivo Administrador y diálogos seguros. |
 | `tests/Sispro.Tests` | `net10.0-windows` | Suite xUnit completa: pruebas unitarias, integración (incluyendo base real migrada), funcionales E2E, auditoría UI/UX en hilo STA, regresión de defectos VB6 y estrés/rendimiento. |
 
 ---

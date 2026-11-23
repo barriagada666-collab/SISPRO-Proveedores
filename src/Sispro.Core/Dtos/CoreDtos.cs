@@ -61,6 +61,7 @@ public sealed class WorkOrderSearchFilter
     public int? AssetLevel { get; set; }
     public int? AssetNodeId { get; set; }
     public bool SoloPendientesVb { get; set; }
+    public int? MaxRows { get; set; }
 }
 
 public sealed class WorkOrderSearchRow
@@ -111,6 +112,11 @@ public sealed class DashboardMetrics
     public int TotalFacturas { get; set; }
     public int TotalUsuariosActivos { get; set; }
     public int TotalNodosActivos { get; set; }
+    public int TotalMantOts { get; set; }
+    public int TotalPlanesMp { get; set; }
+    public int TotalTareasMp { get; set; }
+    public int TotalInsumos { get; set; }
+    public int TotalPersonalTecnico { get; set; }
 }
 
 public sealed class AppSettings

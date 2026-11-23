@@ -52,13 +52,14 @@ public sealed class WinFormsUiAuditTests
             Assert.True(main.NavWorkOrders.Enabled);
             Assert.True(main.NavInvoices.Enabled);
             Assert.True(main.NavMaintainers.Enabled);
+            Assert.True(main.NavMaintenance.Enabled);
             Assert.True(main.NavUsers.Enabled);
             Assert.True(main.NavAudit.Enabled);
 
             main.ShowDashboard();
             AssertAllButtonsValid(main, "MainForm.Dashboard");
 
-            main.ShowWorkOrders(2815);
+            main.ShowWorkOrders(14752);
             AssertAllButtonsValid(main, "MainForm.WorkOrders");
             AssertNoForbiddenTypos(main, "MainForm.WorkOrders");
 
@@ -69,6 +70,10 @@ public sealed class WinFormsUiAuditTests
             main.ShowMaintainers();
             AssertAllButtonsValid(main, "MainForm.Maintainers");
             AssertNoForbiddenTypos(main, "MainForm.Maintainers");
+
+            main.ShowMaintenanceHub();
+            AssertAllButtonsValid(main, "MainForm.MaintenanceHub");
+            AssertNoForbiddenTypos(main, "MainForm.MaintenanceHub");
 
             main.ShowUsers();
             AssertAllButtonsValid(main, "MainForm.Users");

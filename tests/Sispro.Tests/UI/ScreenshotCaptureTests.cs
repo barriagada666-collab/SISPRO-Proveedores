@@ -61,7 +61,7 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "02_dashboard.png"));
 
-            main.ShowWorkOrders(2815);
+            main.ShowWorkOrders(2514);
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
@@ -72,6 +72,10 @@ public sealed class ScreenshotCaptureTests
             main.ShowMaintainers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "05_mantenedores.png"));
+
+            main.ShowMaintenanceHub();
+            Application.DoEvents();
+            SaveFormBitmap(main, Path.Combine(outDir, "07_mantencion_industrial.png"));
 
             main.ShowUsers();
             Application.DoEvents();

@@ -236,6 +236,9 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         }
 
         string whereSql = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : string.Empty;
+        string limitSql = filter.MaxRows.HasValue && filter.MaxRows.Value > 0
+            ? $"LIMIT {Math.Clamp(filter.MaxRows.Value, 1, 50_000)}"
+            : string.Empty;
 
         cmd.CommandText = $"""
             SELECT o.id_ot, o.n_ot, p.nom_prov, COALESCE(s.alias, 'Sin solicitante'),
@@ -248,7 +251,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
             LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
             INNER JOIN DetalleOT d ON d.id_ot = o.id_ot
             {whereSql}
-            ORDER BY o.fecha_ot DESC, o.n_ot DESC, d.id_det ASC;
+            ORDER BY o.fecha_ot DESC, o.n_ot DESC, d.id_det ASC
+            {limitSql};
             """;
 
         List<WorkOrderSearchRow> rows = [];

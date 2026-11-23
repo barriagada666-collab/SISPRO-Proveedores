@@ -191,7 +191,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnDeleteOt.Enabled = false;
         _btnDeleteOt.Click += (_, _) => DeleteLoadedOrder();
 
-        _btnClearEntry = CambiasoTheme.CreateButton("Limpiar", AppIcon.Clear, ButtonTone.Secondary, _toolTip, "Limpiar formulario para nueva OT", width: 112);
+        _btnClearEntry = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar formulario para nueva OT", width: 112);
         _btnClearEntry.Click += (_, _) => ClearEntryForm();
 
         _lblEntryStatus = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted };
@@ -227,7 +227,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnExecuteSearch = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Ejecutar búsqueda de órdenes de trabajo", width: 118);
         _btnExecuteSearch.Click += (_, _) => ExecuteSearch();
 
-        _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Clear, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 112);
+        _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 112);
         _btnClearSearch.Click += (_, _) => ClearSearchTab();
 
         _btnExportSearch = CambiasoTheme.CreateButton("Exportar Excel", AppIcon.Excel, ButtonTone.Accent, _toolTip, "Exportar resultados actuales a archivo Excel (.xlsx)", width: 146);
@@ -588,7 +588,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnSaveOt.Enabled = false;
         _btnUpdateOt.Enabled = true;
         _btnDeleteOt.Enabled = true;
-        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · {order.Detalles.Count} ítem(s) · VBS: {(order.TieneVbs ? "Sí" : "No")} · VBJ: {(order.TieneVbj ? "Sí" : "No")}";
+        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · Solicitante: {order.AliasSolicitante} · {order.Detalles.Count} ítem(s) · VBS: {(order.TieneVbs ? "Sí" : "No")} · VBJ: {(order.TieneVbj ? "Sí" : "No")}";
     }
 
     private void AddEntryDetail()

@@ -350,6 +350,60 @@ public sealed class ExcelExportService(AppSettings settings)
         wb.SaveAs(outputPath);
     }
 
+    public void ExportMaintenanceOrders(IReadOnlyList<MantWorkOrderRow> rows, string outputPath)
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.Worksheets.Add("OTs Mantención");
+        string[] headers = ["N° OT", "Fecha Inicio", "Fecha Fin", "Turno", "Oficio", "Motivo", "Planta", "Equipo", "Estado", "Detención", "Solicitada Por", "Descripción"];
+        WriteStyledHeader(ws, headers);
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            MantWorkOrderRow o = rows[i];
+            int r = i + 2;
+            ws.Cell(r, 1).Value = o.NumeroOt;
+            ws.Cell(r, 2).Value = o.FechaInicio;
+            ws.Cell(r, 3).Value = o.FechaFin;
+            ws.Cell(r, 4).Value = o.Turno;
+            ws.Cell(r, 5).Value = o.Oficio;
+            ws.Cell(r, 6).Value = o.Motivo;
+            ws.Cell(r, 7).Value = o.Planta;
+            ws.Cell(r, 8).Value = o.Equipo;
+            ws.Cell(r, 9).Value = o.Estado;
+            ws.Cell(r, 10).Value = o.Detencion;
+            ws.Cell(r, 11).Value = o.SolicitadaPor;
+            ws.Cell(r, 12).Value = o.DescripcionBreve;
+        }
+
+        FinalizeTable(ws, rows.Count + 1, headers.Length);
+        wb.SaveAs(outputPath);
+    }
+
+    public void ExportSupplies(IReadOnlyList<MantSupplyRow> rows, string outputPath)
+    {
+        using XLWorkbook wb = new();
+        IXLWorksheet ws = wb.Worksheets.Add("Insumos SAP");
+        string[] headers = ["ID", "Código SAP", "Cód. Proveedor", "Descripción", "Stock", "Días Entrega", "Prioridad", "Usos Históricos"];
+        WriteStyledHeader(ws, headers);
+
+        for (int i = 0; i < rows.Count; i++)
+        {
+            MantSupplyRow s = rows[i];
+            int r = i + 2;
+            ws.Cell(r, 1).Value = s.IdItem;
+            ws.Cell(r, 2).Value = s.CodSap;
+            ws.Cell(r, 3).Value = s.CodProveedor;
+            ws.Cell(r, 4).Value = s.Descripcion;
+            ws.Cell(r, 5).Value = s.StockUnidad;
+            ws.Cell(r, 6).Value = s.DiasEntrega;
+            ws.Cell(r, 7).Value = s.Prioridad;
+            ws.Cell(r, 8).Value = s.UsosHistoricos;
+        }
+
+        FinalizeTable(ws, rows.Count + 1, headers.Length);
+        wb.SaveAs(outputPath);
+    }
+
     private static void WriteStyledHeader(IXLWorksheet ws, string[] headers)
     {
         for (int c = 0; c < headers.Length; c++)

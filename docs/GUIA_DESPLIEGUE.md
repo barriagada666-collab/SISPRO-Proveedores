@@ -1,4 +1,4 @@
-# Guía de Despliegue, Actualización y Respaldo — SISPRO v2.0
+# Guía de Despliegue, Actualización y Respaldo — SISPRO v3.0
 
 ## 1. Requisitos del Equipo de Producción
 
@@ -14,15 +14,15 @@
 ### Instalación Interactiva
 1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt`:
    ```powershell
-   Get-FileHash SISPRO_Setup_v2.0.0_win-x64.exe -Algorithm SHA256
+   Get-FileHash SISPRO_Setup_v3.0.0_win-x64.exe -Algorithm SHA256
    ```
-2. Ejecute `SISPRO_Setup_v2.0.0_win-x64.exe`.
+2. Ejecute `SISPRO_Setup_v3.0.0_win-x64.exe`.
 3. Seleccione instalación para el usuario actual (no requiere privilegios de administrador) o para todos los usuarios.
 4. Complete el asistente y opcionalmente cree acceso directo en el escritorio.
 
 ### Instalación Desatendida (Despliegue Corporativo)
 ```powershell
-.\SISPRO_Setup_v2.0.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\Cambiaso\SISPRO"
+.\SISPRO_Setup_v3.0.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /DIR="C:\Cambiaso\SISPRO"
 ```
 
 ---

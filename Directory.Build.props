@@ -11,9 +11,9 @@
     <Company>Cambiaso Hnos S.A.C.</Company>
     <Product>SISPRO - Sistema de Gestión de Proveedores y Órdenes de Trabajo</Product>
     <Copyright>Copyright © Cambiaso Hnos S.A.C.</Copyright>
-    <Version>2.1.0</Version>
-    <AssemblyVersion>2.1.0.0</AssemblyVersion>
-    <FileVersion>2.1.0.0</FileVersion>
+    <Version>3.0.0</Version>
+    <AssemblyVersion>3.0.0.0</AssemblyVersion>
+    <FileVersion>3.0.0.0</FileVersion>
     <NeutralLanguage>es-CL</NeutralLanguage>
   </PropertyGroup>
 </Project>

@@ -1,25 +1,23 @@
-# Manual Funcional de Usuario — SISPRO v2.0
+# Manual Funcional de Usuario — SISPRO v3.0
 
 ## 1. Acceso al Sistema
 
 1. Ejecute **SISPRO** desde el Menú Inicio o el escritorio.
 2. Ingrese su **Usuario (Alias)** y **Contraseña**.
-   - El sistema valida las credenciales contra la base de datos local `sispro.db` mediante hash `PBKDF2-HMAC-SHA256`.
+   - El sistema valida las credenciales contra `sispro.db` mediante hash `PBKDF2-HMAC-SHA256`.
+   - Si la cuenta tiene activo el cambio obligatorio de primer acceso (`debe_cambiar_clave = 1`, como la cuenta inicial de Administrador), se desplegará automáticamente la ventana de **Cambio Obligatorio de Contraseña** antes de acceder al panel principal.
    - Cuentas heredadas de la versión VB6 (`OT_PROV.mdb`) se actualizan automáticamente a `PBKDF2-HMAC-SHA256` en el primer ingreso exitoso.
    - Tras **5 intentos fallidos consecutivos**, la cuenta se bloquea preventivamente durante 30 segundos.
 3. Si requiere cambiar la ruta de base de datos antes de ingresar, utilice el botón **Config.**.
 
 ---
 
-## 2. Panel de Control (Inicio)
+## 2. Panel de Control y Analítica (Inicio)
 
-Al iniciar sesión se despliega el **Panel de Control** con cuatro indicadores en vivo:
-- **Órdenes de Trabajo**: total histórico y vigente de OTs registradas.
-- **Pendientes VB Jefatura**: OTs que aún no cuentan con aprobación de Jefatura.
-- **Proveedores Activos**: cantidad de proveedores habilitados en catálogo.
-- **Facturas / Guías**: total de documentos tributarios y guías asociadas.
-
-En la tabla inferior se muestran las 40 OTs más recientes; haciendo **doble clic** sobre cualquier fila se abre directamente en el módulo de Trabajos Externos.
+Al iniciar sesión se despliega el **Panel de Control** con cinco indicadores KPI y tres gráficas vectoriales interactivas:
+- **KPIs**: OTs Proveedores (`7.284`), Proveedores Activos (`214`), Activos Reales (`1.823`), OTs Mantención (`43.989`) y Planes MP / Insumos SAP (`780 / 2.462`).
+- **Gráficas en vivo**: **Evolución Anual de OTs**, **Distribución por Planta** (Donut) y **Top 6 Proveedores**.
+- En la tabla inferior se muestran las 40 OTs más recientes; haciendo **doble clic** sobre cualquier fila se abre directamente en el módulo de Trabajos Externos.
 
 ---
 
@@ -75,21 +73,31 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
 
 - **Proveedores**: alta, edición, búsqueda instantánea, exportación Excel y desactivación segura (si tiene OTs históricas, se marca inactivo sin romper integridad referencial).
 - **Solicitantes**: gestión completa del catálogo de solicitantes de mantención.
-- **Árbol de Activos**: edición de nombres, activación/desactivación y creación de subniveles hasta **10 niveles de profundidad**.
+- **Árbol de Activos**: edición de nombre, estado y **Ficha Técnica completa** (`Código SAP`, `Fabricante`, `Modelo`, `Serie`, `Tipo Equipo`, `Estado Operativo`, `Categoría`, `Observación`), más creación de subniveles hasta **10 niveles de profundidad**.
 
 ---
 
-## 6. Módulo Usuarios y Permisos (`M4`)
+## 6. Módulo Mantención Industrial (`BD MANTENCION.mdb`)
 
-- **Ingreso / Edición de Usuarios (`tab_2_0`)**:
-  - Validación automática de **RUT chileno** (módulo 11) y correo electrónico.
-  - Botón **Aplicar Perfil** carga los permisos recomendados según nivel (`Usuario`, `Supervisor`, `Jefatura`, `Administrador`), permitiendo ajuste fino posterior.
-  - Si marca **Es solicitante de trabajos**, se sincroniza automáticamente en la tabla `Solicitantes`.
-- **Listado de Usuarios (`tab_2_1`)**: búsqueda en vivo, doble clic para editar, **Vista Previa / Imprimir** y **Exportar Excel**.
+Accesible desde **Mantención Industrial** en la barra lateral, organizado en 5 pestañas:
+- **OTs Mantención Interna**: búsqueda sobre las `43.989` OTs por palabra clave, oficio, estado y año, con visor de informe técnico, técnicos asignados e insumos consumidos + exportación Excel.
+- **Planes Preventivos (MP)**: consulta de los `780` planes MP con desglose en vivo de sus `7.704` ciclos y `208.121` tareas.
+- **Insumos y Repuestos SAP**: consulta de los `2.462` insumos por código SAP, código proveedor o descripción + exportación Excel.
+- **Personal Técnico y RRHH**: consulta de los `134` técnicos de mantención y las `43` fichas de RRHH (`PERSONAL_MANTENCION.mdb`).
+- **Catálogos y OTs Externas**: acceso a las `56` OTs externas históricas, `41` motivos de falla, `33` oficios y `48` tareas checklist.
 
 ---
 
-## 7. Perfil, Respaldos y Auditoría
+## 7. Módulo Gestión de Usuarios (Exclusivo Administrador)
+
+Disponible únicamente para usuarios con perfil **Administrador** (validado en interfaz y backend):
+- **Sección Superior — `DATOS DEL USUARIO`**: 12 campos completos (ID automático, Usuario, Nombre, Apellido, Correo, Teléfono, Perfil, Estado, Contraseña, Confirmar contraseña, Fecha de creación, Último acceso) + botón **Permisos RBAC**.
+- **Operaciones CRUD y Botones**: `Nuevo`, `Guardar`, `Editar`, `Actualizar`, `Eliminar` (eliminación lógica preservando historial y protegiendo al último Administrador activo), `Cambiar Contraseña` (diálogo seguro), `Cancelar`, `Limpiar`, `Buscar`, `Refrescar`, `Imprimir` y `Excel`.
+- **Sección Inferior — `LISTADO DE USUARIOS`**: búsqueda multicampo, filtros por perfil y estado, e indicadores visuales diferenciados (`● Activo` / `● Inactivo`).
+
+---
+
+## 8. Perfil, Respaldos y Auditoría
 
 - **Mi Clave**: cada usuario puede cambiar su propia contraseña verificando su clave actual.
 - **Configuración** (Administradores): cambiar ubicación de `sispro.db`, editar datos corporativos y generar respaldos en caliente (**Respaldar BD**).
