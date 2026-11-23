@@ -1,6 +1,5 @@
 using Microsoft.Data.Sqlite;
-using Sispro.Core.Enums;
-using Sispro.Core.Security;
+using Sispro.Core.Dtos;
 
 namespace Sispro.Data.Database;
 
@@ -17,6 +16,7 @@ public static class SchemaInitializer
 
         CREATE TABLE IF NOT EXISTS Usuarios (
             id_usuario TEXT PRIMARY KEY,
+            codigo_id INTEGER,
             alias_usuario TEXT NOT NULL UNIQUE COLLATE NOCASE,
             pass_hash TEXT NOT NULL,
             nombre_usuario TEXT NOT NULL,
@@ -27,7 +27,9 @@ public static class SchemaInitializer
             fono_usuario TEXT NOT NULL DEFAULT '',
             es_solicitante INTEGER NOT NULL DEFAULT 0,
             activo INTEGER NOT NULL DEFAULT 1,
+            debe_cambiar_clave INTEGER NOT NULL DEFAULT 0,
             fecha_creacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            fecha_modificacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             ultimo_acceso TEXT
         );
 
@@ -170,7 +172,7 @@ public static class SchemaInitializer
         CREATE INDEX IF NOT EXISTS IX_AuditLog_Fecha ON AuditLog(fecha_utc DESC);
         """;
 
-    public static void EnsureInitialized(SqliteConnectionFactory factory, bool seedDefaultAdminIfEmpty = true)
+    public static void EnsureInitialized(SqliteConnectionFactory factory, InitialAdminSeedOptions? initialAdmin = null)
     {
         using SqliteConnection conn = factory.OpenConnection();
         using (SqliteCommand cmd = conn.CreateCommand())
@@ -179,82 +181,107 @@ public static class SchemaInitializer
             cmd.ExecuteNonQuery();
         }
 
+        MigrateUsuariosSchema(conn);
         SeedLevels(conn);
         SeedRootAsset(conn);
+        InitialAdminProvisioner.EnsureInitialAdmin(conn, initialAdmin);
+    }
 
-        if (seedDefaultAdminIfEmpty)
+    private static void MigrateUsuariosSchema(SqliteConnection conn)
+    {
+        HashSet<string> cols = new(StringComparer.OrdinalIgnoreCase);
+        using (SqliteCommand infoCmd = conn.CreateCommand())
         {
-            SeedAdminIfEmpty(conn);
+            infoCmd.CommandText = "PRAGMA table_info(Usuarios);";
+            using SqliteDataReader rdr = infoCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                cols.Add(rdr.GetString(1));
+            }
         }
+
+        if (!cols.Contains("codigo_id"))
+        {
+            ExecuteNonQuery(conn, "ALTER TABLE Usuarios ADD COLUMN codigo_id INTEGER;");
+        }
+
+        if (!cols.Contains("debe_cambiar_clave"))
+        {
+            ExecuteNonQuery(conn, "ALTER TABLE Usuarios ADD COLUMN debe_cambiar_clave INTEGER NOT NULL DEFAULT 0;");
+        }
+
+        if (!cols.Contains("fecha_modificacion"))
+        {
+            ExecuteNonQuery(conn, "ALTER TABLE Usuarios ADD COLUMN fecha_modificacion TEXT NOT NULL DEFAULT '';");
+            ExecuteNonQuery(conn, """
+                UPDATE Usuarios
+                SET fecha_modificacion = COALESCE(NULLIF(fecha_creacion, ''), datetime('now','localtime'))
+                WHERE fecha_modificacion = '' OR fecha_modificacion IS NULL;
+                """);
+        }
+
+        // Backfill auto-increment numeric IDs for any existing legacy rows without codigo_id
+        List<string> missingIds = [];
+        using (SqliteCommand missingCmd = conn.CreateCommand())
+        {
+            missingCmd.CommandText = "SELECT id_usuario FROM Usuarios WHERE codigo_id IS NULL ORDER BY rowid;";
+            using SqliteDataReader rdr = missingCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                missingIds.Add(rdr.GetString(0));
+            }
+        }
+
+        if (missingIds.Count > 0)
+        {
+            int nextCode;
+            using (SqliteCommand maxCmd = conn.CreateCommand())
+            {
+                maxCmd.CommandText = "SELECT COALESCE(MAX(codigo_id), 0) + 1 FROM Usuarios;";
+                nextCode = Convert.ToInt32(maxCmd.ExecuteScalar());
+            }
+
+            using SqliteTransaction tx = conn.BeginTransaction();
+            foreach (string idUsuario in missingIds)
+            {
+                using SqliteCommand upd = conn.CreateCommand();
+                upd.Transaction = tx;
+                upd.CommandText = "UPDATE Usuarios SET codigo_id = $code WHERE id_usuario = $id;";
+                upd.Parameters.AddWithValue("$code", nextCode++);
+                upd.Parameters.AddWithValue("$id", idUsuario);
+                upd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
+
+        ExecuteNonQuery(conn, "CREATE UNIQUE INDEX IF NOT EXISTS IX_Usuarios_CodigoId ON Usuarios(codigo_id);");
+        ExecuteNonQuery(conn, "CREATE INDEX IF NOT EXISTS IX_Usuarios_Nivel_Activo ON Usuarios(id_nivel, activo);");
+    }
+
+    private static void ExecuteNonQuery(SqliteConnection conn, string sql)
+    {
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        cmd.ExecuteNonQuery();
     }
 
     private static void SeedLevels(SqliteConnection conn)
     {
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        ExecuteNonQuery(conn, """
             INSERT OR IGNORE INTO Niveles(id_nivel, tipo_nivel) VALUES
             (1, 'Usuario'),
             (2, 'Supervisor'),
             (3, 'Jefatura'),
             (4, 'Administrador');
-            """;
-        cmd.ExecuteNonQuery();
+            """);
     }
 
     private static void SeedRootAsset(SqliteConnection conn)
     {
-        using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        ExecuteNonQuery(conn, """
             INSERT OR IGNORE INTO Activos(id_activo, parent_id, nivel, descripcion, activo)
             VALUES (1, NULL, 1, 'CAMBIASO HNOS S.A.C.', 1);
-            """;
-        cmd.ExecuteNonQuery();
-    }
-
-    private static void SeedAdminIfEmpty(SqliteConnection conn)
-    {
-        using SqliteCommand countCmd = conn.CreateCommand();
-        countCmd.CommandText = "SELECT COUNT(*) FROM Usuarios;";
-        long count = (long)(countCmd.ExecuteScalar() ?? 0L);
-        if (count > 0)
-        {
-            return;
-        }
-
-        string hash = PasswordSecurity.HashPassword("Admin2026!");
-        using SqliteTransaction tx = conn.BeginTransaction();
-
-        using (SqliteCommand userCmd = conn.CreateCommand())
-        {
-            userCmd.Transaction = tx;
-            userCmd.CommandText = """
-                INSERT INTO Usuarios(
-                    id_usuario, alias_usuario, pass_hash, nombre_usuario, ape_pat_usuario,
-                    ape_mat_usuario, id_nivel, mail_usuario, fono_usuario, es_solicitante, activo
-                ) VALUES (
-                    '111111111', 'admin', $hash, 'Administrador', 'Sistema',
-                    'SISPRO', $nivel, 'soporte@cambiaso.cl', '', 0, 1
-                );
-                """;
-            userCmd.Parameters.AddWithValue("$hash", hash);
-            userCmd.Parameters.AddWithValue("$nivel", (int)UserRoleLevel.Administrador);
-            userCmd.ExecuteNonQuery();
-        }
-
-        using (SqliteCommand permCmd = conn.CreateCommand())
-        {
-            permCmd.Transaction = tx;
-            permCmd.CommandText = """
-                INSERT INTO Permisos(
-                    id_usuario, m1_ot, tab_0_1_ingreso_ot, tab_0_vbj, tab_0_vbs,
-                    tab_0_2_busqueda_ot, tab_0_3_impresion_ot, m2_facturas,
-                    tab_1_0_ingreso_fac, tab_1_1_busqueda_fac, m3_mantenedor,
-                    m4_usuarios, tab_2_0_ingreso_us, tab_2_1_listado_us
-                ) VALUES ('111111111', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
-                """;
-            permCmd.ExecuteNonQuery();
-        }
-
-        tx.Commit();
+            """);
     }
 }

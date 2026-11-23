@@ -9,19 +9,23 @@ public sealed class ChangePasswordDialog : Form
 {
     private readonly AuthService _authService;
     private readonly UserSession _session;
+    private readonly bool _forcePasswordChange;
     private readonly ToolTip _toolTip = new();
     private readonly TextBox _txtCurrent;
     private readonly TextBox _txtNew;
     private readonly TextBox _txtConfirm;
 
-    public ChangePasswordDialog(AuthService authService, UserSession session)
+    public ChangePasswordDialog(AuthService authService, UserSession session, bool forcePasswordChange = false)
     {
         _authService = authService;
         _session = session;
+        _forcePasswordChange = forcePasswordChange;
 
-        Text = "Cambiar Contraseña — SISPRO";
+        Text = forcePasswordChange
+            ? "Cambio Obligatorio de Contraseña — Primer Acceso"
+            : "Cambiar Contraseña — SISPRO";
         Icon = IconCatalog.GetAppIcon();
-        Size = new Size(440, 320);
+        ClientSize = new Size(448, forcePasswordChange ? 356 : 308);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -29,22 +33,44 @@ public sealed class ChangePasswordDialog : Form
         BackColor = CambiasoTheme.Surface;
         Font = CambiasoTheme.BodyFont;
 
-        Panel header = new() { Dock = DockStyle.Top, Height = 48, BackColor = CambiasoTheme.Primary };
+        Panel header = new() { Dock = DockStyle.Top, Height = 50, BackColor = CambiasoTheme.Primary };
         header.Controls.Add(new Label
         {
-            Text = $"Actualizar Contraseña ({session.Usuario.AliasUsuario})",
+            Text = forcePasswordChange
+                ? $"Primer Inicio de Sesión — {session.Usuario.AliasUsuario}"
+                : $"Actualizar Contraseña ({session.Usuario.AliasUsuario})",
             Font = CambiasoTheme.SectionFont,
             ForeColor = Color.White,
             AutoSize = true,
-            Location = new Point(16, 14)
+            Location = new Point(16, 15)
         });
 
-        Panel body = new() { Dock = DockStyle.Fill, Padding = new Padding(20) };
-        _txtCurrent = new TextBox { Location = new Point(20, 34), Width = 376, UseSystemPasswordChar = true };
-        _txtNew = new TextBox { Location = new Point(20, 94), Width = 376, UseSystemPasswordChar = true };
-        _txtConfirm = new TextBox { Location = new Point(20, 154), Width = 376, UseSystemPasswordChar = true };
+        Panel? noticeBanner = null;
+        if (forcePasswordChange)
+        {
+            noticeBanner = new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 48,
+                BackColor = Color.FromArgb(254, 243, 199),
+                Padding = new Padding(14, 6, 14, 6)
+            };
+            noticeBanner.Controls.Add(new Label
+            {
+                Dock = DockStyle.Fill,
+                Text = "Por política de seguridad, debe cambiar su contraseña inicial antes de ingresar al sistema.",
+                Font = CambiasoTheme.SmallFont,
+                ForeColor = Color.FromArgb(146, 64, 14),
+                TextAlign = ContentAlignment.MiddleLeft
+            });
+        }
 
-        CheckBox chkShow = new() { Text = "Mostrar contraseñas", Location = new Point(20, 186), AutoSize = true, Font = CambiasoTheme.SmallFont };
+        Panel body = new() { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 10) };
+        _txtCurrent = new TextBox { Location = new Point(20, 32), Width = 404, UseSystemPasswordChar = true };
+        _txtNew = new TextBox { Location = new Point(20, 90), Width = 404, UseSystemPasswordChar = true };
+        _txtConfirm = new TextBox { Location = new Point(20, 148), Width = 404, UseSystemPasswordChar = true };
+
+        CheckBox chkShow = new() { Text = "Mostrar contraseñas", Location = new Point(20, 180), AutoSize = true, Font = CambiasoTheme.SmallFont };
         chkShow.CheckedChanged += (_, _) =>
         {
             bool hide = !chkShow.Checked;
@@ -55,11 +81,11 @@ public sealed class ChangePasswordDialog : Form
 
         body.Controls.AddRange(
         [
-            new Label { Text = "Contraseña actual:", Font = CambiasoTheme.LabelFont, Location = new Point(20, 14), AutoSize = true },
+            new Label { Text = forcePasswordChange ? "Contraseña inicial actual:" : "Contraseña actual:", Font = CambiasoTheme.LabelFont, Location = new Point(20, 12), AutoSize = true },
             _txtCurrent,
-            new Label { Text = "Nueva contraseña (mínimo 6 caracteres):", Font = CambiasoTheme.LabelFont, Location = new Point(20, 74), AutoSize = true },
+            new Label { Text = "Nueva contraseña (mínimo 6 caracteres):", Font = CambiasoTheme.LabelFont, Location = new Point(20, 70), AutoSize = true },
             _txtNew,
-            new Label { Text = "Confirmar nueva contraseña:", Font = CambiasoTheme.LabelFont, Location = new Point(20, 134), AutoSize = true },
+            new Label { Text = "Confirmar nueva contraseña:", Font = CambiasoTheme.LabelFont, Location = new Point(20, 128), AutoSize = true },
             _txtConfirm,
             chkShow
         ]);
@@ -73,8 +99,12 @@ public sealed class ChangePasswordDialog : Form
             BackColor = CambiasoTheme.CardBackground
         };
 
-        Button btnCancel = CambiasoTheme.CreateButton("Cancelar", AppIcon.Clear, ButtonTone.Secondary, _toolTip, "Cancelar cambio de contraseña", width: 118);
-        btnCancel.Click += (_, _) => Close();
+        Button btnCancel = CambiasoTheme.CreateButton("Cancelar", AppIcon.Cancel, ButtonTone.Secondary, _toolTip, "Cancelar cambio de contraseña", width: 118);
+        btnCancel.Click += (_, _) =>
+        {
+            DialogResult = DialogResult.Cancel;
+            Close();
+        };
 
         Button btnSave = CambiasoTheme.CreateButton("Actualizar", AppIcon.Key, ButtonTone.Primary, _toolTip, "Guardar nueva contraseña", width: 132);
         btnSave.Click += (_, _) => Submit();
@@ -87,7 +117,20 @@ public sealed class ChangePasswordDialog : Form
 
         Controls.Add(body);
         Controls.Add(footer);
+        if (noticeBanner is not null)
+        {
+            Controls.Add(noticeBanner);
+        }
+
         Controls.Add(header);
+
+        FormClosed += (_, _) =>
+        {
+            if (_forcePasswordChange && DialogResult != DialogResult.OK)
+            {
+                _authService.LogMandatoryPasswordChangeCancelled(_session);
+            }
+        };
     }
 
     private void Submit()

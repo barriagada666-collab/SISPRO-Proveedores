@@ -8,12 +8,14 @@ public interface IUserRepository
 {
     User? GetByAlias(string alias);
     User? GetById(string idUsuario);
+    User? GetByCodigoId(int codigoId);
     IReadOnlyList<User> GetAll(string? search = null);
-    void Create(User user);
+    IReadOnlyList<User> Search(UserSearchFilter filter);
+    int Create(User user);
     void Update(User user, bool updatePassword);
-    void UpdatePasswordHash(string idUsuario, string newHash);
+    void UpdatePasswordHash(string idUsuario, string newHash, bool requirePasswordChange = false);
     void UpdateLastLogin(string idUsuario);
-    void Delete(string idUsuario);
+    void SetActive(string idUsuario, bool active);
     int CountActiveAdmins();
 }
 

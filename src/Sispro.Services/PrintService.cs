@@ -3,7 +3,6 @@ using System.Drawing.Printing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
-using Sispro.Core.Validation;
 
 namespace Sispro.Services;
 
@@ -227,11 +226,12 @@ public sealed class PrintService(AppSettings settings)
             y += 22;
 
             g.FillRectangle(oliveBrush, bounds.Left, y, bounds.Width, 22);
-            g.DrawString("RUT", boldFont, Brushes.White, bounds.Left + 4, y + 4);
-            g.DrawString("Alias", boldFont, Brushes.White, bounds.Left + 95, y + 4);
-            g.DrawString("Nombre Completo", boldFont, Brushes.White, bounds.Left + 185, y + 4);
-            g.DrawString("Nivel", boldFont, Brushes.White, bounds.Left + 390, y + 4);
-            g.DrawString("Correo", boldFont, Brushes.White, bounds.Left + 485, y + 4);
+            g.DrawString("ID", boldFont, Brushes.White, bounds.Left + 4, y + 4);
+            g.DrawString("Usuario", boldFont, Brushes.White, bounds.Left + 42, y + 4);
+            g.DrawString("Nombre Completo", boldFont, Brushes.White, bounds.Left + 148, y + 4);
+            g.DrawString("Perfil", boldFont, Brushes.White, bounds.Left + 345, y + 4);
+            g.DrawString("Estado", boldFont, Brushes.White, bounds.Left + 440, y + 4);
+            g.DrawString("Correo", boldFont, Brushes.White, bounds.Left + 510, y + 4);
             y += 24;
 
             while (index < users.Count)
@@ -244,11 +244,12 @@ public sealed class PrintService(AppSettings settings)
                 }
 
                 User u = users[index];
-                g.DrawString(RutValidator.Format(u.IdUsuario), regularFont, Brushes.Black, bounds.Left + 4, y + 2);
-                g.DrawString(u.AliasUsuario, regularFont, Brushes.Black, bounds.Left + 95, y + 2);
-                g.DrawString(u.NombreCompleto, regularFont, Brushes.Black, bounds.Left + 185, y + 2);
-                g.DrawString(u.Nivel.ToString(), regularFont, Brushes.Black, bounds.Left + 390, y + 2);
-                g.DrawString(u.MailUsuario, regularFont, Brushes.Black, bounds.Left + 485, y + 2);
+                g.DrawString(u.CodigoId.ToString(), regularFont, Brushes.Black, bounds.Left + 4, y + 2);
+                g.DrawString(u.AliasUsuario, regularFont, Brushes.Black, bounds.Left + 42, y + 2);
+                g.DrawString(u.NombreCompleto, regularFont, Brushes.Black, bounds.Left + 148, y + 2);
+                g.DrawString(u.Nivel.ToString(), regularFont, Brushes.Black, bounds.Left + 345, y + 2);
+                g.DrawString(u.Activo ? "Activo" : "Inactivo", regularFont, u.Activo ? Brushes.DarkGreen : Brushes.Firebrick, bounds.Left + 440, y + 2);
+                g.DrawString(u.MailUsuario, regularFont, Brushes.Black, bounds.Left + 510, y + 2);
                 g.DrawLine(Pens.LightGray, bounds.Left, y + 20, bounds.Right, y + 20);
 
                 y += 22;

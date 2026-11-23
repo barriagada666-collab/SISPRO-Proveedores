@@ -31,7 +31,10 @@ public enum AppIcon
     Check,
     Backup,
     Tree,
-    Template
+    Template,
+    UserPlus,
+    Cancel,
+    Eraser
 }
 
 /// <summary>
@@ -263,6 +266,25 @@ public static class IconCatalog
             case AppIcon.Template: // lucide: shield-check
                 g.DrawLines(pen, [new PointF(12, 2), new PointF(20, 5), new PointF(20, 12), new PointF(12, 22), new PointF(4, 12), new PointF(4, 5), new PointF(12, 2)]);
                 g.DrawLines(pen, [new PointF(9, 12), new PointF(11, 14), new PointF(15, 10)]);
+                break;
+
+            case AppIcon.UserPlus: // lucide: user-plus
+                g.DrawEllipse(pen, 5, 3, 8, 8);
+                g.DrawArc(pen, 2, 14, 14, 10, 185, 170);
+                g.DrawLine(pen, 19, 8, 19, 14);
+                g.DrawLine(pen, 16, 11, 22, 11);
+                break;
+
+            case AppIcon.Cancel: // lucide: circle-x
+                g.DrawEllipse(pen, 2, 2, 20, 20);
+                g.DrawLine(pen, 15, 9, 9, 15);
+                g.DrawLine(pen, 9, 9, 15, 15);
+                break;
+
+            case AppIcon.Eraser: // lucide: eraser
+                g.DrawPolygon(pen, [new PointF(7, 21), new PointF(2, 16), new PointF(13, 5), new PointF(20, 12), new PointF(11, 21)]);
+                g.DrawLine(pen, 7, 21, 22, 21);
+                g.DrawLine(pen, 9, 9, 16, 16);
                 break;
         }
 

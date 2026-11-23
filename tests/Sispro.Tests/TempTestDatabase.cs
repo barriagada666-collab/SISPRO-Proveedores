@@ -20,7 +20,20 @@ internal sealed class TempTestDatabase : IDisposable
         }
 
         AppSettings settings = new() { DatabasePath = DbPath };
-        Context = new SisproApplicationContext(settings, seedDefaultAdminIfEmpty: !copyMigratedRealDb);
+        InitialAdminSeedOptions? testSeed = copyMigratedRealDb
+            ? null
+            : new InitialAdminSeedOptions
+            {
+                AliasUsuario = "admin",
+                PlainPassword = "Admin2026!",
+                Nombre = "Administrador",
+                ApellidoPaterno = "Sistema",
+                ApellidoMaterno = "SISPRO",
+                Correo = "soporte@cambiaso.cl",
+                RequirePasswordChange = false
+            };
+
+        Context = new SisproApplicationContext(settings, testSeed);
     }
 
     public static string FindMigratedDatabase()

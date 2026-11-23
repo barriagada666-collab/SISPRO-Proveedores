@@ -1,4 +1,5 @@
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 
 namespace Sispro.Core.Dtos;
 
@@ -15,12 +16,39 @@ public sealed class AuthResult
     public string Message { get; init; } = string.Empty;
     public UserSession? Session { get; init; }
     public bool PasswordUpgraded { get; init; }
+    public bool RequiresPasswordChange { get; init; }
 
-    public static AuthResult Ok(UserSession session, bool passwordUpgraded = false) =>
-        new() { Success = true, Session = session, PasswordUpgraded = passwordUpgraded };
+    public static AuthResult Ok(UserSession session, bool passwordUpgraded = false, bool requiresPasswordChange = false) =>
+        new()
+        {
+            Success = true,
+            Session = session,
+            PasswordUpgraded = passwordUpgraded,
+            RequiresPasswordChange = requiresPasswordChange
+        };
 
     public static AuthResult Fail(string message) =>
         new() { Success = false, Message = message };
+}
+
+public sealed class UserSearchFilter
+{
+    public string? TextoBusqueda { get; set; }
+    public UserRoleLevel? Perfil { get; set; }
+    public bool? Activo { get; set; }
+}
+
+public sealed class InitialAdminSeedOptions
+{
+    public required string AliasUsuario { get; init; }
+    public string? PlainPassword { get; init; }
+    public string? PrecomputedPasswordHash { get; init; }
+    public string Nombre { get; init; } = "Administrador";
+    public string ApellidoPaterno { get; init; } = "Sistema";
+    public string ApellidoMaterno { get; init; } = string.Empty;
+    public string Correo { get; init; } = string.Empty;
+    public string Telefono { get; init; } = string.Empty;
+    public bool RequirePasswordChange { get; init; } = true;
 }
 
 public sealed class WorkOrderSearchFilter

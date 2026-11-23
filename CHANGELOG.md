@@ -2,6 +2,20 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [2.1.0] — 2026-11-23
+
+### Agregado — Módulo Profesional GESTIÓN DE USUARIOS (CRUD + RBAC Estricto)
+- **Formulario rediseñado `GESTIÓN DE USUARIOS`** distribuido en dos secciones (`DATOS DEL USUARIO` y `LISTADO DE USUARIOS`) con los 12 campos completos (ID automático, Usuario, Nombre, Apellido, Correo electrónico, Teléfono, Perfil, Contraseña, Confirmar contraseña, Estado, Fecha de creación y Último acceso).
+- **10 botones operativos con iconografía vectorial Lucide**: `Nuevo`, `Guardar`, `Editar`, `Actualizar`, `Eliminar` (eliminación lógica), `Cambiar Contraseña`, `Cancelar`, `Limpiar`, `Buscar` y `Refrescar`, además de `Permisos RBAC`, `Imprimir` y `Excel`.
+- **Grilla con búsqueda, filtros combinados e indicadores visuales**: filtrado simultáneo por texto (nombre, apellido, usuario, correo o ID), por perfil y por estado (`Activo` / `Inactivo`) con insignias de color diferenciadas.
+- **Eliminación lógica (`activo = 0`)**: desactiva usuarios preservando íntegros todos los registros históricos (`VistoBueno`, `AuditLog`) e impide desactivar la propia cuenta o al último Administrador activo.
+- **Gestión segura de contraseñas**: diálogo administrativo `AdminResetPasswordDialog` y flujo de **cambio obligatorio de contraseña en el primer inicio de sesión** (`debe_cambiar_clave = 1`, `ChangePasswordDialog` en modo forzado).
+- **Aprovisionamiento seguro e idempotente de Administrador inicial**: `InitialAdminProvisioner` + script `scripts/Initialize-AdminUser.ps1` (hash `PBKDF2-HMAC-SHA256` de 100.000 iteraciones con salt aleatorio CSPRNG y cero credenciales hardcodeadas en el código fuente).
+- **Control de acceso exclusivo para Administrador**: validación en UI (`MainForm`, `UsersForm`) y revalidación contra base de datos en `UserManagementService` (bloqueando llamadas directas de otros perfiles y registrando `ACCESO_NO_AUTORIZADO`).
+- **Auditoría ampliada**: registro de `CREAR_USUARIO`, `MODIFICAR_USUARIO`, `CAMBIO_PERFIL`, `ACTIVAR_USUARIO`, `DESACTIVAR_USUARIO`, `CAMBIO_CLAVE_ADMIN`, `CAMBIO_CLAVE_PRIMER_ACCESO`, `CAMBIO_CLAVE_CANCELADO`, `INIT_ADMIN_PROVISIONED` y `ACCESO_NO_AUTORIZADO` sin almacenar secretos.
+- **Esquema SQLite evolucionado sin duplicar tablas**: migración no destructiva de `Usuarios` con `codigo_id` (ID numérico único automático), `debe_cambiar_clave` y `fecha_modificacion`.
+- **Suite de pruebas ampliada a 37/37 pruebas xUnit**, incluyendo auditoría automatizada de ausencia de contraseñas en texto plano en `src/`.
+
 ## [2.0.0] — 2026-11-23
 
 ### Migración Completa a .NET 10

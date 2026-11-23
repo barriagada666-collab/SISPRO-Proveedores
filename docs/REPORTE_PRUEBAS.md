@@ -1,12 +1,12 @@
-# Reporte de Pruebas y Validación — SISPRO v2.0 (.NET 10)
+# Reporte de Pruebas y Validación — SISPRO v2.1 (.NET 10)
 
 ## 1. Resumen de Ejecución
 
 | Métrica | Resultado |
 |---|---|
 | Framework de Pruebas | xUnit 2.9.3 sobre `.NET 10.0.15` (`net10.0-windows`) |
-| Total de Pruebas Ejecutadas | **32** |
-| Pruebas Exitosas | **32 (100%)** |
+| Total de Pruebas Ejecutadas | **37** |
+| Pruebas Exitosas | **37 (100%)** |
 | Pruebas Fallidas | **0** |
 | Pruebas Omitidas | **0** |
 | Errores de Compilación (Debug & Release) | **0** |
@@ -33,8 +33,14 @@
 - Navegación y creación en árbol de activos hasta profundidad máxima de 10 niveles y bloqueo de nivel 11.
 - Respaldo en caliente (`SqliteConnectionFactory.BackupTo`) y restauración verificada.
 
-### 2.3 Pruebas Funcionales End-to-End (`tests/Sispro.Tests/Functional/EndToEndWorkflowTests.cs`)
+### 2.3 Pruebas Funcionales End-to-End (`EndToEndWorkflowTests.cs` y `UserManagementModuleTests.cs`)
 - Ciclo completo: Login Admin → Creación de Proveedores, Solicitantes y Activos → Creación de usuarios `Supervisor` (con sincronización automática a `Solicitantes`) y `Jefatura` → Creación de OT con 2 ítems → Aprobación `VBS` por Supervisor + bloqueo `UnauthorizedAccessException` al intentar `VBJ` → Aprobación `VBJ` por Jefatura → Validación de rechazo por proveedor distinto en factura → Registro de factura con cálculo automático de IVA 19% → Bloqueo de eliminación de OT facturada → Exportación de OT a `.xlsx` con verificación real de celdas en `ClosedXML` → Exportación de resultados de búsqueda con progreso → Eliminación de factura con reversa de estado y eliminación final de OT.
+- **Módulo GESTIÓN DE USUARIOS (`UserManagementModuleTests.cs`)**:
+  - Aprovisionamiento idempotente de Administrador inicial con `PBKDF2-HMAC-SHA256`, cambio obligatorio en primer inicio de sesión, rechazo de reutilización de clave inicial y rotación confirmada.
+  - Verificación en base real `data/sispro.db` de la cuenta `barriagada` (Administrador activo, 13/13 permisos, hash PBKDF2, `debe_cambiar_clave = 1`).
+  - Ciclo CRUD completo: validaciones obligatorias (usuario único, correo, contraseñas), creación con ID automático, búsqueda multicampo, filtros por perfil y estado, edición y cambio de perfil, restablecimiento seguro de contraseña, eliminación lógica preservando `VistoBueno` histórico, reactivación y auditoría sin fuga de secretos.
+  - Bloqueo exclusivo para perfil Administrador (en UI y backend contra BD) para perfiles `Usuario`, `Supervisor` y `Jefatura` con registro `ACCESO_NO_AUTORIZADO` y protección del último Administrador activo.
+  - Auditoría automatizada sobre `src/**/*.cs` garantizando cero contraseñas en texto plano en el código fuente.
 - Pruebas de seguridad: rechazo de inyección SQL (`admin' OR '1'='1`), bloqueo por fuerza bruta tras 5 intentos fallidos, bloqueo de auto-eliminación y protección contra degradación del último administrador activo.
 
 ### 2.4 Pruebas de Interfaz de Usuario (`tests/Sispro.Tests/UI/WinFormsUiAuditTests.cs` y `ScreenshotCaptureTests.cs`)

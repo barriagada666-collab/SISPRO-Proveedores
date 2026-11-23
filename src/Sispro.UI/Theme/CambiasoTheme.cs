@@ -127,12 +127,14 @@ public static class CambiasoTheme
             {
                 btn.BackColor = back;
                 btn.ForeColor = fore;
+                btn.FlatAppearance.BorderColor = border;
                 btn.Image = IconCatalog.Get(icon, fore, 16);
             }
             else
             {
-                btn.BackColor = Color.FromArgb(220, 229, 236);
+                btn.BackColor = Color.FromArgb(226, 233, 240);
                 btn.ForeColor = TextMuted;
+                btn.FlatAppearance.BorderColor = BorderColor;
                 btn.Image = IconCatalog.Get(icon, TextMuted, 16);
             }
         };

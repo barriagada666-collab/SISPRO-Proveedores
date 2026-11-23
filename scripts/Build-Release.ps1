@@ -37,10 +37,13 @@ if (-not $SkipInstaller) {
     Write-Host "=== 6. Compilando instalador Inno Setup 6 ==="
     & $iscc (Join-Path $root "installer\Setup_SISPRO.iss")
 
-    $setupExe = Join-Path $root "installer\Output\SISPRO_Setup_v2.0.0_win-x64.exe"
+    [xml]$props = Get-Content (Join-Path $root "Directory.Build.props")
+    $appVersion = $props.Project.PropertyGroup.Version.Trim()
+    $setupName = "SISPRO_Setup_v${appVersion}_win-x64.exe"
+    $setupExe = Join-Path $root "installer\Output\$setupName"
     $hash = (Get-FileHash $setupExe -Algorithm SHA256).Hash
     $checksumFile = Join-Path $root "installer\Output\checksums_sha256.txt"
-    "$hash  SISPRO_Setup_v2.0.0_win-x64.exe" | Set-Content -Path $checksumFile -Encoding UTF8
+    "$hash  $setupName" | Set-Content -Path $checksumFile -Encoding UTF8
     Write-Host "Instalador generado: $setupExe"
     Write-Host "SHA-256: $hash"
 }

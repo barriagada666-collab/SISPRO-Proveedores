@@ -54,7 +54,7 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v2.0 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Text = $"SISPRO v2.1 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -108,8 +108,10 @@ public sealed class MainForm : Form
             dlg.ShowDialog(this);
         };
 
+        bool isAdmin = _session.Usuario.Nivel == UserRoleLevel.Administrador && _session.Usuario.Activo;
+
         Button btnSettings = CambiasoTheme.CreateButton("Configuración", AppIcon.Settings, ButtonTone.Secondary, _toolTip, "Configurar base de datos, respaldos y datos de empresa", width: 136, height: 32);
-        btnSettings.Enabled = _session.Usuario.Nivel == UserRoleLevel.Administrador || _session.Permisos.MenuUsuarios;
+        btnSettings.Enabled = isAdmin;
         btnSettings.Click += (_, _) =>
         {
             using SettingsDialog dlg = new(_ctx);
@@ -180,12 +182,12 @@ public sealed class MainForm : Form
         NavMaintainers.Enabled = _session.Permisos.MenuMantenedor;
         NavMaintainers.Click += (_, _) => ShowMaintainers();
 
-        NavUsers = CreateNavButton("Usuarios", AppIcon.Users, "Gestión de usuarios y permisos RBAC (M4)");
-        NavUsers.Enabled = _session.Permisos.MenuUsuarios;
+        NavUsers = CreateNavButton("Gestión de Usuarios", AppIcon.Users, "Gestión de usuarios y control de acceso (exclusivo Administrador)");
+        NavUsers.Enabled = isAdmin;
         NavUsers.Click += (_, _) => ShowUsers();
 
         NavAudit = CreateNavButton("Auditoría", AppIcon.Audit, "Registro de auditoría de seguridad y operaciones");
-        NavAudit.Enabled = _session.Usuario.Nivel == UserRoleLevel.Administrador || _session.Permisos.MenuUsuarios;
+        NavAudit.Enabled = isAdmin;
         NavAudit.Click += (_, _) =>
         {
             using AuditLogDialog dlg = new(_ctx.Audit);
@@ -322,15 +324,20 @@ public sealed class MainForm : Form
 
     public void ShowUsers()
     {
-        if (!_session.Permisos.MenuUsuarios)
+        try
         {
-            CambiasoTheme.ShowWarning(this, "No tiene permisos para acceder al módulo de Usuarios.");
+            _ctx.UserManagementService.EnsureCanAccessModule(_session);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
             return;
         }
 
         HighlightNav(NavUsers);
-        _lblModuleTitle.Text = "Administración de Usuarios y Permisos";
+        _lblModuleTitle.Text = "GESTIÓN DE USUARIOS";
         _usersView ??= new UsersForm(_ctx, _session);
+        _usersView.RefreshData();
         HostControl(_usersView);
     }
 

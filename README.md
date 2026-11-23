@@ -7,7 +7,7 @@
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-14-239120?style=for-the-badge&logo=csharp)](https://learn.microsoft.com/dotnet/csharp/)
 [![SQLite](https://img.shields.io/badge/SQLite-3%20(WAL)-003B57?style=for-the-badge&logo=sqlite)](https://www.sqlite.org/)
-[![Tests](https://img.shields.io/badge/Tests-32%2F32%20Passing-2E7D32?style=for-the-badge)](docs/REPORTE_PRUEBAS.md)
+[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Passing-2E7D32?style=for-the-badge)](docs/REPORTE_PRUEBAS.md)
 [![Warnings](https://img.shields.io/badge/Errors%20%7C%20Warnings-0%20%7C%200-0E4163?style=for-the-badge)](docs/GUIA_COMPILACION.md)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
@@ -30,10 +30,10 @@
   - Cálculo automático de **Neto, IVA 19% y Total c/IVA**, búsqueda maestro-detalle, eliminación con reversa transaccional y exportación Excel.
 - **Mantenedores (`M3`)**:
   - Gestión completa (CRUD) de **Proveedores**, **Solicitantes** y **Árbol de Activos (hasta 10 niveles)** con protección de integridad referencial.
-- **Usuarios y Seguridad RBAC (`M4`)**:
-  - Control de acceso granular por módulo, pestaña y acción en capas UI + Servicios.
-  - Plantillas de permisos por perfil (`Usuario`, `Supervisor`, `Jefatura`, `Administrador`) y validación de **RUT chileno (módulo 11)**.
-  - Cifrado **PBKDF2-HMAC-SHA256** (100.000 iteraciones + salt aleatorio), migración transparente desde contraseñas heredadas de VB6, bloqueo ante fuerza bruta, cambio de clave personal y **Bitácora de Auditoría (`AuditLog`)**.
+- **Gestión de Usuarios y Seguridad RBAC (`M4` — Exclusivo Administrador)**:
+  - Módulo CRUD completo (**DATOS DEL USUARIO** + **LISTADO DE USUARIOS**) con ID automático, búsqueda multicampo, filtros por perfil y estado, indicadores visuales Activo/Inactivo, eliminación lógica (preservando historial) y cambio de credenciales seguro.
+  - Control de acceso exclusivo para perfil `Administrador` validado tanto en interfaz como en backend/servicio, impidiendo que otros perfiles abran el módulo o invoquen operaciones administrativas.
+  - Aprovisionamiento seguro e idempotente de Administrador inicial (`scripts/Initialize-AdminUser.ps1`), cambio obligatorio de contraseña en el primer inicio de sesión, cero credenciales en texto plano en código fuente, cifrado **PBKDF2-HMAC-SHA256** (100.000 iteraciones + salt aleatorio), bloqueo ante fuerza bruta y **Bitácora de Auditoría (`AuditLog`)** completa.
 - **Base de Datos Embebida y Respaldos**:
   - SQLite 3 en modo WAL con claves foráneas activas, consultas 100% parametrizadas (inmune a inyección SQL), migración completa de los **1.514 registros históricos** de `OT_PROV.mdb` y herramienta integrada de respaldo en caliente.
 
@@ -108,11 +108,11 @@ SISPRO/
 ## Instalación y Uso
 
 ### Instalación Rápida (Producción)
-1. Descargue `SISPRO_Setup_v2.0.0_win-x64.exe` desde la sección de **Releases** o compílelo con `.\scripts\Build-Release.ps1`.
+1. Descargue `SISPRO_Setup_v2.1.0_win-x64.exe` desde la sección de **Releases** o compílelo con `.\scripts\Build-Release.ps1`.
 2. Ejecute el instalador (compatible con instalación sin permisos de administrador o para todos los usuarios).
-3. Inicie **SISPRO** desde el Menú Inicio.
-   - Si utiliza la base migrada `data/sispro.db`, las cuentas históricas de `OT_PROV.mdb` funcionan directamente y actualizan su cifrado a PBKDF2 en el primer inicio de sesión.
-   - En una base nueva vacía se crea automáticamente el administrador inicial `admin` / `Admin2026!` (se recomienda cambiar la clave en **Mi Clave** tras el primer ingreso).
+3. Inicie **SISPRO** desde el Menú Inicio:
+   - La base `data/sispro.db` incluye la cuenta Administrador inicial aprovisionada con cambio obligatorio de contraseña en el primer inicio de sesión, además de las cuentas históricas migradas desde `OT_PROV.mdb` (que actualizan su cifrado a PBKDF2 automáticamente).
+   - Para aprovisionar una cuenta Administrador inicial en una base nueva vacía (sin exponer contraseñas en código fuente), ejecute `.\scripts\Initialize-AdminUser.ps1 -DatabasePath "<ruta_sispro.db>" -Username "<usuario>"` o configure las variables de entorno `SISPRO_INIT_ADMIN_USER` y `SISPRO_INIT_ADMIN_PASSWORD`.
 
 ### Compilación y Pruebas desde Código Fuente
 ```powershell
@@ -121,7 +121,7 @@ dotnet restore SISPRO.sln
 dotnet build SISPRO.sln -c Debug --no-restore
 dotnet build SISPRO.sln -c Release --no-restore
 
-# Ejecutar las 32 pruebas automatizadas
+# Ejecutar las 37 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build --verbosity normal
 
 # Generar compilación autocontenida e instalador Inno Setup 6

@@ -183,6 +183,18 @@ public sealed class LoginForm : Form
             return;
         }
 
+        if (result.RequiresPasswordChange)
+        {
+            using ChangePasswordDialog forceDlg = new(_ctx.AuthService, result.Session, forcePasswordChange: true);
+            if (forceDlg.ShowDialog(this) != DialogResult.OK)
+            {
+                _lblError.Text = "Debe actualizar su contraseña inicial para acceder al sistema.";
+                _txtPass.Clear();
+                _txtPass.Focus();
+                return;
+            }
+        }
+
         AuthenticatedSession = result.Session;
         _ctx.CurrentSession = result.Session;
         DialogResult = DialogResult.OK;

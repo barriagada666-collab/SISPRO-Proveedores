@@ -4,6 +4,7 @@ namespace Sispro.Core.Entities;
 
 public sealed class User
 {
+    public int CodigoId { get; set; }
     public string IdUsuario { get; set; } = string.Empty;
     public string AliasUsuario { get; set; } = string.Empty;
     public string PassHash { get; set; } = string.Empty;
@@ -15,12 +16,34 @@ public sealed class User
     public string FonoUsuario { get; set; } = string.Empty;
     public bool EsSolicitante { get; set; }
     public bool Activo { get; set; } = true;
+    public bool DebeCambiarClave { get; set; }
     public DateTime FechaCreacion { get; set; } = DateTime.Now;
+    public DateTime FechaModificacion { get; set; } = DateTime.Now;
     public DateTime? UltimoAcceso { get; set; }
     public UserPermissions Permisos { get; set; } = new();
 
+    public string Apellidos =>
+        string.Join(" ", new[] { ApePatUsuario, ApeMatUsuario }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
     public string NombreCompleto =>
         string.Join(" ", new[] { NombreUsuario, ApePatUsuario, ApeMatUsuario }.Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    public static (string Paterno, string Materno) SplitSurnames(string? fullSurnames)
+    {
+        if (string.IsNullOrWhiteSpace(fullSurnames))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        string trimmed = fullSurnames.Trim();
+        int spaceIdx = trimmed.IndexOf(' ');
+        if (spaceIdx < 0)
+        {
+            return (trimmed, string.Empty);
+        }
+
+        return (trimmed[..spaceIdx].Trim(), trimmed[(spaceIdx + 1)..].Trim());
+    }
 }
 
 public sealed class UserPermissions

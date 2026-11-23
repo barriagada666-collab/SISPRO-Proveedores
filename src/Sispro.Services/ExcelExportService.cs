@@ -3,7 +3,6 @@ using ClosedXML.Excel;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
-using Sispro.Core.Validation;
 
 namespace Sispro.Services;
 
@@ -327,21 +326,24 @@ public sealed class ExcelExportService(AppSettings settings)
     {
         using XLWorkbook wb = new();
         IXLWorksheet ws = wb.Worksheets.Add("Usuarios");
-        string[] headers = ["RUT", "Alias", "Nombre Completo", "Nivel", "Teléfono", "Correo", "Solicitante", "Estado"];
+        string[] headers = ["ID", "Usuario", "Nombre Completo", "Correo Electrónico", "Teléfono", "Perfil", "Estado", "Fecha Creación", "Último Acceso"];
         WriteStyledHeader(ws, headers);
 
         for (int i = 0; i < users.Count; i++)
         {
             User u = users[i];
             int r = i + 2;
-            ws.Cell(r, 1).Value = RutValidator.Format(u.IdUsuario);
+            ws.Cell(r, 1).Value = u.CodigoId;
             ws.Cell(r, 2).Value = u.AliasUsuario;
             ws.Cell(r, 3).Value = u.NombreCompleto;
-            ws.Cell(r, 4).Value = u.Nivel.ToString();
+            ws.Cell(r, 4).Value = u.MailUsuario;
             ws.Cell(r, 5).Value = u.FonoUsuario;
-            ws.Cell(r, 6).Value = u.MailUsuario;
-            ws.Cell(r, 7).Value = u.EsSolicitante ? "Sí" : "No";
-            ws.Cell(r, 8).Value = u.Activo ? "Activo" : "Inactivo";
+            ws.Cell(r, 6).Value = u.Nivel.ToString();
+            ws.Cell(r, 7).Value = u.Activo ? "Activo" : "Inactivo";
+            ws.Cell(r, 8).Value = u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture);
+            ws.Cell(r, 9).Value = u.UltimoAcceso.HasValue
+                ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture)
+                : "Sin accesos";
         }
 
         FinalizeTable(ws, users.Count + 1, headers.Length);

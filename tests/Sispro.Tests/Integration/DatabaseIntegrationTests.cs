@@ -16,7 +16,7 @@ public sealed class DatabaseIntegrationTests
         Assert.Equal(1514, metrics.TotalOrdenesTrabajo);
         Assert.Equal(73, metrics.TotalProveedoresActivos);
         Assert.Equal(7, metrics.TotalSolicitantesActivos);
-        Assert.Equal(2, metrics.TotalUsuariosActivos);
+        Assert.Equal(3, metrics.TotalUsuariosActivos);
         Assert.Equal(272, metrics.TotalNodosActivos);
 
         // Historical OT 2514 had id_sol = 0 (invisible in VB6 INNER JOIN); must now load cleanly!
@@ -74,7 +74,7 @@ public sealed class DatabaseIntegrationTests
             temp.Context.ConnectionFactory.BackupTo(backupPath);
             Assert.True(File.Exists(backupPath));
 
-            Sispro.Services.SisproApplicationContext restored = new(new AppSettings { DatabasePath = backupPath }, seedDefaultAdminIfEmpty: false);
+            Sispro.Services.SisproApplicationContext restored = new(new AppSettings { DatabasePath = backupPath });
             Assert.Equal(1514, restored.Audit.GetDashboardMetrics().TotalOrdenesTrabajo);
         }
         finally

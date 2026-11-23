@@ -114,11 +114,11 @@ public sealed class SisproApplicationContext
 
     public UserSession? CurrentSession { get; set; }
 
-    public SisproApplicationContext(AppSettings settings, bool seedDefaultAdminIfEmpty = true)
+    public SisproApplicationContext(AppSettings settings, InitialAdminSeedOptions? initialAdmin = null)
     {
         Settings = settings;
         ConnectionFactory = new SqliteConnectionFactory(settings.DatabasePath);
-        SchemaInitializer.EnsureInitialized(ConnectionFactory, seedDefaultAdminIfEmpty);
+        SchemaInitializer.EnsureInitialized(ConnectionFactory, initialAdmin);
 
         Users = new UserRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);
@@ -143,7 +143,7 @@ public sealed class SisproApplicationContext
         AppSettingsStore.Save(Settings);
 
         ConnectionFactory = new SqliteConnectionFactory(newDatabasePath);
-        SchemaInitializer.EnsureInitialized(ConnectionFactory, seedDefaultAdminIfEmpty: true);
+        SchemaInitializer.EnsureInitialized(ConnectionFactory);
 
         Users = new UserRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);

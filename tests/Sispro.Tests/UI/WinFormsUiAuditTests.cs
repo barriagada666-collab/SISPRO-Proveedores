@@ -74,11 +74,35 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.Users");
             AssertNoForbiddenTypos(main, "MainForm.Users");
 
+            using UsersForm directUsers = new(temp.Context, admin);
+            AssertAllButtonsValid(directUsers, "UsersForm.Direct");
+            Assert.Equal("Nuevo", directUsers.BtnNuevo.Text);
+            Assert.Equal("Guardar", directUsers.BtnGuardar.Text);
+            Assert.Equal("Editar", directUsers.BtnEditar.Text);
+            Assert.Equal("Actualizar", directUsers.BtnActualizar.Text);
+            Assert.Equal("Eliminar", directUsers.BtnEliminar.Text);
+            Assert.Equal("Cambiar Contraseña", directUsers.BtnCambiarPassword.Text);
+            Assert.Equal("Cancelar", directUsers.BtnCancelar.Text);
+            Assert.Equal("Limpiar", directUsers.BtnLimpiar.Text);
+            Assert.Equal("Buscar", directUsers.BtnBuscar.Text);
+            Assert.Equal("Refrescar", directUsers.BtnRefrescar.Text);
+            Assert.Equal(9, directUsers.GridUsers.Columns.Count);
+            Assert.True(directUsers.GridUsers.Rows.Count >= 3);
+
             using SettingsDialog settingsDlg = new(temp.Context);
             AssertAllButtonsValid(settingsDlg, "SettingsDialog");
 
             using ChangePasswordDialog pwdDlg = new(temp.Context.AuthService, admin);
             AssertAllButtonsValid(pwdDlg, "ChangePasswordDialog");
+
+            using ChangePasswordDialog forcePwdDlg = new(temp.Context.AuthService, admin, forcePasswordChange: true);
+            AssertAllButtonsValid(forcePwdDlg, "ChangePasswordDialog.Forced");
+
+            using AdminResetPasswordDialog resetDlg = new(temp.Context.UserManagementService, admin, admin.Usuario);
+            AssertAllButtonsValid(resetDlg, "AdminResetPasswordDialog");
+
+            using UserPermissionsDialog permsDlg = new(UserRoleLevel.Supervisor, PermissionPresets.CreateForRole(UserRoleLevel.Supervisor), readOnly: false);
+            AssertAllButtonsValid(permsDlg, "UserPermissionsDialog");
 
             using AuditLogDialog auditDlg = new(temp.Context.Audit);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");
@@ -112,7 +136,12 @@ public sealed class WinFormsUiAuditTests
             Assert.False(main.NavMaintainers.Enabled);
             Assert.False(main.NavUsers.Enabled);
             Assert.False(main.NavAudit.Enabled);
+
+            // Intento directo de instanciar el formulario de Gestión de Usuarios por un no-administrador debe bloquearse
+            Assert.Throws<UnauthorizedAccessException>(() => new UsersForm(temp.Context, opSession));
         });
+
+        Assert.Contains(temp.Context.Audit.GetRecent(20), e => e.Accion == "ACCESO_NO_AUTORIZADO" && e.Usuario == "operador1");
     }
 
     private static void AssertAllButtonsValid(Control root, string contextName)

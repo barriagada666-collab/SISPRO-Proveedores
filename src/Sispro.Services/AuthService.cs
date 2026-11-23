@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Core.Interfaces;
 using Sispro.Core.Security;
 using Sispro.Core.Validation;
@@ -40,7 +41,7 @@ public sealed class AuthService(IUserRepository users, IAuditRepository audit)
         if (!user.Activo)
         {
             audit.Log(user.AliasUsuario, "Seguridad", "LOGIN_DENEGADO", "Cuenta inactiva.");
-            return AuthResult.Fail("La cuenta de usuario se encuentra deshabilitada. Contacte al administrador.");
+            return AuthResult.Fail("La cuenta de usuario se encuentra inactiva. Contacte al administrador.");
         }
 
         if (!PasswordSecurity.VerifyPassword(plainPassword, user.PassHash, user.AliasUsuario, out bool needsUpgrade))
@@ -56,7 +57,7 @@ public sealed class AuthService(IUserRepository users, IAuditRepository audit)
         if (needsUpgrade)
         {
             string modernHash = PasswordSecurity.HashPassword(plainPassword);
-            users.UpdatePasswordHash(user.IdUsuario, modernHash);
+            users.UpdatePasswordHash(user.IdUsuario, modernHash, user.DebeCambiarClave);
             user.PassHash = modernHash;
             upgraded = true;
             audit.Log(user.AliasUsuario, "Seguridad", "PASSWORD_UPGRADE", "Contraseña migrada automáticamente desde cifrado VB6 a PBKDF2-SHA256.");
@@ -64,10 +65,22 @@ public sealed class AuthService(IUserRepository users, IAuditRepository audit)
 
         users.UpdateLastLogin(user.IdUsuario);
         user.UltimoAcceso = DateTime.Now;
+
+        // Defensa en profundidad: solo el perfil Administrador puede acceder al módulo de Gestión de Usuarios
+        if (user.Nivel != UserRoleLevel.Administrador)
+        {
+            user.Permisos.MenuUsuarios = false;
+            user.Permisos.IngresoUsuarios = false;
+            user.Permisos.ListadoUsuarios = false;
+        }
+
         user.Permisos.NormalizeHierarchy();
 
-        audit.Log(user.AliasUsuario, "Seguridad", "LOGIN_OK", $"Inicio de sesión exitoso (Nivel: {user.Nivel}).");
-        return AuthResult.Ok(new UserSession { Usuario = user }, upgraded);
+        audit.Log(user.AliasUsuario, "Seguridad", "LOGIN_OK", $"Inicio de sesión exitoso (Perfil: {user.Nivel}).");
+        return AuthResult.Ok(
+            new UserSession { Usuario = user },
+            passwordUpgraded: upgraded,
+            requiresPasswordChange: user.DebeCambiarClave);
     }
 
     public void ChangeOwnPassword(UserSession session, string currentPassword, string newPassword, string confirmPassword)
@@ -86,10 +99,35 @@ public sealed class AuthService(IUserRepository users, IAuditRepository audit)
             throw new ArgumentException(policyError);
         }
 
+        if (user.DebeCambiarClave && string.Equals(currentPassword, newPassword, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("En el primer inicio de sesión debe definir una contraseña distinta a la contraseña inicial.");
+        }
+
         string newHash = PasswordSecurity.HashPassword(newPassword);
-        users.UpdatePasswordHash(user.IdUsuario, newHash);
+        bool wasForced = user.DebeCambiarClave;
+
+        users.UpdatePasswordHash(user.IdUsuario, newHash, requirePasswordChange: false);
         session.Usuario.PassHash = newHash;
-        audit.Log(session.Usuario.AliasUsuario, "Seguridad", "CAMBIO_CLAVE", "El usuario actualizó su contraseña.");
+        session.Usuario.DebeCambiarClave = false;
+        session.Usuario.FechaModificacion = DateTime.Now;
+
+        audit.Log(
+            session.Usuario.AliasUsuario,
+            "Seguridad",
+            wasForced ? "CAMBIO_CLAVE_PRIMER_ACCESO" : "CAMBIO_CLAVE",
+            wasForced
+                ? "El usuario completó el cambio obligatorio de contraseña en su primer inicio de sesión."
+                : "El usuario actualizó su contraseña personal.");
+    }
+
+    public void LogMandatoryPasswordChangeCancelled(UserSession session)
+    {
+        audit.Log(
+            session.Usuario.AliasUsuario,
+            "Seguridad",
+            "CAMBIO_CLAVE_CANCELADO",
+            "Acceso interrumpido: el usuario canceló el cambio obligatorio de contraseña del primer inicio de sesión.");
     }
 
     public static void EnsurePermission(UserSession? session, Func<UserPermissions, bool> predicate, string actionDescription)
