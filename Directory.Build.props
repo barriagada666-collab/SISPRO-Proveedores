@@ -10,6 +10,7 @@
     <Deterministic>true</Deterministic>
     <Company>Cambiaso Hnos S.A.C.</Company>
     <Product>SISPRO - Sistema de Gestión de Proveedores y Órdenes de Trabajo</Product>
+    <Description>Sistema Integral de Gestión de Proveedores, Órdenes de Trabajo, Árbol de Activos, Usuarios, Grupos y Mantención Industrial (.NET 10)</Description>
     <Copyright>Copyright © Cambiaso Hnos S.A.C.</Copyright>
     <Version>4.1.0</Version>
     <AssemblyVersion>4.1.0.0</AssemblyVersion>

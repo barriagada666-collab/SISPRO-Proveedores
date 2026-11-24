@@ -456,6 +456,8 @@ public sealed class UsersForm : UserControl
         };
         GridUsers.CellValueChanged += OnGridCellValueChanged;
         GridUsers.SelectionChanged += (_, _) => OnGridSelectionChanged();
+        GridUsers.CurrentCellChanged += (_, _) => OnGridSelectionChanged();
+        GridUsers.Sorted += (_, _) => OnGridSelectionChanged();
         GridUsers.CellDoubleClick += (_, e) =>
         {
             if (e.RowIndex >= 0 && e.ColumnIndex > 0 && _selectedUser is not null)
@@ -464,16 +466,17 @@ public sealed class UsersForm : UserControl
             }
         };
         GridUsers.CellFormatting += OnGridCellFormatting;
+        GridUsers.SortCompare += OnGridSortCompare;
         GridUsers.MouseDown += OnGridMouseDown;
         GridUsers.MouseMove += OnGridMouseMove;
         ContextMenuHelper.AttachToGrid(GridUsers, idx =>
         {
-            if (idx < 0 || idx >= _users.Count)
+            User? rowUser = GetUserAtRow(idx);
+            if (rowUser is null)
             {
                 return [];
             }
 
-            User rowUser = _users[idx];
             return
             [
                 ContextMenuHelper.Item("Editar usuario", AppIcon.Edit, CambiasoTheme.Primary, EnterEditMode, enabled: BtnEditar.Enabled),
@@ -557,6 +560,7 @@ public sealed class UsersForm : UserControl
             HeaderText = "✓",
             Width = 34,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.None,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
             ReadOnly = false
         };
 
@@ -1053,12 +1057,12 @@ public sealed class UsersForm : UserControl
         }
 
         _dragStartPoint = Point.Empty;
-        if (_dragSourceRowIndex >= _users.Count)
+        User? draggedUser = GetUserAtRow(_dragSourceRowIndex);
+        if (draggedUser is null)
         {
             return;
         }
 
-        User draggedUser = _users[_dragSourceRowIndex];
         List<string> ids = _checkedUserIds.Count > 0 && _checkedUserIds.Contains(draggedUser.IdUsuario)
             ? [.. _checkedUserIds]
             : [draggedUser.IdUsuario];
@@ -1394,12 +1398,12 @@ public sealed class UsersForm : UserControl
         try
         {
             _checkedUserIds.Clear();
-            for (int i = 0; i < GridUsers.Rows.Count && i < _users.Count; i++)
+            for (int i = 0; i < GridUsers.Rows.Count; i++)
             {
                 GridUsers.Rows[i].Cells[0].Value = isChecked;
-                if (isChecked)
+                if (isChecked && GetUserAtRow(i) is User rowUser)
                 {
-                    _checkedUserIds.Add(_users[i].IdUsuario);
+                    _checkedUserIds.Add(rowUser.IdUsuario);
                 }
             }
         }
@@ -1413,13 +1417,19 @@ public sealed class UsersForm : UserControl
 
     private void OnGridCellValueChanged(object? sender, DataGridViewCellEventArgs e)
     {
-        if (_suppressGridSelection || e.RowIndex < 0 || e.ColumnIndex != 0 || e.RowIndex >= _users.Count)
+        if (_suppressGridSelection || e.RowIndex < 0 || e.ColumnIndex != 0)
+        {
+            return;
+        }
+
+        User? rowUser = GetUserAtRow(e.RowIndex);
+        if (rowUser is null)
         {
             return;
         }
 
         bool isChecked = Convert.ToBoolean(GridUsers.Rows[e.RowIndex].Cells[0].Value ?? false);
-        string id = _users[e.RowIndex].IdUsuario;
+        string id = rowUser.IdUsuario;
         if (isChecked) _checkedUserIds.Add(id);
         else _checkedUserIds.Remove(id);
 
@@ -1625,9 +1635,9 @@ public sealed class UsersForm : UserControl
         {
             PopulateEditorFromUser(_selectedUser);
         }
-        else if (_users.Count > 0 && GridUsers.CurrentRow is not null && GridUsers.CurrentRow.Index >= 0 && GridUsers.CurrentRow.Index < _users.Count)
+        else if (GridUsers.CurrentRow is not null && GetUserAtRow(GridUsers.CurrentRow.Index) is User gridUser)
         {
-            _selectedUser = _users[GridUsers.CurrentRow.Index];
+            _selectedUser = gridUser;
             PopulateEditorFromUser(_selectedUser);
         }
         else
@@ -1818,7 +1828,7 @@ public sealed class UsersForm : UserControl
             foreach (User u in _users)
             {
                 bool isChecked = _checkedUserIds.Contains(u.IdUsuario);
-                GridUsers.Rows.Add(
+                int rIdx = GridUsers.Rows.Add(
                     isChecked,
                     u.CodigoId,
                     u.AliasUsuario,
@@ -1830,27 +1840,28 @@ public sealed class UsersForm : UserControl
                     u.Activo ? "Activo" : "Inactivo",
                     u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
                     u.UltimoAcceso.HasValue ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture) : "Sin accesos");
+                GridUsers.Rows[rIdx].Tag = u;
             }
 
             int activos = _users.Count(u => u.Activo);
             int inactivos = _users.Count - activos;
             string groupTag = (ListGroups.SelectedItem as GroupListEntry)?.Name ?? "TODOS LOS USUARIOS";
             _grpListado.Text = $"ÁREA 2 — LISTADO DE USUARIOS · {groupTag} ({_users.Count})";
-            _lblGridStats.Text = $"Activos: {activos} | Inactivos: {inactivos} | Más recientes primero";
+            _lblGridStats.Text = $"Activos: {activos} | Inactivos: {inactivos} | Clic en columna para ordenar";
 
             int targetIdx = -1;
             if (!string.IsNullOrWhiteSpace(selectUserId))
             {
-                for (int i = 0; i < _users.Count; i++)
+                for (int i = 0; i < GridUsers.Rows.Count; i++)
                 {
-                    if (string.Equals(_users[i].IdUsuario, selectUserId, StringComparison.OrdinalIgnoreCase))
+                    if (GetUserAtRow(i) is User candidate && string.Equals(candidate.IdUsuario, selectUserId, StringComparison.OrdinalIgnoreCase))
                     {
                         targetIdx = i;
                         break;
                     }
                 }
             }
-            else if (_users.Count > 0)
+            else if (GridUsers.Rows.Count > 0)
             {
                 targetIdx = 0;
             }
@@ -1860,8 +1871,8 @@ public sealed class UsersForm : UserControl
                 GridUsers.ClearSelection();
                 GridUsers.Rows[targetIdx].Selected = true;
                 GridUsers.CurrentCell = GridUsers.Rows[targetIdx].Cells[1];
-                _selectedUser = _users[targetIdx];
-                if (_mode == EditorMode.View)
+                _selectedUser = GetUserAtRow(targetIdx);
+                if (_mode == EditorMode.View && _selectedUser is not null)
                 {
                     PopulateEditorFromUser(_selectedUser);
                 }
@@ -1890,6 +1901,41 @@ public sealed class UsersForm : UserControl
         }
     }
 
+    private User? GetUserAtRow(int rowIndex) =>
+        rowIndex >= 0 && rowIndex < GridUsers.Rows.Count ? GridUsers.Rows[rowIndex].Tag as User : null;
+
+    private void OnGridSortCompare(object? sender, DataGridViewSortCompareEventArgs e)
+    {
+        User? u1 = GetUserAtRow(e.RowIndex1);
+        User? u2 = GetUserAtRow(e.RowIndex2);
+        if (u1 is null || u2 is null)
+        {
+            return;
+        }
+
+        switch (e.Column.Name)
+        {
+            case "colId":
+                e.SortResult = u1.CodigoId.CompareTo(u2.CodigoId);
+                e.Handled = true;
+                break;
+            case "colCreacion":
+                e.SortResult = u1.FechaCreacion.CompareTo(u2.FechaCreacion);
+                e.Handled = true;
+                break;
+            case "colUltimoAcceso":
+                e.SortResult = (u1.UltimoAcceso ?? DateTime.MinValue).CompareTo(u2.UltimoAcceso ?? DateTime.MinValue);
+                e.Handled = true;
+                break;
+            default:
+                e.SortResult = StringComparer.CurrentCultureIgnoreCase.Compare(
+                    Convert.ToString(e.CellValue1, CultureInfo.InvariantCulture) ?? string.Empty,
+                    Convert.ToString(e.CellValue2, CultureInfo.InvariantCulture) ?? string.Empty);
+                e.Handled = true;
+                break;
+        }
+    }
+
     private void OnGridSelectionChanged()
     {
         if (_suppressGridSelection || _mode != EditorMode.View)
@@ -1897,7 +1943,8 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        if (GridUsers.CurrentRow is null || GridUsers.CurrentRow.Index < 0 || GridUsers.CurrentRow.Index >= _users.Count)
+        User? selected = GridUsers.CurrentRow is not null ? GetUserAtRow(GridUsers.CurrentRow.Index) : null;
+        if (selected is null)
         {
             _selectedUser = null;
             ClearEditorInputs();
@@ -1905,19 +1952,23 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        _selectedUser = _users[GridUsers.CurrentRow.Index];
+        if (ReferenceEquals(_selectedUser, selected))
+        {
+            return;
+        }
+
+        _selectedUser = selected;
         PopulateEditorFromUser(_selectedUser);
         ApplyMode(EditorMode.View);
     }
 
     private void OnGridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
-        if (e.RowIndex < 0 || e.RowIndex >= _users.Count || e.CellStyle is null)
+        User? u = GetUserAtRow(e.RowIndex);
+        if (u is null || e.CellStyle is null)
         {
             return;
         }
-
-        User u = _users[e.RowIndex];
 
         if (e.ColumnIndex == 8) // Estado
         {

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Printing;
 using System.Globalization;
@@ -69,6 +70,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly Button _btnClearSearch;
     private readonly Button _btnExportSearch;
     private readonly DataGridView _gridSearchResults;
+    private readonly GridPagerBar _searchPager;
     private readonly ProgressBar _exportProgress;
     private readonly Label _lblSearchSummary;
     private IReadOnlyList<WorkOrderSearchRow> _lastSearchResults = [];
@@ -306,12 +308,13 @@ public sealed class WorkOrdersForm : UserControl
         _gridSearchResults.CellDoubleClick += (_, _) => OpenSelectedSearchOrder();
         ContextMenuHelper.AttachToGrid(_gridSearchResults, idx =>
         {
-            if (idx < 0 || idx >= _lastSearchResults.Count)
+            WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridSearchResults, idx);
+            if (row is null)
             {
                 return [];
             }
 
-            int numOt = _lastSearchResults[idx].NumeroOt;
+            int numOt = row.NumeroOt;
             return
             [
                 ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Primary, () => OpenOrderByNumber(numOt), enabled: _session.Permisos.IngresoOt),
@@ -320,6 +323,9 @@ public sealed class WorkOrdersForm : UserControl
                 ContextMenuHelper.Item("Eliminar OT", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteSearchOrder(numOt), enabled: _session.Permisos.IngresoOt)
             ];
         });
+
+        _searchPager = new GridPagerBar(100);
+        _searchPager.PageChanged += (_, _) => RenderSearchResultsPage();
 
         _exportProgress = new ProgressBar { Width = 220, Height = 20, Visible = false, Minimum = 0, Maximum = 100 };
         _lblSearchSummary = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted, Text = "Use los filtros y presione Buscar." };
@@ -625,9 +631,10 @@ public sealed class WorkOrdersForm : UserControl
         grpFilters.Controls.Add(f2);
         grpFilters.Controls.Add(f1);
 
-        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (orden cronológico descendente — doble clic para abrir)");
+        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (orden cronológico descendente — doble clic para abrir · clic en columna para ordenar)");
         grpResults.Dock = DockStyle.Fill;
         grpResults.Controls.Add(_gridSearchResults);
+        grpResults.Controls.Add(_searchPager);
 
         FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 8, 2, 4) };
         footer.Controls.AddRange([_btnExportSearch, _btnClearSearch, _exportProgress, _lblSearchSummary]);
@@ -1074,32 +1081,8 @@ public sealed class WorkOrdersForm : UserControl
 
             Cursor = Cursors.WaitCursor;
             _lastSearchResults = _ctx.WorkOrderService.Search(_session, filter);
-            _gridSearchResults.DataSource = _lastSearchResults.Select(r => new
-            {
-                r.NumeroOt,
-                Fecha = r.Fecha.ToString("dd-MM-yyyy"),
-                r.Proveedor,
-                r.Solicitante,
-                r.Cantidad,
-                r.Detalle,
-                VBS = r.TieneVbs ? "Sí" : "No",
-                VBJ = r.TieneVbj ? "Sí" : "No",
-                Facturado = r.AsociadoAFactura ? "Sí" : "No"
-            }).ToList();
-
-            if (_gridSearchResults.Columns.Count >= 9)
-            {
-                _gridSearchResults.Columns[0].HeaderText = "N° OT";
-                _gridSearchResults.Columns[0].FillWeight = 8;
-                _gridSearchResults.Columns[1].FillWeight = 10;
-                _gridSearchResults.Columns[2].FillWeight = 16;
-                _gridSearchResults.Columns[3].FillWeight = 11;
-                _gridSearchResults.Columns[4].FillWeight = 6;
-                _gridSearchResults.Columns[5].FillWeight = 34;
-                _gridSearchResults.Columns[6].FillWeight = 5;
-                _gridSearchResults.Columns[7].FillWeight = 5;
-                _gridSearchResults.Columns[8].FillWeight = 7;
-            }
+            _searchPager.ResetPageIndex();
+            RenderSearchResultsPage();
 
             _lblSearchSummary.Text = $"{_lastSearchResults.Count:N0} registro(s) encontrados (más recientes primero).";
             if (_lastSearchResults.Count == 0)
@@ -1117,6 +1100,27 @@ public sealed class WorkOrdersForm : UserControl
         }
     }
 
+    private void RenderSearchResultsPage()
+    {
+        IReadOnlyList<WorkOrderSearchRow> slice = GridBindingHelper.SlicePage(_lastSearchResults, _searchPager.PageIndex, _searchPager.PageSize, out int safePage);
+        _gridSearchResults.DataSource = new SortableBindingList<WorkOrderGridRow>(
+            slice.Select(r => new WorkOrderGridRow(r)));
+        _searchPager.SetState(safePage, _searchPager.PageSize, _lastSearchResults.Count);
+
+        if (_gridSearchResults.Columns.Count >= 9)
+        {
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 0, "N° OT", 8);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 1, "Fecha", 10, "dd-MM-yyyy");
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 2, null, 16);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 3, null, 11);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 4, null, 6);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 5, null, 34);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 6, null, 5);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 7, null, 5);
+            GridBindingHelper.ConfigureColumn(_gridSearchResults, 8, null, 7);
+        }
+    }
+
     private void ClearSearchTab()
     {
         _searchDateRange.Clear();
@@ -1128,6 +1132,7 @@ public sealed class WorkOrdersForm : UserControl
         _txtSearchKeyword.Clear();
         _lastSearchResults = [];
         _gridSearchResults.DataSource = null;
+        _searchPager.SetState(0, _searchPager.PageSize, 0);
         _lblSearchSummary.Text = "Filtros restablecidos.";
     }
 
@@ -1140,15 +1145,10 @@ public sealed class WorkOrdersForm : UserControl
 
     private void OpenSelectedSearchOrder()
     {
-        if (_gridSearchResults.CurrentRow is null)
+        WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridSearchResults);
+        if (row is not null)
         {
-            return;
-        }
-
-        int idx = _gridSearchResults.CurrentRow.Index;
-        if (idx >= 0 && idx < _lastSearchResults.Count)
-        {
-            OpenOrderByNumber(_lastSearchResults[idx].NumeroOt);
+            OpenOrderByNumber(row.NumeroOt);
         }
     }
 
@@ -1403,5 +1403,20 @@ public sealed class WorkOrdersForm : UserControl
         }
 
         base.Dispose(disposing);
+    }
+
+    private sealed class WorkOrderGridRow(WorkOrderSearchRow source) : IGridRowSource<WorkOrderSearchRow>
+    {
+        [Browsable(false)]
+        public WorkOrderSearchRow Source { get; } = source;
+        public int NumeroOt => Source.NumeroOt;
+        public DateTime Fecha => Source.Fecha;
+        public string Proveedor => Source.Proveedor;
+        public string Solicitante => Source.Solicitante;
+        public int Cantidad => Source.Cantidad;
+        public string Detalle => Source.Detalle;
+        public string VBS => Source.TieneVbs ? "Sí" : "No";
+        public string VBJ => Source.TieneVbj ? "Sí" : "No";
+        public string Facturado => Source.AsociadoAFactura ? "Sí" : "No";
     }
 }

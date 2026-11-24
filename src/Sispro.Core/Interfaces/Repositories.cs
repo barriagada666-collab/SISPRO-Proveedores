@@ -122,11 +122,13 @@ public interface IMaintenanceRepository
     IReadOnlyList<string> GetWorkOrderStatuses();
     IReadOnlyList<int> GetWorkOrderYears();
     IReadOnlyList<MantWorkOrderRow> SearchInternalWorkOrders(MantWorkOrderFilter filter);
+    PagedResult<MantWorkOrderRow> SearchInternalWorkOrdersPaged(MantWorkOrderFilter filter, int pageIndex, int pageSize);
     MantWorkOrderDetail? GetInternalWorkOrderDetail(int id);
     IReadOnlyList<MantPreventivePlanRow> SearchPreventivePlans(string? search = null, string? estado = null);
     IReadOnlyList<MantPreventiveCycleRow> GetPreventiveCycles(int idMp);
     IReadOnlyList<MantPreventiveTaskRow> GetPreventiveTasks(int idMp, int? idCiclo = null, int maxRows = 300);
     IReadOnlyList<MantSupplyRow> SearchSupplies(string? search = null, int maxRows = 500);
+    PagedResult<MantSupplyRow> SearchSuppliesPaged(string? search = null, int pageIndex = 0, int pageSize = 200);
     IReadOnlyList<MantPersonnelRow> SearchPersonnel(string? search = null, string? oficio = null);
     IReadOnlyList<MantHrPersonnelRow> GetHrPersonnel(string? search = null);
     IReadOnlyList<MantExternalOrderRow> GetLegacyExternalOrders();

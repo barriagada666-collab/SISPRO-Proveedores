@@ -227,3 +227,9 @@ public sealed class AppSettings
     public string CompanyCity { get; set; } = "VALPARAÍSO";
     public string LegacyAccessTreePath { get; set; } = string.Empty;
 }
+
+public sealed record PagedResult<T>(
+    IReadOnlyList<T> Items,
+    int TotalCount,
+    int PageIndex,
+    int PageSize);

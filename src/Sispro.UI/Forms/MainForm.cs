@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Enums;
@@ -513,25 +514,21 @@ public sealed class MainForm : Form
         CambiasoTheme.StyleGrid(_gridRecentOts);
         _gridRecentOts.CellDoubleClick += (_, _) =>
         {
-            if (_gridRecentOts.CurrentRow is null)
+            WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridRecentOts);
+            if (row is not null && _session.Permisos.MenuOrdenesTrabajo)
             {
-                return;
-            }
-
-            int idx = _gridRecentOts.CurrentRow.Index;
-            if (idx >= 0 && idx < _recentOts.Count && _session.Permisos.MenuOrdenesTrabajo)
-            {
-                ShowWorkOrders(_recentOts[idx].NumeroOt);
+                ShowWorkOrders(row.NumeroOt);
             }
         };
         ContextMenuHelper.AttachToGrid(_gridRecentOts, rowIndex =>
         {
-            if (rowIndex < 0 || rowIndex >= _recentOts.Count)
+            WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridRecentOts, rowIndex);
+            if (row is null)
             {
                 return [];
             }
 
-            int numOt = _recentOts[rowIndex].NumeroOt;
+            int numOt = row.NumeroOt;
             return
             [
                 ContextMenuHelper.Item("Abrir OT", AppIcon.Edit, CambiasoTheme.Primary, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
@@ -566,36 +563,39 @@ public sealed class MainForm : Form
         if (_gridRecentOts is not null)
         {
             _recentOts = _ctx.WorkOrders.Search(new WorkOrderSearchFilter { MaxRows = 40 }).ToList();
-            _gridRecentOts.DataSource = _recentOts.Select(r => new
-            {
-                N_OT = r.NumeroOt,
-                Fecha = r.Fecha.ToString("dd-MM-yyyy"),
-                r.Proveedor,
-                r.Solicitante,
-                r.Cantidad,
-                r.Detalle,
-                Activo = r.RutaActivo.StartsWith("CAMBIASO HNOS S.A.C. \\ ", StringComparison.OrdinalIgnoreCase)
-                    ? r.RutaActivo["CAMBIASO HNOS S.A.C. \\ ".Length..]
-                    : r.RutaActivo,
-                VBS = r.TieneVbs ? "Sí" : "No",
-                VBJ = r.TieneVbj ? "Sí" : "No"
-            }).ToList();
+            _gridRecentOts.DataSource = new SortableBindingList<RecentOtGridRow>(
+                _recentOts.Select(r => new RecentOtGridRow(r)));
 
             if (_gridRecentOts.Columns.Count >= 9)
             {
-                _gridRecentOts.Columns[0].HeaderText = "N° OT";
-                _gridRecentOts.Columns[0].FillWeight = 7;
-                _gridRecentOts.Columns[1].FillWeight = 9;
-                _gridRecentOts.Columns[2].FillWeight = 16;
-                _gridRecentOts.Columns[3].FillWeight = 10;
-                _gridRecentOts.Columns[4].HeaderText = "Cant.";
-                _gridRecentOts.Columns[4].FillWeight = 6;
-                _gridRecentOts.Columns[5].FillWeight = 24;
-                _gridRecentOts.Columns[6].FillWeight = 18;
-                _gridRecentOts.Columns[7].FillWeight = 5;
-                _gridRecentOts.Columns[8].FillWeight = 5;
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 7);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 9, "dd-MM-yyyy");
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, null, 16);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, null, 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 4, "Cant.", 6);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, null, 24);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, null, 18);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, null, 5);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, null, 5);
             }
         }
+    }
+
+    private sealed class RecentOtGridRow(WorkOrderSearchRow source) : IGridRowSource<WorkOrderSearchRow>
+    {
+        [Browsable(false)]
+        public WorkOrderSearchRow Source { get; } = source;
+        public int NumeroOt => Source.NumeroOt;
+        public DateTime Fecha => Source.Fecha;
+        public string Proveedor => Source.Proveedor;
+        public string Solicitante => Source.Solicitante;
+        public int Cantidad => Source.Cantidad;
+        public string Detalle => Source.Detalle;
+        public string Activo => Source.RutaActivo.StartsWith("CAMBIASO HNOS S.A.C. \\ ", StringComparison.OrdinalIgnoreCase)
+            ? Source.RutaActivo["CAMBIASO HNOS S.A.C. \\ ".Length..]
+            : Source.RutaActivo;
+        public string VBS => Source.TieneVbs ? "Sí" : "No";
+        public string VBJ => Source.TieneVbj ? "Sí" : "No";
     }
 
     private void HostControl(Control view)

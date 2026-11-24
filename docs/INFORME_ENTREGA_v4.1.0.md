@@ -38,18 +38,20 @@ En **SISPRO v4.1.0** se resolvieron los defectos detectados en operación sobre 
 - **Compilación `Debug` (`SISPRO.sln`):** **0 errores**, **0 advertencias** (`TreatWarningsAsErrors=true`, `AnalysisLevel=latest-recommended`).
 - **Compilación `Release` (`SISPRO.sln`):** **0 errores**, **0 advertencias**.
 - **Auditoría de dependencias NuGet (`dotnet list SISPRO.sln package --vulnerable --include-transitive`):** **0 paquetes vulnerables**.
-- **Suite Automatizada `xUnit` (`dotnet test -c Release --no-build`):** **60 / 60 pruebas aprobadas** (0 fallidas, 0 omitidas), incluyendo:
+- **Suite Automatizada `xUnit` (`dotnet test -c Release --no-build`):** **64 / 64 pruebas aprobadas** (0 fallidas, 0 omitidas), incluyendo:
   - `AssetTreeAdministrationTests` (5 pruebas): CRUD completo, movimiento con recálculo de subárbol, protección ciclos y nivel 11, RBAC estricto Supervisor con auditoría, bloqueo por hijos y referencias OTs/Mantención, desactivación en cascada, ruta `depth DESC`, normalización de los 28 nodos anómalos reales y exportación `.xlsx`/`.pdf`/`.docx`/`.csv`.
   - `MultiFormatExportTests` (2 pruebas): saneamiento XML compartido (`ExportSanitizer`), codificación `Windows-1252` nativa en PDF (`€`, `—`, tildes, `ñ`) y paginación multipágina de OTs extensas (`25` ítems) sin solapar firmas.
-  - `ContextMenuHelperTests` (1 prueba STA): verificación de ejecución diferida sin `ObjectDisposedException` (con guarda `!anchor.IsDisposed`), disposición limpia del menú e integridad persistente de bitmaps en `IconCatalog`.
-  - `WinFormsUiAuditTests` + `ScreenshotCaptureTests`: auditoría completa de íconos/botones/RBAC/diálogos (`AuditLogDialog` con filtro `"Árbol de Activos"`/`"Configuración"`, `SettingsDialog` con `AcceptButton`/`CancelButton` y validación RUT/empresa) + inspección visual de `08_auditoria_fechas.png`, `09_editor_arbol.png` y `10_ot_externa.png`.
+  - `DatabaseIntegrationTests` (4 pruebas): preservación integral de 343K+ filas y paginación real `COUNT(*) + LIMIT/OFFSET` sobre 43.989 `Mant_OT` y 2.462 insumos SAP con RBAC.
+  - `ContextMenuHelperTests` (1 prueba STA) y `GridSortingAndPaginationTests` (3 pruebas STA): ejecución diferida segura, ordenamiento por columnas `SortableBindingList<T>` preservando entidad fuente, ordenamiento cronológico/numérico en `UsersForm` resolviendo checkboxes/selección vía `Row.Tag`, y navegación completa de `GridPagerBar`.
+  - `WinFormsUiAuditTests` + `ScreenshotCaptureTests`: auditoría completa de íconos Lucide (55 íconos)/botones/RBAC/diálogos + capturas actualizadas en [docs/screenshots](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots) e inspección visual de `07_mantencion_industrial.png`, `08_auditoria_fechas.png`, `09_editor_arbol.png` y `10_ot_externa.png`.
 - **Instalador Inno Setup `6.7.3`:**
-  - Artefacto: `installer/Output/SISPRO_Setup_v4.1.0_win-x64.exe` (**48.624.998 bytes** / **46,37 MiB**)
+  - Artefacto: `installer/Output/SISPRO_Setup_v4.1.0_win-x64.exe` (**48.622.478 bytes** / **46,37 MiB**)
   - Ruta predeterminada: `C:\Temp` (editable por el usuario)
-  - `SHA-256`: `55A504C47A07971618BCC665C19789209DB7787D1F0EF4A133ECFC26A9824177`
-  - Prueba real silenciosa (`v4.0.0 → v4.1.0 → desinstalación` en `C:\Temp\SISPRO_V41_VERIFY`):
+  - `SHA-256`: `E5AA9191D55431DFF66F16B5E55B18BFB5273B91A8156CB280CFD5F74BE70D91`
+  - Prueba real silenciosa (`v4.0.0 → v4.1.0 → arranque SISPRO.exe → desinstalación` en `C:\Temp\SISPRO_V41_VERIFY`):
     - Instalación `v4.0.0`: `EXIT=0`, `FileVersion=4.0.0.0`
     - Actualización `v4.1.0`: `EXIT=0`, `FileVersion=4.1.0.0`, `Data\sispro.db` preservada sin alteración (`SHA-256` idéntico) y archivo centinela conservado
+    - Ejecución real post-instalación: `LAUNCH_ALIVE=True`, `RESPONDING=True`
     - Desinstalación: `EXIT=0`, ejecutable eliminado, `Data\sispro.db` preservada (`uninsneveruninstall`).
 
 ---

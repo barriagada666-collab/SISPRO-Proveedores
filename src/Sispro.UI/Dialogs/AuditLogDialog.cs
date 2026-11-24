@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
@@ -22,6 +23,7 @@ public sealed class AuditLogDialog : Form
     private readonly DateRangeFilterControl _dateFilter;
     private readonly Label _lblCount;
     private readonly DataGridView _grid;
+    private readonly GridPagerBar _pager;
     private IReadOnlyList<AuditEntry> _entries = [];
 
     public AuditLogDialog(IAuditRepository auditRepo, DocumentExportService? exportService = null)
@@ -114,12 +116,12 @@ public sealed class AuditLogDialog : Form
         CambiasoTheme.StyleGrid(_grid);
         ContextMenuHelper.AttachToGrid(_grid, idx =>
         {
-            if (idx < 0 || idx >= _entries.Count)
+            AuditEntry? entry = GridBindingHelper.GetRowSource<AuditEntry>(_grid, idx);
+            if (entry is null)
             {
                 return [];
             }
 
-            AuditEntry entry = _entries[idx];
             return
             [
                 ContextMenuHelper.Item("Copiar detalle", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(entry.Detalle), enabled: !string.IsNullOrWhiteSpace(entry.Detalle)),
@@ -137,6 +139,9 @@ public sealed class AuditLogDialog : Form
                 }, enabled: !string.IsNullOrWhiteSpace(entry.Modulo))
             ];
         });
+
+        _pager = new GridPagerBar(100);
+        _pager.PageChanged += (_, _) => RenderEntriesPage();
 
         FlowLayoutPanel footer = new()
         {
@@ -157,6 +162,7 @@ public sealed class AuditLogDialog : Form
 
         Panel body = new() { Dock = DockStyle.Fill, Padding = new Padding(12, 8, 12, 8) };
         body.Controls.Add(_grid);
+        body.Controls.Add(_pager);
 
         Controls.Add(body);
         Controls.Add(filterPanel);
@@ -179,28 +185,28 @@ public sealed class AuditLogDialog : Form
             FechaFin = _dateFilter.FechaFin,
             Modulo = _cmbModulo.SelectedIndex > 0 ? _cmbModulo.SelectedItem?.ToString() : null,
             TextoBusqueda = _txtSearch.Text,
-            MaxRows = 600
+            MaxRows = 2000
         });
 
-        _grid.DataSource = _entries.Select(e => new
-        {
-            Fecha = e.Fecha.ToString("dd-MM-yyyy HH:mm:ss"),
-            e.Usuario,
-            Módulo = e.Modulo,
-            Acción = e.Accion,
-            e.Detalle
-        }).ToList();
+        _pager.ResetPageIndex();
+        RenderEntriesPage();
+        _lblCount.Text = $"Eventos mostrados: {_entries.Count:N0} (más recientes primero)";
+    }
+
+    private void RenderEntriesPage()
+    {
+        IReadOnlyList<AuditEntry> slice = GridBindingHelper.SlicePage(_entries, _pager.PageIndex, _pager.PageSize, out int safePage);
+        _grid.DataSource = new SortableBindingList<AuditGridRow>(slice.Select(e => new AuditGridRow(e)));
+        _pager.SetState(safePage, _pager.PageSize, _entries.Count);
 
         if (_grid.Columns.Count >= 5)
         {
-            _grid.Columns[0].FillWeight = 16;
-            _grid.Columns[1].FillWeight = 13;
-            _grid.Columns[2].FillWeight = 14;
-            _grid.Columns[3].FillWeight = 18;
-            _grid.Columns[4].FillWeight = 39;
+            GridBindingHelper.ConfigureColumn(_grid, 0, "Fecha", 16, "dd-MM-yyyy HH:mm:ss");
+            GridBindingHelper.ConfigureColumn(_grid, 1, "Usuario", 13);
+            GridBindingHelper.ConfigureColumn(_grid, 2, "Módulo", 14);
+            GridBindingHelper.ConfigureColumn(_grid, 3, "Acción", 18);
+            GridBindingHelper.ConfigureColumn(_grid, 4, "Detalle", 39);
         }
-
-        _lblCount.Text = $"Eventos mostrados: {_entries.Count:N0} (más recientes primero)";
     }
 
     private string BuildFilterSummary()
@@ -226,5 +232,16 @@ public sealed class AuditLogDialog : Form
         }
 
         base.Dispose(disposing);
+    }
+
+    private sealed class AuditGridRow(AuditEntry source) : IGridRowSource<AuditEntry>
+    {
+        [Browsable(false)]
+        public AuditEntry Source { get; } = source;
+        public DateTime Fecha => Source.Fecha;
+        public string Usuario => Source.Usuario;
+        public string Modulo => Source.Modulo;
+        public string Accion => Source.Accion;
+        public string Detalle => Source.Detalle;
     }
 }

@@ -113,4 +113,58 @@ public sealed class DatabaseIntegrationTests
             if (File.Exists(backupPath)) File.Delete(backupPath);
         }
     }
+
+    [Fact]
+    public void MaintenanceService_PagedQueries_NavigateAllWorkOrdersAndSupplies()
+    {
+        using TempTestDatabase temp = new(copyMigratedRealDb: true);
+        UserSession admin = temp.Context.AuthService.Login("L Reyes", "wanderes").Session!;
+
+        PagedResult<MantWorkOrderRow> otPage0 = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
+            admin,
+            new MantWorkOrderFilter(),
+            pageIndex: 0,
+            pageSize: 100);
+        Assert.Equal(43989, otPage0.TotalCount);
+        Assert.Equal(100, otPage0.Items.Count);
+        Assert.Equal(0, otPage0.PageIndex);
+
+        PagedResult<MantWorkOrderRow> otPage1 = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
+            admin,
+            new MantWorkOrderFilter(),
+            pageIndex: 1,
+            pageSize: 100);
+        Assert.Equal(100, otPage1.Items.Count);
+        Assert.Empty(otPage0.Items.Select(x => x.Id).Intersect(otPage1.Items.Select(x => x.Id)));
+
+        // Página fuera de rango se ajusta a la última página válida
+        PagedResult<MantWorkOrderRow> otLast = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
+            admin,
+            new MantWorkOrderFilter(),
+            pageIndex: 99999,
+            pageSize: 100);
+        Assert.Equal((43989 - 1) / 100, otLast.PageIndex);
+        Assert.Equal(89, otLast.Items.Count);
+
+        PagedResult<MantSupplyRow> supPage0 = temp.Context.MaintenanceService.SearchSuppliesPaged(admin, null, 0, 200);
+        PagedResult<MantSupplyRow> supPage1 = temp.Context.MaintenanceService.SearchSuppliesPaged(admin, null, 1, 200);
+        Assert.Equal(2462, supPage0.TotalCount);
+        Assert.Equal(200, supPage0.Items.Count);
+        Assert.Empty(supPage0.Items.Select(x => x.IdItem).Intersect(supPage1.Items.Select(x => x.IdItem)));
+
+        // RBAC: usuario sin permiso de Mantención/OT no puede consultar
+        UserSession limited = new()
+        {
+            Usuario = new User
+            {
+                IdUsuario = "NO-PERM",
+                AliasUsuario = "noperm",
+                Nivel = UserRoleLevel.Usuario,
+                Activo = true,
+                Permisos = new UserPermissions()
+            }
+        };
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(limited, new MantWorkOrderFilter(), 0, 50));
+    }
 }

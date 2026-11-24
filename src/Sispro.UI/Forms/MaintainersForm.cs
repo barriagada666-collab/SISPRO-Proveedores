@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
@@ -95,19 +96,19 @@ public sealed class MaintainersForm : UserControl
         _gridProviders.CellClick += (_, _) => SelectProviderFromGrid();
         ContextMenuHelper.AttachToGrid(_gridProviders, idx =>
         {
-            if (idx < 0 || idx >= _providers.Count)
+            Provider? prov = GridBindingHelper.GetRowSource<Provider>(_gridProviders, idx);
+            if (prov is null)
             {
                 return [];
             }
 
-            Provider prov = _providers[idx];
             return
             [
-                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectProviderFromGrid(); _txtProvNombre.Focus(); }),
-                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetProviderActiveFromGrid(idx, true), enabled: !prov.Activo),
-                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetProviderActiveFromGrid(idx, false), enabled: prov.Activo),
+                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectProviderFromGrid(idx); _txtProvNombre.Focus(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetProviderActive(prov, true), enabled: !prov.Activo),
+                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetProviderActive(prov, false), enabled: prov.Activo),
                 ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectProviderFromGrid(); DeleteProvider(); }),
+                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectProviderFromGrid(idx); DeleteProvider(); }),
                 ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearProviderForm(); _txtProvNombre.Focus(); })
             ];
         });
@@ -129,19 +130,19 @@ public sealed class MaintainersForm : UserControl
         _gridRequesters.CellClick += (_, _) => SelectRequesterFromGrid();
         ContextMenuHelper.AttachToGrid(_gridRequesters, idx =>
         {
-            if (idx < 0 || idx >= _requesters.Count)
+            Requester? req = GridBindingHelper.GetRowSource<Requester>(_gridRequesters, idx);
+            if (req is null)
             {
                 return [];
             }
 
-            Requester req = _requesters[idx];
             return
             [
-                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectRequesterFromGrid(); _txtSolAlias.Focus(); }),
-                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetRequesterActiveFromGrid(idx, true), enabled: !req.Activo),
-                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetRequesterActiveFromGrid(idx, false), enabled: req.Activo),
+                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectRequesterFromGrid(idx); _txtSolAlias.Focus(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetRequesterActive(req, true), enabled: !req.Activo),
+                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetRequesterActive(req, false), enabled: req.Activo),
                 ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectRequesterFromGrid(); DeleteRequester(); }),
+                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectRequesterFromGrid(idx); DeleteRequester(); }),
                 ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearRequesterForm(); _txtSolAlias.Focus(); })
             ];
         });
@@ -392,44 +393,29 @@ public sealed class MaintainersForm : UserControl
     private void LoadProviders()
     {
         _providers = _ctx.MaintainerService.GetProviders(includeInactive: true, search: _txtProvSearch.Text);
-        _gridProviders.DataSource = _providers.Select(p => new
-        {
-            p.IdProv,
-            Proveedor = p.Nombre,
-            Dirección = p.Direccion,
-            Teléfono = p.Telefono,
-            Correo = p.Correo,
-            Contacto = p.Contacto,
-            Estado = p.Activo ? "Activo" : "Inactivo"
-        }).ToList();
+        _gridProviders.DataSource = new SortableBindingList<ProviderGridRow>(
+            _providers.Select(p => new ProviderGridRow(p)));
 
         if (_gridProviders.Columns.Count >= 7)
         {
-            _gridProviders.Columns[0].HeaderText = "ID";
-            _gridProviders.Columns[0].FillWeight = 6;
-            _gridProviders.Columns[1].FillWeight = 20;
-            _gridProviders.Columns[2].FillWeight = 26;
-            _gridProviders.Columns[3].FillWeight = 12;
-            _gridProviders.Columns[4].FillWeight = 18;
-            _gridProviders.Columns[5].FillWeight = 10;
-            _gridProviders.Columns[6].FillWeight = 8;
+            GridBindingHelper.ConfigureColumn(_gridProviders, 0, "ID", 6);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 1, "Proveedor", 20);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 2, "Dirección", 26);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 3, "Teléfono", 12);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 4, "Correo", 18);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 5, "Contacto", 10);
+            GridBindingHelper.ConfigureColumn(_gridProviders, 6, "Estado", 8);
         }
     }
 
-    private void SelectProviderFromGrid()
+    private void SelectProviderFromGrid(int? rowIndex = null)
     {
-        if (_gridProviders.CurrentRow is null)
+        Provider? p = GridBindingHelper.GetRowSource<Provider>(_gridProviders, rowIndex);
+        if (p is null)
         {
             return;
         }
 
-        int idx = _gridProviders.CurrentRow.Index;
-        if (idx < 0 || idx >= _providers.Count)
-        {
-            return;
-        }
-
-        Provider p = _providers[idx];
         _selectedProvId = p.IdProv;
         _txtProvNombre.Text = p.Nombre;
         _txtProvDir.Text = p.Direccion;
@@ -499,16 +485,10 @@ public sealed class MaintainersForm : UserControl
         }
     }
 
-    private void SetProviderActiveFromGrid(int idx, bool active)
+    private void SetProviderActive(Provider p, bool active)
     {
-        if (idx < 0 || idx >= _providers.Count)
-        {
-            return;
-        }
-
         try
         {
-            Provider p = _providers[idx];
             _ctx.MaintainerService.SetProviderActive(_session, p.IdProv, active);
             LoadProviders();
             if (_selectedProvId == p.IdProv)
@@ -540,31 +520,28 @@ public sealed class MaintainersForm : UserControl
     private void LoadRequesters()
     {
         _requesters = _ctx.MaintainerService.GetRequesters(includeInactive: true, search: _txtSolSearch.Text);
-        _gridRequesters.DataSource = _requesters.Select(r => new
+        _gridRequesters.DataSource = new SortableBindingList<RequesterGridRow>(
+            _requesters.Select(r => new RequesterGridRow(r)));
+
+        if (_gridRequesters.Columns.Count >= 6)
         {
-            r.IdSol,
-            r.Alias,
-            Nombre = r.NombreCompleto,
-            Teléfono = r.Telefono,
-            Correo = r.Correo,
-            Estado = r.Activo ? "Activo" : "Inactivo"
-        }).ToList();
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 0, "ID", 7);
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 1, "Alias", 14);
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 2, "Nombre", 28);
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 3, "Teléfono", 15);
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 4, "Correo", 26);
+            GridBindingHelper.ConfigureColumn(_gridRequesters, 5, "Estado", 10);
+        }
     }
 
-    private void SelectRequesterFromGrid()
+    private void SelectRequesterFromGrid(int? rowIndex = null)
     {
-        if (_gridRequesters.CurrentRow is null)
+        Requester? r = GridBindingHelper.GetRowSource<Requester>(_gridRequesters, rowIndex);
+        if (r is null)
         {
             return;
         }
 
-        int idx = _gridRequesters.CurrentRow.Index;
-        if (idx < 0 || idx >= _requesters.Count)
-        {
-            return;
-        }
-
-        Requester r = _requesters[idx];
         _selectedSolId = r.IdSol;
         _txtSolAlias.Text = r.Alias;
         _txtSolNombre.Text = r.Nombre;
@@ -630,16 +607,10 @@ public sealed class MaintainersForm : UserControl
         }
     }
 
-    private void SetRequesterActiveFromGrid(int idx, bool active)
+    private void SetRequesterActive(Requester r, bool active)
     {
-        if (idx < 0 || idx >= _requesters.Count)
-        {
-            return;
-        }
-
         try
         {
-            Requester r = _requesters[idx];
             _ctx.MaintainerService.SetRequesterActive(_session, r.IdSol, active);
             LoadRequesters();
             if (_selectedSolId == r.IdSol)
@@ -822,5 +793,30 @@ public sealed class MaintainersForm : UserControl
     private sealed record AssetTypeItem(string Code, string Label)
     {
         public override string ToString() => Label;
+    }
+
+    private sealed class ProviderGridRow(Provider source) : IGridRowSource<Provider>
+    {
+        [Browsable(false)]
+        public Provider Source { get; } = source;
+        public int IdProv => Source.IdProv;
+        public string Proveedor => Source.Nombre;
+        public string Direccion => Source.Direccion;
+        public string Telefono => Source.Telefono;
+        public string Correo => Source.Correo;
+        public string Contacto => Source.Contacto;
+        public string Estado => Source.Activo ? "Activo" : "Inactivo";
+    }
+
+    private sealed class RequesterGridRow(Requester source) : IGridRowSource<Requester>
+    {
+        [Browsable(false)]
+        public Requester Source { get; } = source;
+        public int IdSol => Source.IdSol;
+        public string Alias => Source.Alias;
+        public string Nombre => Source.NombreCompleto;
+        public string Telefono => Source.Telefono;
+        public string Correo => Source.Correo;
+        public string Estado => Source.Activo ? "Activo" : "Inactivo";
     }
 }

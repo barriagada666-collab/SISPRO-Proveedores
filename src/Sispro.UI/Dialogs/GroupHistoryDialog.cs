@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
@@ -20,6 +21,7 @@ public sealed class GroupHistoryDialog : Form
     private readonly ComboBox _cmbGrupo;
     private readonly TextBox _txtBuscar;
     private readonly DataGridView _grid;
+    private readonly GridPagerBar _pager;
     private readonly Label _lblCount;
     private IReadOnlyList<GroupMovementEntry> _rows = [];
 
@@ -116,6 +118,27 @@ public sealed class GroupHistoryDialog : Form
 
         _grid = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_grid);
+        ContextMenuHelper.AttachToGrid(_grid, idx =>
+        {
+            GroupMovementEntry? m = GridBindingHelper.GetRowSource<GroupMovementEntry>(_grid, idx);
+            if (m is null)
+            {
+                return [];
+            }
+
+            return
+            [
+                ContextMenuHelper.Item("Copiar motivo", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(m.Motivo), enabled: !string.IsNullOrWhiteSpace(m.Motivo)),
+                ContextMenuHelper.Item("Buscar este usuario", AppIcon.Search, CambiasoTheme.Accent, () =>
+                {
+                    _txtBuscar.Text = m.AliasUsuario;
+                    LoadHistory();
+                }, enabled: !string.IsNullOrWhiteSpace(m.AliasUsuario))
+            ];
+        });
+
+        _pager = new GridPagerBar(100);
+        _pager.PageChanged += (_, _) => RenderHistoryPage();
 
         FlowLayoutPanel footer = new()
         {
@@ -130,6 +153,7 @@ public sealed class GroupHistoryDialog : Form
         footer.Controls.Add(btnClose);
 
         Controls.Add(_grid);
+        Controls.Add(_pager);
         Controls.Add(top);
         Controls.Add(footer);
 
@@ -155,35 +179,30 @@ public sealed class GroupHistoryDialog : Form
                 MaxRows = 1000
             });
 
-            _grid.DataSource = _rows.Select(m => new
-            {
-                Fecha = m.FechaMovimiento.ToString("dd-MM-yyyy HH:mm"),
-                Usuario = m.AliasUsuario,
-                Origen = m.NombreGrupoOrigen,
-                Destino = m.NombreGrupoDestino,
-                EjecutadoPor = m.EjecutadoPor,
-                Motivo = m.Motivo
-            }).ToList();
-
-            if (_grid.Columns.Count >= 6)
-            {
-                _grid.Columns[0].HeaderText = "Fecha y Hora";
-                _grid.Columns[0].FillWeight = 14;
-                _grid.Columns[1].FillWeight = 13;
-                _grid.Columns[2].HeaderText = "Grupo Origen";
-                _grid.Columns[2].FillWeight = 15;
-                _grid.Columns[3].HeaderText = "Grupo Destino";
-                _grid.Columns[3].FillWeight = 15;
-                _grid.Columns[4].HeaderText = "Ejecutado Por";
-                _grid.Columns[4].FillWeight = 13;
-                _grid.Columns[5].FillWeight = 30;
-            }
-
+            _pager.ResetPageIndex();
+            RenderHistoryPage();
             _lblCount.Text = $"Registros mostrados: {_rows.Count:N0} (orden más reciente primero)";
         }
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    private void RenderHistoryPage()
+    {
+        IReadOnlyList<GroupMovementEntry> slice = GridBindingHelper.SlicePage(_rows, _pager.PageIndex, _pager.PageSize, out int safePage);
+        _grid.DataSource = new SortableBindingList<GroupMovementGridRow>(slice.Select(m => new GroupMovementGridRow(m)));
+        _pager.SetState(safePage, _pager.PageSize, _rows.Count);
+
+        if (_grid.Columns.Count >= 6)
+        {
+            GridBindingHelper.ConfigureColumn(_grid, 0, "Fecha y Hora", 14, "dd-MM-yyyy HH:mm");
+            GridBindingHelper.ConfigureColumn(_grid, 1, "Usuario", 13);
+            GridBindingHelper.ConfigureColumn(_grid, 2, "Grupo Origen", 15);
+            GridBindingHelper.ConfigureColumn(_grid, 3, "Grupo Destino", 15);
+            GridBindingHelper.ConfigureColumn(_grid, 4, "Ejecutado Por", 13);
+            GridBindingHelper.ConfigureColumn(_grid, 5, "Motivo", 30);
         }
     }
 
@@ -205,5 +224,17 @@ public sealed class GroupHistoryDialog : Form
     private sealed record GroupFilterOption(int? IdGrupo, string Label)
     {
         public override string ToString() => Label;
+    }
+
+    private sealed class GroupMovementGridRow(GroupMovementEntry source) : IGridRowSource<GroupMovementEntry>
+    {
+        [Browsable(false)]
+        public GroupMovementEntry Source { get; } = source;
+        public DateTime Fecha => Source.FechaMovimiento;
+        public string Usuario => Source.AliasUsuario;
+        public string Origen => Source.NombreGrupoOrigen;
+        public string Destino => Source.NombreGrupoDestino;
+        public string EjecutadoPor => Source.EjecutadoPor;
+        public string Motivo => Source.Motivo;
     }
 }

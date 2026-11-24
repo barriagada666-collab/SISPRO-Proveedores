@@ -56,7 +56,11 @@ public enum AppIcon
     Calendar,
     Copy,
     Expand,
-    Collapse
+    Collapse,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight
 }
 
 /// <summary>
@@ -444,6 +448,24 @@ public static class IconCatalog
             case AppIcon.Collapse: // lucide: chevrons-down-up
                 g.DrawLines(pen, [new PointF(7, 20), new PointF(12, 15), new PointF(17, 20)]);
                 g.DrawLines(pen, [new PointF(7, 4), new PointF(12, 9), new PointF(17, 4)]);
+                break;
+
+            case AppIcon.ChevronLeft: // lucide: chevron-left
+                g.DrawLines(pen, [new PointF(15, 18), new PointF(9, 12), new PointF(15, 6)]);
+                break;
+
+            case AppIcon.ChevronRight: // lucide: chevron-right
+                g.DrawLines(pen, [new PointF(9, 18), new PointF(15, 12), new PointF(9, 6)]);
+                break;
+
+            case AppIcon.ChevronsLeft: // lucide: chevrons-left
+                g.DrawLines(pen, [new PointF(11, 17), new PointF(6, 12), new PointF(11, 7)]);
+                g.DrawLines(pen, [new PointF(18, 17), new PointF(13, 12), new PointF(18, 7)]);
+                break;
+
+            case AppIcon.ChevronsRight: // lucide: chevrons-right
+                g.DrawLines(pen, [new PointF(6, 17), new PointF(11, 12), new PointF(6, 7)]);
+                g.DrawLines(pen, [new PointF(13, 17), new PointF(18, 12), new PointF(13, 7)]);
                 break;
         }
 

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
@@ -57,6 +58,7 @@ public sealed class InvoicesForm : UserControl
     private readonly Button _btnDeleteInvoice;
     private readonly Button _btnExportInvoices;
     private readonly DataGridView _gridInvoices;
+    private readonly GridPagerBar _invoicesPager;
     private readonly DataGridView _gridInvoiceItems;
     private IReadOnlyList<InvoiceSearchRow> _invoiceRows = [];
     private bool _syncSubscribed;
@@ -112,8 +114,8 @@ public sealed class InvoicesForm : UserControl
         _gridAssociated = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridAssociated);
         ContextMenuHelper.AttachToGrid(_gridAssociated, idx =>
-            idx >= 0 && idx < _associatedItems.Count
-                ? [ContextMenuHelper.Item("Quitar ítem", AppIcon.Remove, CambiasoTheme.Danger, RemoveAssociatedItem)]
+            GridBindingHelper.GetRowSource<InvoiceDetail>(_gridAssociated, idx) is not null
+                ? [ContextMenuHelper.Item("Quitar ítem", AppIcon.Remove, CambiasoTheme.Danger, () => RemoveAssociatedItem(idx))]
                 : []);
 
         _btnSaveInvoice = CambiasoTheme.CreateButton("Localizar / Guardar", AppIcon.Save, ButtonTone.Primary, _toolTip, "Registrar documento y asociar OTs seleccionadas", width: 168);
@@ -159,13 +161,16 @@ public sealed class InvoicesForm : UserControl
         CambiasoTheme.StyleGrid(_gridInvoices);
         _gridInvoices.SelectionChanged += (_, _) => LoadSelectedInvoiceItems();
         ContextMenuHelper.AttachToGrid(_gridInvoices, idx =>
-            idx >= 0 && idx < _invoiceRows.Count
+            GridBindingHelper.GetRowSource<InvoiceSearchRow>(_gridInvoices, idx) is InvoiceSearchRow row
                 ?
                 [
-                    ContextMenuHelper.Item("Ver ítems", AppIcon.Preview, CambiasoTheme.Primary, LoadSelectedInvoiceItems),
-                    ContextMenuHelper.Item("Eliminar factura", AppIcon.Delete, CambiasoTheme.Danger, DeleteSelectedInvoice, enabled: _btnDeleteInvoice.Enabled)
+                    ContextMenuHelper.Item("Ver ítems", AppIcon.Preview, CambiasoTheme.Primary, () => LoadInvoiceItems(row)),
+                    ContextMenuHelper.Item("Eliminar factura", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteInvoiceRow(row), enabled: _btnDeleteInvoice.Enabled)
                 ]
                 : []);
+
+        _invoicesPager = new GridPagerBar(100);
+        _invoicesPager.PageChanged += (_, _) => RenderInvoicesPage();
 
         _gridInvoiceItems = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridInvoiceItems);
@@ -347,9 +352,10 @@ public sealed class InvoicesForm : UserControl
         fltGrid.Controls.Add(flt2, 0, 1);
         grpFilters.Controls.Add(fltGrid);
 
-        GroupBox grpMaster = CambiasoTheme.CreateGroupBox("Documentos Registrados (orden cronológico descendente)");
+        GroupBox grpMaster = CambiasoTheme.CreateGroupBox("Documentos Registrados (orden cronológico descendente · clic en columna para ordenar)");
         grpMaster.Dock = DockStyle.Fill;
         grpMaster.Controls.Add(_gridInvoices);
+        grpMaster.Controls.Add(_invoicesPager);
 
         GroupBox grpDetail = CambiasoTheme.CreateGroupBox("Detalle de OTs Asociadas al Documento Seleccionado");
         grpDetail.Dock = DockStyle.Fill;
@@ -409,32 +415,24 @@ public sealed class InvoicesForm : UserControl
             return;
         }
 
-        _gridOtDetails.DataSource = _currentLookupOt.Detalles.Select(d => new
-        {
-            d.IdDet,
-            N_OT = _currentLookupOt.NumeroOt,
-            Proveedor = _currentLookupOt.NombreProveedor,
-            d.Cantidad,
-            Detalle = d.Descripcion,
-            Estado = d.AsociadoAFactura ? "Ya Facturado" : "Disponible"
-        }).ToList();
+        _gridOtDetails.DataSource = new SortableBindingList<LookupOtDetailGridRow>(
+            _currentLookupOt.Detalles.Select(d => new LookupOtDetailGridRow(_currentLookupOt.NumeroOt, _currentLookupOt.NombreProveedor, d)));
 
         if (_gridOtDetails.Columns.Count >= 6)
         {
-            _gridOtDetails.Columns[0].HeaderText = "ID";
-            _gridOtDetails.Columns[0].FillWeight = 8;
-            _gridOtDetails.Columns[1].HeaderText = "N° OT";
-            _gridOtDetails.Columns[1].FillWeight = 10;
-            _gridOtDetails.Columns[2].FillWeight = 20;
-            _gridOtDetails.Columns[3].FillWeight = 8;
-            _gridOtDetails.Columns[4].FillWeight = 40;
-            _gridOtDetails.Columns[5].FillWeight = 14;
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 0, "ID", 8);
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 1, "N° OT", 10);
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 2, "Proveedor", 20);
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 3, "Cantidad", 8);
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 4, "Detalle", 40);
+            GridBindingHelper.ConfigureColumn(_gridOtDetails, 5, "Estado", 14);
         }
     }
 
     private void AssociateSelectedOtDetail()
     {
-        if (_currentLookupOt is null || _gridOtDetails.CurrentRow is null)
+        WorkOrderDetail? det = GridBindingHelper.GetRowSource<WorkOrderDetail>(_gridOtDetails);
+        if (_currentLookupOt is null || det is null)
         {
             CambiasoTheme.ShowWarning(this, "Busque y seleccione un ítem de OT primero.");
             return;
@@ -451,14 +449,6 @@ public sealed class InvoicesForm : UserControl
             CambiasoTheme.ShowWarning(this, $"La OT N° {_currentLookupOt.NumeroOt} pertenece al proveedor '{_currentLookupOt.NombreProveedor}' y no coincide con el proveedor de la factura.");
             return;
         }
-
-        int idx = _gridOtDetails.CurrentRow.Index;
-        if (idx < 0 || idx >= _currentLookupOt.Detalles.Count)
-        {
-            return;
-        }
-
-        WorkOrderDetail det = _currentLookupOt.Detalles[idx];
         if (det.AsociadoAFactura || _ctx.InvoiceService.IsDetailAlreadyInvoiced(det.IdDet))
         {
             CambiasoTheme.ShowWarning(this, "El ítem seleccionado ya se encuentra asociado a otra factura.");
@@ -486,17 +476,11 @@ public sealed class InvoicesForm : UserControl
         RefreshAssociatedGrid();
     }
 
-    private void RemoveAssociatedItem()
+    private void RemoveAssociatedItem(int? rowIndex = null)
     {
-        if (_gridAssociated.CurrentRow is null)
+        InvoiceDetail? item = GridBindingHelper.GetRowSource<InvoiceDetail>(_gridAssociated, rowIndex);
+        if (item is not null && _associatedItems.Remove(item))
         {
-            return;
-        }
-
-        int idx = _gridAssociated.CurrentRow.Index;
-        if (idx >= 0 && idx < _associatedItems.Count)
-        {
-            _associatedItems.RemoveAt(idx);
             _numNeto.Value = Math.Min(_numNeto.Maximum, _associatedItems.Sum(i => i.ValorTrabajo));
             RefreshAssociatedGrid();
         }
@@ -505,26 +489,16 @@ public sealed class InvoicesForm : UserControl
     private void RefreshAssociatedGrid()
     {
         _gridAssociated.DataSource = null;
-        _gridAssociated.DataSource = _associatedItems.Select(i => new
-        {
-            N_OT = i.NumeroOt,
-            ID_Detalle = i.IdDet,
-            Fecha_OT = i.FechaOt.ToString("dd-MM-yyyy"),
-            Detalle = i.DescripcionTrabajo,
-            Valor = $"${i.ValorTrabajo:N0}"
-        }).ToList();
+        _gridAssociated.DataSource = new SortableBindingList<AssociatedItemGridRow>(
+            _associatedItems.Select(i => new AssociatedItemGridRow(i)));
 
         if (_gridAssociated.Columns.Count >= 5)
         {
-            _gridAssociated.Columns[0].HeaderText = "N° OT";
-            _gridAssociated.Columns[0].FillWeight = 10;
-            _gridAssociated.Columns[1].HeaderText = "ID Ítem";
-            _gridAssociated.Columns[1].FillWeight = 10;
-            _gridAssociated.Columns[2].HeaderText = "Fecha OT";
-            _gridAssociated.Columns[2].FillWeight = 12;
-            _gridAssociated.Columns[3].FillWeight = 52;
-            _gridAssociated.Columns[4].HeaderText = "Valor ($)";
-            _gridAssociated.Columns[4].FillWeight = 16;
+            GridBindingHelper.ConfigureColumn(_gridAssociated, 0, "N° OT", 10);
+            GridBindingHelper.ConfigureColumn(_gridAssociated, 1, "ID Ítem", 10);
+            GridBindingHelper.ConfigureColumn(_gridAssociated, 2, "Fecha OT", 12, "dd-MM-yyyy");
+            GridBindingHelper.ConfigureColumn(_gridAssociated, 3, "Detalle", 52);
+            GridBindingHelper.ConfigureColumn(_gridAssociated, 4, "Valor ($)", 16, "$#,##0", DataGridViewContentAlignment.MiddleRight);
         }
     }
 
@@ -597,18 +571,8 @@ public sealed class InvoicesForm : UserControl
             };
 
             _invoiceRows = _ctx.InvoiceService.Search(_session, filter);
-            _gridInvoices.DataSource = _invoiceRows.Select(r => new
-            {
-                Documento = r.NumeroDocumento,
-                Fecha = r.Fecha.ToString("dd-MM-yyyy"),
-                r.Proveedor,
-                RecibidoPor = r.RecibidoPor,
-                Ítems = r.CantidadItems,
-                Neto = $"${r.TotalNeto:N0}",
-                IVA = $"${r.Iva:N0}",
-                Total = $"${r.TotalConIva:N0}",
-                r.Detalle
-            }).ToList();
+            _invoicesPager.ResetPageIndex();
+            RenderInvoicesPage();
 
             if (_invoiceRows.Count == 0)
             {
@@ -618,6 +582,26 @@ public sealed class InvoicesForm : UserControl
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    private void RenderInvoicesPage()
+    {
+        IReadOnlyList<InvoiceSearchRow> slice = GridBindingHelper.SlicePage(_invoiceRows, _invoicesPager.PageIndex, _invoicesPager.PageSize, out int safePage);
+        _gridInvoices.DataSource = new SortableBindingList<InvoiceGridRow>(slice.Select(r => new InvoiceGridRow(r)));
+        _invoicesPager.SetState(safePage, _invoicesPager.PageSize, _invoiceRows.Count);
+
+        if (_gridInvoices.Columns.Count >= 9)
+        {
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 0, "Documento", 9);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 1, "Fecha", 10, "dd-MM-yyyy");
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 2, "Proveedor", 18);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 3, "Recibido Por", 12);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 4, "Ítems", 6);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 5, "Neto", 9, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 6, "IVA", 8, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 7, "Total", 9, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            GridBindingHelper.ConfigureColumn(_gridInvoices, 8, "Detalle", 19);
         }
     }
 
@@ -638,44 +622,47 @@ public sealed class InvoicesForm : UserControl
 
     private void LoadSelectedInvoiceItems()
     {
-        if (_gridInvoices.CurrentRow is null)
+        InvoiceSearchRow? row = GridBindingHelper.GetRowSource<InvoiceSearchRow>(_gridInvoices);
+        if (row is null)
         {
             _gridInvoiceItems.DataSource = null;
             return;
         }
 
-        int idx = _gridInvoices.CurrentRow.Index;
-        if (idx < 0 || idx >= _invoiceRows.Count)
-        {
-            return;
-        }
+        LoadInvoiceItems(row);
+    }
 
-        Invoice? full = _ctx.InvoiceService.GetById(_invoiceRows[idx].IdFactura);
-        _gridInvoiceItems.DataSource = full?.Items.Select(i => new
+    private void LoadInvoiceItems(InvoiceSearchRow row)
+    {
+        Invoice? full = _ctx.InvoiceService.GetById(row.IdFactura);
+        _gridInvoiceItems.DataSource = full is null
+            ? null
+            : new SortableBindingList<InvoiceItemGridRow>(full.Items.Select(i => new InvoiceItemGridRow(i)));
+
+        if (_gridInvoiceItems.Columns.Count >= 5)
         {
-            N_OT = i.NumeroOt,
-            Fecha_OT = i.FechaOt.ToString("dd-MM-yyyy"),
-            Detalle = i.DescripcionTrabajo,
-            Valor = $"${i.ValorTrabajo:N0}",
-            RegistradoPor = i.UsuarioSesion
-        }).ToList();
+            GridBindingHelper.ConfigureColumn(_gridInvoiceItems, 0, "N° OT", 10);
+            GridBindingHelper.ConfigureColumn(_gridInvoiceItems, 1, "Fecha OT", 12, "dd-MM-yyyy");
+            GridBindingHelper.ConfigureColumn(_gridInvoiceItems, 2, "Detalle", 46);
+            GridBindingHelper.ConfigureColumn(_gridInvoiceItems, 3, "Valor ($)", 14, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            GridBindingHelper.ConfigureColumn(_gridInvoiceItems, 4, "Registrado Por", 18);
+        }
     }
 
     private void DeleteSelectedInvoice()
     {
-        if (_gridInvoices.CurrentRow is null)
+        InvoiceSearchRow? row = GridBindingHelper.GetRowSource<InvoiceSearchRow>(_gridInvoices);
+        if (row is null)
         {
             CambiasoTheme.ShowWarning(this, "Seleccione un documento para eliminar.");
             return;
         }
 
-        int idx = _gridInvoices.CurrentRow.Index;
-        if (idx < 0 || idx >= _invoiceRows.Count)
-        {
-            return;
-        }
+        DeleteInvoiceRow(row);
+    }
 
-        InvoiceSearchRow row = _invoiceRows[idx];
+    private void DeleteInvoiceRow(InvoiceSearchRow row)
+    {
         if (!CambiasoTheme.Confirm(this, $"¿Eliminar el documento N° {row.NumeroDocumento} de '{row.Proveedor}'? Los ítems de OT volverán a quedar disponibles."))
         {
             return;
@@ -732,5 +719,54 @@ public sealed class InvoicesForm : UserControl
         }
 
         base.Dispose(disposing);
+    }
+
+    private sealed class LookupOtDetailGridRow(int numeroOt, string proveedor, WorkOrderDetail source) : IGridRowSource<WorkOrderDetail>
+    {
+        [Browsable(false)]
+        public WorkOrderDetail Source { get; } = source;
+        public int IdDet => Source.IdDet;
+        public int NumeroOt { get; } = numeroOt;
+        public string Proveedor { get; } = proveedor;
+        public int Cantidad => Source.Cantidad;
+        public string Detalle => Source.Descripcion;
+        public string Estado => Source.AsociadoAFactura ? "Ya Facturado" : "Disponible";
+    }
+
+    private sealed class AssociatedItemGridRow(InvoiceDetail source) : IGridRowSource<InvoiceDetail>
+    {
+        [Browsable(false)]
+        public InvoiceDetail Source { get; } = source;
+        public int NumeroOt => Source.NumeroOt;
+        public int IdDetalle => Source.IdDet ?? 0;
+        public DateTime FechaOt => Source.FechaOt;
+        public string Detalle => Source.DescripcionTrabajo;
+        public decimal Valor => Source.ValorTrabajo;
+    }
+
+    private sealed class InvoiceGridRow(InvoiceSearchRow source) : IGridRowSource<InvoiceSearchRow>
+    {
+        [Browsable(false)]
+        public InvoiceSearchRow Source { get; } = source;
+        public int Documento => Source.NumeroDocumento;
+        public DateTime Fecha => Source.Fecha;
+        public string Proveedor => Source.Proveedor;
+        public string RecibidoPor => Source.RecibidoPor;
+        public int Items => Source.CantidadItems;
+        public decimal Neto => Source.TotalNeto;
+        public decimal Iva => Source.Iva;
+        public decimal Total => Source.TotalConIva;
+        public string Detalle => Source.Detalle;
+    }
+
+    private sealed class InvoiceItemGridRow(InvoiceDetail source) : IGridRowSource<InvoiceDetail>
+    {
+        [Browsable(false)]
+        public InvoiceDetail Source { get; } = source;
+        public int NumeroOt => Source.NumeroOt;
+        public DateTime FechaOt => Source.FechaOt;
+        public string Detalle => Source.DescripcionTrabajo;
+        public decimal Valor => Source.ValorTrabajo;
+        public string RegistradoPor => Source.UsuarioSesion;
     }
 }

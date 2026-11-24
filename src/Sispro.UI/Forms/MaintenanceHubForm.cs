@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing;
 using System.Globalization;
 using Sispro.Core.Dtos;
@@ -25,24 +26,22 @@ public sealed class MaintenanceHubForm : UserControl
     private readonly ComboBox _cmbOtYear;
     private readonly DateRangeFilterControl _otDateRange;
     private readonly DataGridView _gridMantOts;
+    private readonly GridPagerBar _otPager;
     private readonly TextBox _txtOtDetail;
     private readonly GroupBox _grpMantOts;
-    private IReadOnlyList<MantWorkOrderRow> _mantOts = [];
 
     // Tab 2: Planes Preventivos MP
     private readonly TextBox _txtMpSearch;
     private readonly DataGridView _gridMpPlans;
     private readonly DataGridView _gridMpCycles;
     private readonly DataGridView _gridMpTasks;
-    private IReadOnlyList<MantPreventivePlanRow> _mpPlans = [];
-    private IReadOnlyList<MantPreventiveCycleRow> _mpCycles = [];
     private int _selectedMpId;
 
     // Tab 3: Insumos SAP
     private readonly TextBox _txtSupplySearch;
     private readonly DataGridView _gridSupplies;
+    private readonly GridPagerBar _supplyPager;
     private readonly GroupBox _grpSupplies;
-    private IReadOnlyList<MantSupplyRow> _supplies = [];
 
     // Tab 4: Personal Técnico & RRHH
     private readonly TextBox _txtPersSearch;
@@ -91,6 +90,24 @@ public sealed class MaintenanceHubForm : UserControl
         _gridMantOts = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridMantOts);
         _gridMantOts.SelectionChanged += (_, _) => LoadSelectedOtDetail();
+        ContextMenuHelper.AttachToGrid(_gridMantOts, idx =>
+        {
+            MantWorkOrderRow? row = GridBindingHelper.GetRowSource<MantWorkOrderRow>(_gridMantOts, idx);
+            if (row is null)
+            {
+                return [];
+            }
+
+            return
+            [
+                ContextMenuHelper.Item("Copiar N° OT", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(row.NumeroOt)),
+                ContextMenuHelper.Item("Copiar informe / descripción", AppIcon.FileText, CambiasoTheme.Accent, () => Clipboard.SetText(
+                    string.IsNullOrWhiteSpace(row.DescripcionTecnica) ? row.DescripcionBreve : $"{row.DescripcionBreve}\r\n{row.DescripcionTecnica}")),
+                ContextMenuHelper.Item("Copiar equipo", AppIcon.Cpu, CambiasoTheme.Primary, () => Clipboard.SetText(row.Equipo), enabled: !string.IsNullOrWhiteSpace(row.Equipo))
+            ];
+        });
+        _otPager = new GridPagerBar(200);
+        _otPager.PageChanged += (_, _) => LoadMantOts(resetPage: false);
 
         _txtOtDetail = new TextBox
         {
@@ -113,6 +130,20 @@ public sealed class MaintenanceHubForm : UserControl
         _gridMpPlans = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridMpPlans);
         _gridMpPlans.SelectionChanged += (_, _) => LoadSelectedMpDetails();
+        ContextMenuHelper.AttachToGrid(_gridMpPlans, idx =>
+        {
+            MantPreventivePlanRow? plan = GridBindingHelper.GetRowSource<MantPreventivePlanRow>(_gridMpPlans, idx);
+            if (plan is null)
+            {
+                return [];
+            }
+
+            return
+            [
+                ContextMenuHelper.Item("Copiar descripción MP", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(plan.Descripcion)),
+                ContextMenuHelper.Item("Copiar equipo", AppIcon.Cpu, CambiasoTheme.Accent, () => Clipboard.SetText(plan.Equipo), enabled: !string.IsNullOrWhiteSpace(plan.Equipo))
+            ];
+        });
 
         _gridMpCycles = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridMpCycles);
@@ -128,6 +159,22 @@ public sealed class MaintenanceHubForm : UserControl
         _txtSupplySearch.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; LoadSupplies(); } };
         _gridSupplies = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridSupplies);
+        ContextMenuHelper.AttachToGrid(_gridSupplies, idx =>
+        {
+            MantSupplyRow? item = GridBindingHelper.GetRowSource<MantSupplyRow>(_gridSupplies, idx);
+            if (item is null)
+            {
+                return [];
+            }
+
+            return
+            [
+                ContextMenuHelper.Item("Copiar código SAP", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(item.CodSap), enabled: !string.IsNullOrWhiteSpace(item.CodSap)),
+                ContextMenuHelper.Item("Copiar descripción", AppIcon.Package, CambiasoTheme.Accent, () => Clipboard.SetText(item.Descripcion), enabled: !string.IsNullOrWhiteSpace(item.Descripcion))
+            ];
+        });
+        _supplyPager = new GridPagerBar(200);
+        _supplyPager.PageChanged += (_, _) => LoadSupplies(resetPage: false);
         _grpSupplies = CambiasoTheme.CreateGroupBox("Catálogo de Insumos y Repuestos SAP");
         _grpSupplies.Dock = DockStyle.Fill;
         BuildSuppliesTab(tabSupplies);
@@ -191,13 +238,15 @@ public sealed class MaintenanceHubForm : UserControl
             LoadMantOts();
         };
 
-        Button btnExport = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar OTs visibles a Excel, PDF, Word o CSV", width: 106, height: 30);
+        Button btnExport = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar OTs filtradas a Excel, PDF, Word o CSV", width: 106, height: 30);
         btnExport.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
             btnExport,
             this,
             _ctx.DocumentExportService,
             "SISPRO_OTs_Mantencion",
-            () => DocumentExportService.BuildMaintenanceOrdersReport(_mantOts, BuildMantOtFilterSummary()));
+            () => DocumentExportService.BuildMaintenanceOrdersReport(
+                _ctx.MaintenanceService.SearchInternalWorkOrders(_session, BuildMantOtFilter(maxRows: 5000)),
+                BuildMantOtFilterSummary()));
 
         bar.Controls.AddRange(
         [
@@ -212,6 +261,7 @@ public sealed class MaintenanceHubForm : UserControl
         dateBar.Controls.Add(_otDateRange);
 
         _grpMantOts.Controls.Add(_gridMantOts);
+        _grpMantOts.Controls.Add(_otPager);
 
         GroupBox grpDetail = CambiasoTheme.CreateGroupBox("Detalle Técnico, Técnicos Asignados e Insumos Consumidos");
         grpDetail.Dock = DockStyle.Fill;
@@ -280,10 +330,13 @@ public sealed class MaintenanceHubForm : UserControl
             this,
             _ctx.DocumentExportService,
             "SISPRO_Insumos_SAP",
-            () => DocumentExportService.BuildSuppliesReport(_supplies, string.IsNullOrWhiteSpace(_txtSupplySearch.Text) ? "Catálogo completo" : $"Filtro: {_txtSupplySearch.Text}"));
+            () => DocumentExportService.BuildSuppliesReport(
+                _ctx.MaintenanceService.SearchSupplies(_session, _txtSupplySearch.Text, maxRows: 3000),
+                string.IsNullOrWhiteSpace(_txtSupplySearch.Text) ? "Catálogo completo" : $"Filtro: {_txtSupplySearch.Text}"));
 
         bar.Controls.AddRange([Wrap("Buscar:", _txtSupplySearch), btnSearch, btnRefresh, btnExport]);
         _grpSupplies.Controls.Add(_gridSupplies);
+        _grpSupplies.Controls.Add(_supplyPager);
 
         layout.Controls.Add(bar, 0, 0);
         layout.Controls.Add(_grpSupplies, 0, 1);
@@ -367,65 +420,63 @@ public sealed class MaintenanceHubForm : UserControl
         _cmbOtYear.SelectedIndex = 0;
     }
 
-    private void LoadMantOts()
+    private MantWorkOrderFilter BuildMantOtFilter(int maxRows = 400) => new()
+    {
+        TextoBusqueda = _txtOtSearch.Text,
+        Oficio = _cmbOtTrade.SelectedIndex > 0 ? _cmbOtTrade.SelectedItem?.ToString() : null,
+        Estado = _cmbOtStatus.SelectedIndex > 0 ? _cmbOtStatus.SelectedItem?.ToString() : null,
+        Anio = _cmbOtYear.SelectedItem is int yr ? yr : null,
+        FechaInicio = _otDateRange.FechaInicio,
+        FechaFin = _otDateRange.FechaFin,
+        MaxRows = maxRows
+    };
+
+    private void LoadMantOts(bool resetPage = true)
     {
         if (!_otDateRange.TryValidate(this, out _))
         {
             return;
         }
 
-        MantWorkOrderFilter filter = new()
+        if (resetPage)
         {
-            TextoBusqueda = _txtOtSearch.Text,
-            Oficio = _cmbOtTrade.SelectedIndex > 0 ? _cmbOtTrade.SelectedItem?.ToString() : null,
-            Estado = _cmbOtStatus.SelectedIndex > 0 ? _cmbOtStatus.SelectedItem?.ToString() : null,
-            Anio = _cmbOtYear.SelectedItem is int yr ? yr : null,
-            FechaInicio = _otDateRange.FechaInicio,
-            FechaFin = _otDateRange.FechaFin,
-            MaxRows = 400
-        };
+            _otPager.ResetPageIndex();
+        }
 
-        _mantOts = _ctx.MaintenanceService.SearchInternalWorkOrders(_session, filter);
-        _grpMantOts.Text = $"Órdenes de Trabajo de Mantención Interna (mostrando {_mantOts.Count:N0} registros — más recientes primero)";
-        _gridMantOts.DataSource = _mantOts.Select(o => new
-        {
-            N_OT = o.NumeroOt,
-            Inicio = o.FechaInicio.Length >= 16 ? o.FechaInicio[..16] : o.FechaInicio,
-            Planta = o.Planta,
-            Equipo = o.Equipo,
-            Oficio = o.Oficio,
-            Estado = o.Estado,
-            Detención = FormatDetencion(o.Detencion),
-            Descripción = o.DescripcionBreve
-        }).ToList();
+        PagedResult<MantWorkOrderRow> page = _ctx.MaintenanceService.SearchInternalWorkOrdersPaged(
+            _session,
+            BuildMantOtFilter(),
+            _otPager.PageIndex,
+            _otPager.PageSize);
+
+        _grpMantOts.Text = $"Órdenes de Trabajo de Mantención Interna ({page.TotalCount:N0} registros — más recientes primero)";
+        _gridMantOts.DataSource = new SortableBindingList<MantOtGridRow>(
+            page.Items.Select(o => new MantOtGridRow(o)));
+        _otPager.SetState(page.PageIndex, page.PageSize, page.TotalCount);
 
         if (_gridMantOts.Columns.Count >= 8)
         {
-            _gridMantOts.Columns[0].HeaderText = "N° OT";
-            _gridMantOts.Columns[0].FillWeight = 8;
-            _gridMantOts.Columns[1].FillWeight = 14;
-            _gridMantOts.Columns[2].FillWeight = 10;
-            _gridMantOts.Columns[3].FillWeight = 14;
-            _gridMantOts.Columns[4].FillWeight = 8;
-            _gridMantOts.Columns[5].FillWeight = 10;
-            _gridMantOts.Columns[6].HeaderText = "Det.";
-            _gridMantOts.Columns[6].FillWeight = 6;
-            _gridMantOts.Columns[7].FillWeight = 30;
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 0, "N° OT", 8);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 1, "Inicio", 14);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 2, "Planta", 10);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 3, "Equipo", 14);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 4, "Oficio", 8);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 5, "Estado", 10);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 6, "Det.", 6);
+            GridBindingHelper.ConfigureColumn(_gridMantOts, 7, "Descripción", 30);
         }
     }
 
     private void LoadSelectedOtDetail()
     {
-        if (_gridMantOts.CurrentRow is null)
+        MantWorkOrderRow? selected = GridBindingHelper.GetRowSource<MantWorkOrderRow>(_gridMantOts);
+        if (selected is null)
         {
             _txtOtDetail.Clear();
             return;
         }
 
-        int idx = _gridMantOts.CurrentRow.Index;
-        if (idx < 0 || idx >= _mantOts.Count) return;
-
-        MantWorkOrderDetail? detail = _ctx.MaintenanceService.GetInternalWorkOrderDetail(_session, _mantOts[idx].Id);
+        MantWorkOrderDetail? detail = _ctx.MaintenanceService.GetInternalWorkOrderDetail(_session, selected.Id);
         if (detail is null) return;
 
         MantWorkOrderRow o = detail.Order;
@@ -444,124 +495,76 @@ public sealed class MaintenanceHubForm : UserControl
     private void LoadPreventivePlans()
     {
         _mpLoaded = true;
-        _mpPlans = _ctx.MaintenanceService.SearchPreventivePlans(_session, _txtMpSearch.Text);
-        _gridMpPlans.DataSource = _mpPlans.Select(p => new
-        {
-            p.Id,
-            p.Planta,
-            p.Equipo,
-            Descripción = p.Descripcion,
-            Tipo = p.TipoMantenimiento,
-            Frecuencia = p.Frecuencia,
-            Estado = p.Estado,
-            Ciclos = p.TotalCiclos,
-            Tareas = p.TotalTareas
-        }).ToList();
+        IReadOnlyList<MantPreventivePlanRow> plans = _ctx.MaintenanceService.SearchPreventivePlans(_session, _txtMpSearch.Text);
+        _gridMpPlans.DataSource = new SortableBindingList<MpPlanGridRow>(plans.Select(p => new MpPlanGridRow(p)));
     }
 
     private void LoadSelectedMpDetails()
     {
-        if (_gridMpPlans.CurrentRow is null) return;
-        int idx = _gridMpPlans.CurrentRow.Index;
-        if (idx < 0 || idx >= _mpPlans.Count) return;
+        MantPreventivePlanRow? plan = GridBindingHelper.GetRowSource<MantPreventivePlanRow>(_gridMpPlans);
+        if (plan is null) return;
 
-        _selectedMpId = _mpPlans[idx].Id;
-        _mpCycles = _ctx.MaintenanceService.GetPreventiveCycles(_session, _selectedMpId);
-        _gridMpCycles.DataSource = _mpCycles.Select(c => new
-        {
-            Ciclo = c.IdCiclo,
-            Inicio = c.FechaInicio,
-            Cierre = c.FechaCierre,
-            Tiempo = c.Tiempo.ToString("0.##", CultureInfo.InvariantCulture),
-            Estado = c.Estado
-        }).ToList();
+        _selectedMpId = plan.Id;
+        IReadOnlyList<MantPreventiveCycleRow> cycles = _ctx.MaintenanceService.GetPreventiveCycles(_session, _selectedMpId);
+        _gridMpCycles.DataSource = new SortableBindingList<MpCycleGridRow>(cycles.Select(c => new MpCycleGridRow(c)));
 
-        LoadTasksFor(_selectedMpId, _mpCycles.Count > 0 ? _mpCycles[0].IdCiclo : null);
+        LoadTasksFor(_selectedMpId, cycles.Count > 0 ? cycles[0].IdCiclo : null);
     }
 
     private void LoadSelectedCycleTasks()
     {
-        if (_selectedMpId <= 0 || _gridMpCycles.CurrentRow is null) return;
-        int idx = _gridMpCycles.CurrentRow.Index;
-        if (idx < 0 || idx >= _mpCycles.Count) return;
-        LoadTasksFor(_selectedMpId, _mpCycles[idx].IdCiclo);
+        MantPreventiveCycleRow? cycle = GridBindingHelper.GetRowSource<MantPreventiveCycleRow>(_gridMpCycles);
+        if (_selectedMpId <= 0 || cycle is null) return;
+        LoadTasksFor(_selectedMpId, cycle.IdCiclo);
     }
 
     private void LoadTasksFor(int mpId, int? cycleId)
     {
         IReadOnlyList<MantPreventiveTaskRow> tasks = _ctx.MaintenanceService.GetPreventiveTasks(_session, mpId, cycleId);
-        _gridMpTasks.DataSource = tasks.Select(t => new
-        {
-            Ciclo = t.IdCiclo,
-            Tarea = t.IdTarea,
-            Descripción = t.Descripcion,
-            Oficio = t.Oficio,
-            Estado = t.Estado,
-            Duración = t.Duracion.ToString("0.##", CultureInfo.InvariantCulture)
-        }).ToList();
+        _gridMpTasks.DataSource = new SortableBindingList<MpTaskGridRow>(tasks.Select(t => new MpTaskGridRow(t)));
+        GridBindingHelper.ConfigureColumn(_gridMpTasks, 5, "Duración", null, "0.##", DataGridViewContentAlignment.MiddleRight);
     }
 
-    private void LoadSupplies()
+    private void LoadSupplies(bool resetPage = true)
     {
         _suppliesLoaded = true;
-        _supplies = _ctx.MaintenanceService.SearchSupplies(_session, _txtSupplySearch.Text, maxRows: 800);
-        _grpSupplies.Text = $"Catálogo de Insumos y Repuestos SAP ({_supplies.Count:N0} registros mostrados)";
-        _gridSupplies.DataSource = _supplies.Select(s => new
+        if (resetPage)
         {
-            ID = s.IdItem,
-            SAP = s.CodSap,
-            CodProveedor = s.CodProveedor,
-            Descripción = s.Descripcion,
-            Stock = s.StockUnidad.ToString("N1", CultureInfo.InvariantCulture),
-            DíasEntrega = s.DiasEntrega,
-            UsosHistóricos = s.UsosHistoricos
-        }).ToList();
+            _supplyPager.ResetPageIndex();
+        }
+
+        PagedResult<MantSupplyRow> page = _ctx.MaintenanceService.SearchSuppliesPaged(_session, _txtSupplySearch.Text, _supplyPager.PageIndex, _supplyPager.PageSize);
+        _grpSupplies.Text = $"Catálogo de Insumos y Repuestos SAP ({page.TotalCount:N0} registros)";
+        _gridSupplies.DataSource = new SortableBindingList<SupplyGridRow>(page.Items.Select(s => new SupplyGridRow(s)));
+        _supplyPager.SetState(page.PageIndex, page.PageSize, page.TotalCount);
+        GridBindingHelper.ConfigureColumn(_gridSupplies, 4, "Stock", null, "N1", DataGridViewContentAlignment.MiddleRight);
+        GridBindingHelper.ConfigureColumn(_gridSupplies, 5, "Días Entrega", null, "N0", DataGridViewContentAlignment.MiddleRight);
+        GridBindingHelper.ConfigureColumn(_gridSupplies, 6, "Usos Históricos", null, "N0", DataGridViewContentAlignment.MiddleRight);
     }
 
     private void LoadPersonnel()
     {
         _personnelLoaded = true;
         IReadOnlyList<MantPersonnelRow> tech = _ctx.MaintenanceService.SearchPersonnel(_session, _txtPersSearch.Text);
-        _gridPersonnel.DataSource = tech.Select(p => new
-        {
-            ID = p.IdPersonal,
-            RUT = p.Rut,
-            Nombre = p.NombreCompleto,
-            Oficio = p.Oficio,
-            Correo = p.Email,
-            Teléfono = p.Celular,
-            Departamento = p.Departamento,
-            OTsAtendidas = p.OrdenesAtendidas
-        }).ToList();
+        _gridPersonnel.DataSource = new SortableBindingList<PersonnelGridRow>(tech.Select(p => new PersonnelGridRow(p)));
 
         IReadOnlyList<MantHrPersonnelRow> hr = _ctx.MaintenanceService.GetHrPersonnel(_session, _txtPersSearch.Text);
-        _gridHrPersonnel.DataSource = hr.Select(h => new
-        {
-            ID = h.IdEmpleado,
-            Nombre = h.NombreCompleto,
-            FechaAlta = h.FechaAlta,
-            Puesto = h.Puesto,
-            Departamento = h.Departamento,
-            CentroTrabajo = h.CentroTrabajo
-        }).ToList();
+        _gridHrPersonnel.DataSource = new SortableBindingList<HrPersonnelGridRow>(hr.Select(h => new HrPersonnelGridRow(h)));
     }
 
     private void LoadCatalogs()
     {
         _catalogsLoaded = true;
-        _gridLegacyExt.DataSource = _ctx.MaintenanceService.GetLegacyExternalOrders(_session).Select(e => new
-        {
-            N_OTE = e.NumeroOte,
-            Pedido = e.FechaPedido,
-            Empresa = e.Empresa,
-            Descripción = e.Descripcion,
-            Costo = e.Costo.ToString("N0", CultureInfo.InvariantCulture),
-            Garantía = e.Garantia
-        }).ToList();
+        _gridLegacyExt.DataSource = new SortableBindingList<LegacyExtGridRow>(
+            _ctx.MaintenanceService.GetLegacyExternalOrders(_session).Select(e => new LegacyExtGridRow(e)));
+        GridBindingHelper.ConfigureColumn(_gridLegacyExt, 4, "Costo", null, "$#,##0", DataGridViewContentAlignment.MiddleRight);
 
-        _gridMotives.DataSource = _ctx.MaintenanceService.GetFailureMotives(_session).Select(m => new { m.Id, Motivo = m.Nombre, Estado = m.Detalle }).ToList();
-        _gridTrades.DataSource = _ctx.MaintenanceService.GetTradesCatalog(_session).Select(t => new { t.Id, Oficio = t.Nombre }).ToList();
-        _gridChecklists.DataSource = _ctx.MaintenanceService.GetChecklistsSummary(_session).Select(c => new { c.Id, Tarea = c.Nombre, Grupo = c.Detalle }).ToList();
+        _gridMotives.DataSource = new SortableBindingList<CatalogGridRow>(
+            _ctx.MaintenanceService.GetFailureMotives(_session).Select(m => new CatalogGridRow(m.Id, m.Nombre, m.Detalle)));
+        _gridTrades.DataSource = new SortableBindingList<TradeGridRow>(
+            _ctx.MaintenanceService.GetTradesCatalog(_session).Select(t => new TradeGridRow(t.Id, t.Nombre)));
+        _gridChecklists.DataSource = new SortableBindingList<ChecklistGridRow>(
+            _ctx.MaintenanceService.GetChecklistsSummary(_session).Select(c => new ChecklistGridRow(c.Id, c.Nombre, c.Detalle)));
     }
 
     private string BuildMantOtFilterSummary()
@@ -598,4 +601,103 @@ public sealed class MaintenanceHubForm : UserControl
         }
         base.Dispose(disposing);
     }
+
+    private sealed class MantOtGridRow(MantWorkOrderRow source) : IGridRowSource<MantWorkOrderRow>
+    {
+        [Browsable(false)]
+        public MantWorkOrderRow Source { get; } = source;
+        public string NumeroOt => Source.NumeroOt;
+        public string Inicio => Source.FechaInicio.Length >= 16 ? Source.FechaInicio[..16] : Source.FechaInicio;
+        public string Planta => Source.Planta;
+        public string Equipo => Source.Equipo;
+        public string Oficio => Source.Oficio;
+        public string Estado => Source.Estado;
+        public string Detencion => FormatDetencion(Source.Detencion);
+        public string Descripcion => Source.DescripcionBreve;
+    }
+
+    private sealed class MpPlanGridRow(MantPreventivePlanRow source) : IGridRowSource<MantPreventivePlanRow>
+    {
+        [Browsable(false)]
+        public MantPreventivePlanRow Source { get; } = source;
+        public int Id => Source.Id;
+        public string Planta => Source.Planta;
+        public string Equipo => Source.Equipo;
+        public string Descripcion => Source.Descripcion;
+        public string Tipo => Source.TipoMantenimiento;
+        public string Frecuencia => Source.Frecuencia;
+        public string Estado => Source.Estado;
+        public int Ciclos => Source.TotalCiclos;
+        public int Tareas => Source.TotalTareas;
+    }
+
+    private sealed class MpCycleGridRow(MantPreventiveCycleRow source) : IGridRowSource<MantPreventiveCycleRow>
+    {
+        [Browsable(false)]
+        public MantPreventiveCycleRow Source { get; } = source;
+        public int Ciclo => Source.IdCiclo;
+        public string Inicio => Source.FechaInicio;
+        public string Cierre => Source.FechaCierre;
+        public string Tiempo => Source.Tiempo.ToString("0.##", CultureInfo.InvariantCulture);
+        public string Estado => Source.Estado;
+    }
+
+    private sealed class MpTaskGridRow(MantPreventiveTaskRow source)
+    {
+        public int Ciclo { get; } = source.IdCiclo;
+        public int Tarea { get; } = source.IdTarea;
+        public string Descripcion { get; } = source.Descripcion;
+        public string Oficio { get; } = source.Oficio;
+        public string Estado { get; } = source.Estado;
+        public double Duracion { get; } = source.Duracion;
+    }
+
+    private sealed class SupplyGridRow(MantSupplyRow source) : IGridRowSource<MantSupplyRow>
+    {
+        [Browsable(false)]
+        public MantSupplyRow Source { get; } = source;
+        public int ID => Source.IdItem;
+        public string SAP => Source.CodSap;
+        public string CodProveedor => Source.CodProveedor;
+        public string Descripcion => Source.Descripcion;
+        public double Stock => Source.StockUnidad;
+        public int DiasEntrega => Source.DiasEntrega;
+        public int UsosHistoricos => Source.UsosHistoricos;
+    }
+
+    private sealed class PersonnelGridRow(MantPersonnelRow source)
+    {
+        public int ID { get; } = source.IdPersonal;
+        public string RUT { get; } = source.Rut;
+        public string Nombre { get; } = source.NombreCompleto;
+        public string Oficio { get; } = source.Oficio;
+        public string Correo { get; } = source.Email;
+        public string Telefono { get; } = source.Celular;
+        public string Departamento { get; } = source.Departamento;
+        public int OTsAtendidas { get; } = source.OrdenesAtendidas;
+    }
+
+    private sealed class HrPersonnelGridRow(MantHrPersonnelRow source)
+    {
+        public string ID { get; } = source.IdEmpleado;
+        public string Nombre { get; } = source.NombreCompleto;
+        public string FechaAlta { get; } = source.FechaAlta;
+        public string Puesto { get; } = source.Puesto;
+        public string Departamento { get; } = source.Departamento;
+        public string CentroTrabajo { get; } = source.CentroTrabajo;
+    }
+
+    private sealed class LegacyExtGridRow(MantExternalOrderRow source)
+    {
+        public int N_OTE { get; } = source.NumeroOte;
+        public string Pedido { get; } = source.FechaPedido;
+        public string Empresa { get; } = source.Empresa;
+        public string Descripcion { get; } = source.Descripcion;
+        public decimal Costo { get; } = source.Costo;
+        public string Garantia { get; } = source.Garantia;
+    }
+
+    private sealed record CatalogGridRow(int Id, string Motivo, string Estado);
+    private sealed record TradeGridRow(int Id, string Oficio);
+    private sealed record ChecklistGridRow(int Id, string Tarea, string Grupo);
 }

@@ -19,14 +19,24 @@ public sealed class MaintenanceService(IMaintenanceRepository maintenance)
 
     public IReadOnlyList<MantWorkOrderRow> SearchInternalWorkOrders(UserSession session, MantWorkOrderFilter filter)
     {
+        ValidateInternalWorkOrderAccess(session, filter);
+        return maintenance.SearchInternalWorkOrders(filter);
+    }
+
+    public PagedResult<MantWorkOrderRow> SearchInternalWorkOrdersPaged(UserSession session, MantWorkOrderFilter filter, int pageIndex, int pageSize)
+    {
+        ValidateInternalWorkOrderAccess(session, filter);
+        return maintenance.SearchInternalWorkOrdersPaged(filter, pageIndex, pageSize);
+    }
+
+    private static void ValidateInternalWorkOrderAccess(UserSession session, MantWorkOrderFilter filter)
+    {
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo || p.MenuMantenedor, "Consultar OTs de Mantención");
         string? dateErr = Sispro.Core.Validation.DomainValidator.ValidateDateRange(filter.FechaInicio, filter.FechaFin);
         if (dateErr is not null)
         {
             throw new ArgumentException(dateErr);
         }
-
-        return maintenance.SearchInternalWorkOrders(filter);
     }
 
     public MantWorkOrderDetail? GetInternalWorkOrderDetail(UserSession session, int id)
@@ -57,6 +67,12 @@ public sealed class MaintenanceService(IMaintenanceRepository maintenance)
     {
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo || p.MenuMantenedor, "Consultar insumos SAP");
         return maintenance.SearchSupplies(search, maxRows);
+    }
+
+    public PagedResult<MantSupplyRow> SearchSuppliesPaged(UserSession session, string? search = null, int pageIndex = 0, int pageSize = 200)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo || p.MenuMantenedor, "Consultar insumos SAP");
+        return maintenance.SearchSuppliesPaged(search, pageIndex, pageSize);
     }
 
     public IReadOnlyList<MantPersonnelRow> SearchPersonnel(UserSession session, string? search = null, string? oficio = null)

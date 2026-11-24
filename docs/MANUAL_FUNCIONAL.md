@@ -47,8 +47,9 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
 
 ### 3.2 Pestaña Búsqueda de OT (`tab_0_2`)
 - Permite combinar filtros por **Rango de fechas**, **Proveedor**, **Palabra clave / N° OT**, **Nodo seleccionado del árbol** y **Solo pendientes de VB**.
-- **Doble clic** sobre un resultado abre la OT para edición o impresión.
-- **Exportar Excel** genera un archivo `.xlsx` con formato corporativo y barra de progreso sin requerir Microsoft Excel instalado.
+- Dispone de **ordenamiento por clic en cualquier columna** y **barra de paginación inferior** (`50`, `100`, `200`, `500` registros por página).
+- **Doble clic** o menú de **clic derecho** sobre un resultado abre la OT para edición o impresión.
+- **Exportar** genera archivos `.xlsx`, `.pdf`, `.docx` o `.csv` con todos los resultados filtrados.
 
 ### 3.3 Pestaña Generar / Imprimir OT (`tab_0_3`)
 - Cargue una OT existente por su número (o componga ítems manualmente).

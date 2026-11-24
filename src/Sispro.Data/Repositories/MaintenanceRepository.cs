@@ -166,7 +166,96 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
+        string whereSql = BuildInternalWorkOrderWhere(cmd, filter);
+        int limit = Math.Clamp(filter.MaxRows, 10, 5000);
 
+        cmd.CommandText = $"""
+            SELECT o.id, o.n_ot, o.fechai, o.fechaf, o.turno, o.oficio_ot,
+                   COALESCE(m.desc_motivo, ''), COALESCE(a2.descripcion, ''),
+                   COALESCE(a4.descripcion, COALESCE(a3.descripcion, '')),
+                   o.estado_ot, o.detencion, o.solicitada_por,
+                   o.descripcion_breve, o.descripcion_tecnica, o.prioridad_ot
+            FROM Mant_OT o
+            LEFT JOIN Mant_Motivos m ON m.id_motivo = o.id_motivo
+            LEFT JOIN Activos a2 ON a2.id_activo = o.id_n2
+            LEFT JOIN Activos a3 ON a3.id_activo = o.id_n3
+            LEFT JOIN Activos a4 ON a4.id_activo = o.id_n4
+            {whereSql}
+            ORDER BY o.fechai DESC, o.id DESC
+            LIMIT {limit};
+            """;
+
+        List<MantWorkOrderRow> list = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            list.Add(MapMantOt(rdr));
+        }
+
+        return list;
+    }
+
+    public PagedResult<MantWorkOrderRow> SearchInternalWorkOrdersPaged(MantWorkOrderFilter filter, int pageIndex, int pageSize)
+    {
+        int safeSize = Math.Clamp(pageSize, 25, 500);
+        int safePage = Math.Max(0, pageIndex);
+
+        using SqliteConnection conn = factory.OpenConnection();
+        int totalCount;
+        using (SqliteCommand countCmd = conn.CreateCommand())
+        {
+            string whereSql = BuildInternalWorkOrderWhere(countCmd, filter);
+            string assetJoins = string.IsNullOrWhiteSpace(filter.TextoBusqueda)
+                ? string.Empty
+                : "\nLEFT JOIN Activos a3 ON a3.id_activo = o.id_n3\nLEFT JOIN Activos a4 ON a4.id_activo = o.id_n4";
+            countCmd.CommandText = $"SELECT COUNT(*) FROM Mant_OT o{assetJoins}\n{whereSql};";
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
+        }
+
+        if (totalCount == 0)
+        {
+            return new PagedResult<MantWorkOrderRow>([], 0, 0, safeSize);
+        }
+
+        int maxPage = (totalCount - 1) / safeSize;
+        if (safePage > maxPage)
+        {
+            safePage = maxPage;
+        }
+
+        int offset = safePage * safeSize;
+        using SqliteCommand cmd = conn.CreateCommand();
+        string dataWhere = BuildInternalWorkOrderWhere(cmd, filter);
+        cmd.Parameters.AddWithValue("$lim", safeSize);
+        cmd.Parameters.AddWithValue("$off", offset);
+        cmd.CommandText = $"""
+            SELECT o.id, o.n_ot, o.fechai, o.fechaf, o.turno, o.oficio_ot,
+                   COALESCE(m.desc_motivo, ''), COALESCE(a2.descripcion, ''),
+                   COALESCE(a4.descripcion, COALESCE(a3.descripcion, '')),
+                   o.estado_ot, o.detencion, o.solicitada_por,
+                   o.descripcion_breve, o.descripcion_tecnica, o.prioridad_ot
+            FROM Mant_OT o
+            LEFT JOIN Mant_Motivos m ON m.id_motivo = o.id_motivo
+            LEFT JOIN Activos a2 ON a2.id_activo = o.id_n2
+            LEFT JOIN Activos a3 ON a3.id_activo = o.id_n3
+            LEFT JOIN Activos a4 ON a4.id_activo = o.id_n4
+            {dataWhere}
+            ORDER BY o.fechai DESC, o.id DESC
+            LIMIT $lim OFFSET $off;
+            """;
+
+        List<MantWorkOrderRow> list = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            list.Add(MapMantOt(rdr));
+        }
+
+        return new PagedResult<MantWorkOrderRow>(list, totalCount, safePage, safeSize);
+    }
+
+    private static string BuildInternalWorkOrderWhere(SqliteCommand cmd, MantWorkOrderFilter filter)
+    {
         List<string> where = [];
         if (!string.IsNullOrWhiteSpace(filter.TextoBusqueda))
         {
@@ -211,32 +300,7 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
             cmd.Parameters.AddWithValue("$ffin", filter.FechaFin.Value.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
         }
 
-        string whereSql = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : string.Empty;
-        int limit = Math.Clamp(filter.MaxRows, 10, 5000);
-
-        cmd.CommandText = $"""
-            SELECT o.id, o.n_ot, o.fechai, o.fechaf, o.turno, o.oficio_ot,
-                   COALESCE(m.desc_motivo, ''), COALESCE(a2.descripcion, ''),
-                   COALESCE(a4.descripcion, COALESCE(a3.descripcion, '')),
-                   o.estado_ot, o.detencion, o.solicitada_por,
-                   o.descripcion_breve, o.descripcion_tecnica, o.prioridad_ot
-            FROM Mant_OT o
-            LEFT JOIN Mant_Motivos m ON m.id_motivo = o.id_motivo
-            LEFT JOIN Activos a2 ON a2.id_activo = o.id_n2
-            LEFT JOIN Activos a3 ON a3.id_activo = o.id_n3
-            LEFT JOIN Activos a4 ON a4.id_activo = o.id_n4
-            {whereSql}
-            ORDER BY o.fechai DESC, o.id DESC
-            LIMIT {limit};
-            """;
-
-        List<MantWorkOrderRow> list = [];
-        using SqliteDataReader rdr = cmd.ExecuteReader();
-        while (rdr.Read())
-        {
-            list.Add(MapMantOt(rdr));
-        }
-        return list;
+        return where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : string.Empty;
     }
 
     public MantWorkOrderDetail? GetInternalWorkOrderDetail(int id)
@@ -440,12 +504,7 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
-        string whereSql = string.Empty;
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            whereSql = "WHERE i.desc_item LIKE $q OR i.cod_sap LIKE $q OR i.cod_proveedor LIKE $q";
-            cmd.Parameters.AddWithValue("$q", $"%{search.Trim()}%");
-        }
+        string whereSql = BuildSuppliesWhere(cmd, search);
 
         cmd.CommandText = $"""
             SELECT i.id_item, i.cod_sap, i.cod_proveedor, i.desc_item, i.stock_unidad,
@@ -457,6 +516,64 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
             LIMIT {Math.Clamp(maxRows, 10, 3000)};
             """;
 
+        return ReadSupplies(cmd);
+    }
+
+    public PagedResult<MantSupplyRow> SearchSuppliesPaged(string? search = null, int pageIndex = 0, int pageSize = 200)
+    {
+        int safeSize = Math.Clamp(pageSize, 25, 500);
+        int safePage = Math.Max(0, pageIndex);
+
+        using SqliteConnection conn = factory.OpenConnection();
+        int totalCount;
+        using (SqliteCommand countCmd = conn.CreateCommand())
+        {
+            string whereSql = BuildSuppliesWhere(countCmd, search);
+            countCmd.CommandText = $"SELECT COUNT(*) FROM Mant_Insumos i\n{whereSql};";
+            totalCount = Convert.ToInt32(countCmd.ExecuteScalar() ?? 0, CultureInfo.InvariantCulture);
+        }
+
+        if (totalCount == 0)
+        {
+            return new PagedResult<MantSupplyRow>([], 0, 0, safeSize);
+        }
+
+        int maxPage = (totalCount - 1) / safeSize;
+        if (safePage > maxPage)
+        {
+            safePage = maxPage;
+        }
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        string dataWhere = BuildSuppliesWhere(cmd, search);
+        cmd.Parameters.AddWithValue("$lim", safeSize);
+        cmd.Parameters.AddWithValue("$off", safePage * safeSize);
+        cmd.CommandText = $"""
+            SELECT i.id_item, i.cod_sap, i.cod_proveedor, i.desc_item, i.stock_unidad,
+                   i.dias_entrega, i.prioridad_item,
+                   (SELECT COUNT(*) FROM Mant_InsumosUtilizados iu WHERE iu.id_item = i.id_item)
+            FROM Mant_Insumos i
+            {dataWhere}
+            ORDER BY i.desc_item ASC
+            LIMIT $lim OFFSET $off;
+            """;
+
+        return new PagedResult<MantSupplyRow>(ReadSupplies(cmd), totalCount, safePage, safeSize);
+    }
+
+    private static string BuildSuppliesWhere(SqliteCommand cmd, string? search)
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            return string.Empty;
+        }
+
+        cmd.Parameters.AddWithValue("$q", $"%{search.Trim()}%");
+        return "WHERE i.desc_item LIKE $q OR i.cod_sap LIKE $q OR i.cod_proveedor LIKE $q";
+    }
+
+    private static List<MantSupplyRow> ReadSupplies(SqliteCommand cmd)
+    {
         List<MantSupplyRow> list = [];
         using SqliteDataReader rdr = cmd.ExecuteReader();
         while (rdr.Read())
@@ -473,6 +590,7 @@ public sealed class MaintenanceRepository(SqliteConnectionFactory factory) : IMa
                 UsosHistoricos = rdr.GetInt32(7)
             });
         }
+
         return list;
     }
 
