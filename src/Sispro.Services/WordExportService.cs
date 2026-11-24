@@ -173,6 +173,15 @@ public sealed class WordExportService(AppSettings settings)
         }
 
         body.Append(itemsTable);
+        body.Append(new Paragraph(new Run(new Text(string.Empty))));
+
+        // Bloque de Observaciones y Valor Neto destacado
+        Table summaryTable = CreateStyledTable();
+        string obsText = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
+        summaryTable.Append(new TableRow(
+            CreateCellWithWidth($"Observaciones: {obsText}", ZebraHex, TextHex, false, "17", JustificationValues.Left, "3500"),
+            CreateCellWithWidth($"VALOR NETO\n$ {order.ValorNeto:N0}", GoldHex, PrimaryDarkHex, true, "22", JustificationValues.Right, "1500")));
+        body.Append(summaryTable);
 
         // Firmas dinámicas al pie (se omiten completamente si ninguna está seleccionada)
         List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);

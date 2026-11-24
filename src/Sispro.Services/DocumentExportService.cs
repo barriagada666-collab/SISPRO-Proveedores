@@ -69,22 +69,84 @@ public sealed class DocumentExportService(
         Landscape = true,
         Columns =
         [
-            new("N° OT", ExportColumnKind.Integer, 0.7),
-            new("Fecha", ExportColumnKind.Date, 0.9),
-            new("Proveedor", ExportColumnKind.Text, 1.8),
-            new("Solicitante", ExportColumnKind.Text, 1.1),
-            new("Cant.", ExportColumnKind.Integer, 0.55, SumInFooter: true),
-            new("Detalle del Trabajo", ExportColumnKind.Text, 2.8),
-            new("Ruta de Activo", ExportColumnKind.Text, 1.7),
-            new("VB Supervisor", ExportColumnKind.Text, 0.9),
-            new("VB Jefatura", ExportColumnKind.Text, 0.9)
+            new("N° OT", ExportColumnKind.Integer, 0.58),
+            new("Fecha", ExportColumnKind.Date, 0.85),
+            new("Proveedor", ExportColumnKind.Text, 1.45),
+            new("Solicitante", ExportColumnKind.Text, 1.05),
+            new("Cant.", ExportColumnKind.Integer, 0.45, SumInFooter: true),
+            new("Detalle del Trabajo", ExportColumnKind.Text, 1.95),
+            new("Ruta de Activo", ExportColumnKind.Text, 1.35),
+            new("VB Supervisor", ExportColumnKind.Text, 1.25),
+            new("VB Jefatura", ExportColumnKind.Text, 1.25),
+            new("Observaciones", ExportColumnKind.Text, 1.25),
+            new("Valor Neto", ExportColumnKind.Currency, 0.9, SumInFooter: true),
+            new("Estado", ExportColumnKind.Text, 0.72),
+            new("Firmas", ExportColumnKind.Text, 1.15)
         ],
         Rows = rows.Select(r => new object?[]
         {
             r.NumeroOt, r.Fecha, r.Proveedor, r.Solicitante, r.Cantidad,
-            r.Detalle, r.RutaActivo, r.VbsDisplay, r.VbjDisplay
+            r.Detalle, r.RutaActivo, r.VbsDisplay, r.VbjDisplay,
+            r.Observacion, r.ValorNeto, r.EstadoDisplay, r.FirmasDisplay
         }).ToList()
     };
+
+    public static TabularReportData BuildSelectedWorkOrdersReport(IReadOnlyList<WorkOrder> orders, string? filterSummary = null)
+    {
+        List<WorkOrder> distinctOrders = orders
+            .Where(o => o.IdOt > 0 || o.NumeroOt > 0)
+            .GroupBy(o => o.IdOt > 0 ? o.IdOt : o.NumeroOt)
+            .Select(g => g.First())
+            .ToList();
+
+        return new TabularReportData
+        {
+            Title = "EXPORTACIÓN DE ÓRDENES DE TRABAJO SELECCIONADAS",
+            SheetName = "OT Seleccionadas",
+            FilterSummary = string.IsNullOrWhiteSpace(filterSummary)
+                ? $"Registros exportados: {distinctOrders.Count} orden(es) única(s)"
+                : filterSummary,
+            Landscape = true,
+            Columns =
+            [
+                new("N° OT", ExportColumnKind.Integer, 0.65),
+                new("Fecha", ExportColumnKind.Date, 0.85),
+                new("Tipo", ExportColumnKind.Text, 0.75),
+                new("Solicitante", ExportColumnKind.Text, 1.2),
+                new("Proveedor", ExportColumnKind.Text, 1.65),
+                new("Activo", ExportColumnKind.Text, 1.6),
+                new("Detalle", ExportColumnKind.Text, 2.4),
+                new("Observaciones", ExportColumnKind.Text, 1.5),
+                new("Valor Neto", ExportColumnKind.Currency, 0.95, SumInFooter: true),
+                new("Estado", ExportColumnKind.Text, 0.75),
+                new("Firmas", ExportColumnKind.Text, 1.25)
+            ],
+            Rows = distinctOrders.Select(o =>
+            {
+                string detalleConsolidado = o.Detalles.Count switch
+                {
+                    0 => string.Empty,
+                    1 => o.Detalles[0].Descripcion,
+                    _ => string.Join(" | ", o.Detalles.Select(d => $"{d.Cantidad}x {d.Descripcion}"))
+                };
+
+                return new object?[]
+                {
+                    o.NumeroOt,
+                    o.FechaOt,
+                    "OT Externa",
+                    o.SolicitanteDisplayNombre,
+                    o.NombreProveedor,
+                    o.RutaActivo,
+                    detalleConsolidado,
+                    o.Observacion,
+                    o.ValorNeto,
+                    o.Estado.ToString(),
+                    o.FirmasSeleccionadas.FormatResumen()
+                };
+            }).ToList()
+        };
+    }
 
     public static TabularReportData BuildRequestersReport(IReadOnlyList<Requester> requesters, string? filterSummary = null) => new()
     {
@@ -278,7 +340,7 @@ public sealed class DocumentExportService(
     {
         Title = $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}",
         SheetName = $"OT_{order.NumeroOt}",
-        FilterSummary = $"Proveedor: {order.NombreProveedor} | Fecha: {order.FechaOt:dd-MM-yyyy}",
+        FilterSummary = $"Proveedor: {order.NombreProveedor} | Fecha: {order.FechaOt:dd-MM-yyyy} | Valor Neto: $ {order.ValorNeto:N0}",
         Landscape = false,
         Columns =
         [
@@ -287,13 +349,18 @@ public sealed class DocumentExportService(
             new("Proveedor", ExportColumnKind.Text, 1.8),
             new("Solicitante", ExportColumnKind.Text, 1.2),
             new("Cant.", ExportColumnKind.Integer, 0.6, SumInFooter: true),
-            new("Detalle", ExportColumnKind.Text, 3.2),
-            new("Activo", ExportColumnKind.Text, 1.8)
+            new("Detalle", ExportColumnKind.Text, 2.8),
+            new("Observaciones", ExportColumnKind.Text, 1.6),
+            new("Valor Neto", ExportColumnKind.Currency, 0.9),
+            new("Estado", ExportColumnKind.Text, 0.8),
+            new("Firmas", ExportColumnKind.Text, 1.2),
+            new("Activo", ExportColumnKind.Text, 1.7)
         ],
         Rows = order.Detalles.Select(d => new object?[]
         {
             order.NumeroOt, order.FechaOt, order.NombreProveedor, order.SolicitanteDisplayNombre,
-            d.Cantidad, d.Descripcion, order.RutaActivo
+            d.Cantidad, d.Descripcion, order.Observacion, order.ValorNeto, order.Estado.ToString(),
+            order.FirmasSeleccionadas.FormatResumen(), order.RutaActivo
         }).ToList()
     };
 }

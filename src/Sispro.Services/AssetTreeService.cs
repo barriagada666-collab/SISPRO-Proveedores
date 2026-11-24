@@ -14,33 +14,54 @@ public sealed class AssetTreeService(
     IAssetTreeRepository tree,
     IUserRepository users,
     IAuditRepository audit,
-    SisproSyncHub? syncHub = null)
+    SisproSyncHub? syncHub = null,
+    IWorkOrderRepository? workOrders = null,
+    IProviderRepository? providers = null)
 {
-    public bool IsAdministrator(UserSession? session)
+    public bool IsAdministrator(UserSession? session) => AuthService.IsAdministrator(session, users);
+
+    private void EnsureAdministrator(UserSession? session, string actionDescription) =>
+        AuthService.EnsureAdministrator(session, users, audit, "Árbol de Activos", actionDescription);
+
+    public MaintainerDependencyReport InspectDependencies(UserSession session, IReadOnlyCollection<int> assetIds)
     {
-        if (session is null || !session.Usuario.Activo || session.Usuario.Nivel != UserRoleLevel.Administrador)
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor || p.MenuOrdenesTrabajo, "Consultar dependencias del árbol de activos");
+        List<int> normalized = assetIds?.Where(id => id > 0).Distinct().ToList() ?? [];
+        if (normalized.Count == 0)
         {
-            return false;
+            return new MaintainerDependencyReport { EntityKind = MaintainerEntityKind.Activo };
         }
 
-        User? dbUser = users.GetById(session.Usuario.IdUsuario);
-        return dbUser is not null && dbUser.Activo && dbUser.Nivel == UserRoleLevel.Administrador;
-    }
+        List<string> labels = [];
+        HashSet<int> subtreeIds = [.. normalized];
+        int childCount = 0;
 
-    private void EnsureAdministrator(UserSession? session, string actionDescription)
-    {
-        if (IsAdministrator(session))
+        foreach (int id in normalized)
         {
-            return;
+            AssetNode? node = tree.GetById(id);
+            if (node is not null)
+            {
+                labels.Add(node.Descripcion);
+            }
+
+            foreach (int descId in tree.GetDescendantIds(id))
+            {
+                if (subtreeIds.Add(descId))
+                {
+                    childCount++;
+                }
+            }
         }
 
-        audit.Log(
-            session?.Usuario.AliasUsuario ?? "ANONIMO",
-            "Árbol de Activos",
-            "ACCESO_NO_AUTORIZADO",
-            $"Intento no autorizado en editor del árbol: {actionDescription}.");
-
-        throw new UnauthorizedAccessException($"Acceso denegado: la acción '{actionDescription}' es exclusiva del perfil Administrador.");
+        IReadOnlyList<RelatedWorkOrderInfo> related = tree.GetRelatedWorkOrders(subtreeIds.ToList());
+        return new MaintainerDependencyReport
+        {
+            EntityKind = MaintainerEntityKind.Activo,
+            SelectedIds = normalized,
+            SelectedLabels = labels,
+            RelatedWorkOrders = related,
+            DependentChildNodesCount = childCount
+        };
     }
 
     public AssetNodeInfo GetNodeInfo(int idActivo)
@@ -209,12 +230,315 @@ public sealed class AssetTreeService(
         AssetNode node = tree.GetById(idActivo)
             ?? throw new InvalidOperationException("El nodo seleccionado no existe.");
 
+        (AssetNode newParent, int destDepth) = ValidateMoveTarget(node, newParentId);
+
+        tree.MoveSubtree(idActivo, newParentId, destDepth + 1);
+        audit.Log(
+            session.Usuario.AliasUsuario,
+            "Árbol de Activos",
+            "MOVER_ACTIVO",
+            $"Nodo '{node.Descripcion}' (ID #{idActivo}) movido bajo '{newParent.Descripcion}' (ID #{newParentId}, nuevo nivel base {destDepth + 1}).");
+        syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.Audit, "MOVER_ACTIVO");
+    }
+
+    public MaintainerBatchResult SetActiveBatch(
+        UserSession session,
+        IReadOnlyCollection<int> assetIds,
+        bool active,
+        bool includeDescendants = true)
+    {
+        EnsureAdministrator(session, active ? "Activar nodos del árbol" : "Desactivar nodos del árbol");
+        MaintainerBatchResult result = new()
+        {
+            ActionName = active ? "Activar nodos del árbol" : "Desactivar nodos del árbol"
+        };
+
+        List<(int Id, int Depth, AssetNode Node)> items = [];
+        foreach (int id in assetIds?.Where(x => x > 0).Distinct() ?? [])
+        {
+            AssetNode? node = tree.GetById(id);
+            if (node is null)
+            {
+                result.FailedOrSkipped.Add(($"Nodo #{id}", "El nodo no existe."));
+                continue;
+            }
+
+            items.Add((id, tree.GetDepth(id), node));
+        }
+
+        // Activar de arriba hacia abajo; desactivar orden estable
+        IEnumerable<(int Id, int Depth, AssetNode Node)> ordered = active
+            ? items.OrderBy(i => i.Depth)
+            : items.OrderByDescending(i => i.Depth);
+
+        foreach ((int id, int _, AssetNode node) in ordered)
+        {
+            AssetNode current = tree.GetById(id)!;
+            if (!current.ParentId.HasValue && !active)
+            {
+                result.FailedOrSkipped.Add((current.Descripcion, "No es posible desactivar el nodo raíz de la empresa."));
+                continue;
+            }
+
+            if (active && current.ParentId.HasValue)
+            {
+                AssetNode? parent = tree.GetById(current.ParentId.Value);
+                if (parent is not null && !parent.Activo)
+                {
+                    result.FailedOrSkipped.Add((current.Descripcion, $"Su nodo padre '{parent.Descripcion}' se encuentra inactivo."));
+                    continue;
+                }
+            }
+
+            List<int> targetIds = !active || includeDescendants
+                ? [id, .. tree.GetDescendantIds(id)]
+                : [id];
+
+            tree.SetActiveMany(targetIds, active);
+            result.Succeeded.Add(current.Descripcion);
+        }
+
+        if (result.Succeeded.Count > 0)
+        {
+            string action = active ? "ACTIVAR_ACTIVOS_LOTE" : "DESACTIVAR_ACTIVOS_LOTE";
+            audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", action,
+                $"{result.Succeeded.Count} nodo(s) {(active ? "activados" : "desactivados")}; {result.FailedOrSkipped.Count} omitido(s).");
+            syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.Audit, action);
+        }
+
+        return result;
+    }
+
+    public MaintainerBatchResult DeleteNodesBatch(UserSession session, IReadOnlyCollection<int> assetIds)
+    {
+        EnsureAdministrator(session, "Eliminar nodos del árbol de activos");
+        MaintainerBatchResult result = new() { ActionName = "Eliminar nodos del árbol" };
+
+        List<(int Id, int Depth, AssetNode Node)> ordered = [];
+        foreach (int id in assetIds?.Where(x => x > 0).Distinct() ?? [])
+        {
+            AssetNode? node = tree.GetById(id);
+            if (node is null)
+            {
+                result.FailedOrSkipped.Add(($"Nodo #{id}", "El nodo no existe."));
+                continue;
+            }
+
+            ordered.Add((id, tree.GetDepth(id), node));
+        }
+
+        // Eliminar primero los nodos hoja más profundos para permitir borrar ramas completas seleccionadas
+        foreach ((int id, int _, AssetNode node) in ordered.OrderByDescending(i => i.Depth))
+        {
+            if (!node.ParentId.HasValue)
+            {
+                result.FailedOrSkipped.Add((node.Descripcion, "No es posible eliminar el nodo raíz de la empresa."));
+                continue;
+            }
+
+            int childCount = tree.CountChildren(id, includeInactive: true);
+            if (childCount > 0)
+            {
+                result.FailedOrSkipped.Add((node.Descripcion, $"Posee {childCount} subnodo(s) activo(s)/inactivo(s). Muévalos o elimínelos primero."));
+                continue;
+            }
+
+            int otCount = tree.CountWorkOrderReferences(id);
+            if (otCount > 0)
+            {
+                result.FailedOrSkipped.Add((node.Descripcion, $"Posee {otCount} OT(s) asociada(s). Reasigne las OTs o desactive el nodo en su lugar."));
+                continue;
+            }
+
+            tree.Delete(id);
+            result.Succeeded.Add(node.Descripcion);
+        }
+
+        if (result.Succeeded.Count > 0)
+        {
+            audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", "ELIMINAR_ACTIVOS_LOTE",
+                $"{result.Succeeded.Count} nodo(s) eliminado(s); {result.FailedOrSkipped.Count} omitido(s).");
+            syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.Audit, "ELIMINAR_ACTIVOS_LOTE");
+        }
+
+        return result;
+    }
+
+    public int ReassignWorkOrdersNode(
+        UserSession session,
+        IReadOnlyCollection<int> sourceAssetIds,
+        int targetAssetId,
+        bool includeDescendants = true)
+    {
+        EnsureAdministrator(session, "Reasignar activo en órdenes de trabajo");
+        AssetNode target = tree.GetById(targetAssetId)
+            ?? throw new InvalidOperationException("El nodo destino seleccionado no existe.");
+
+        if (!target.Activo)
+        {
+            throw new InvalidOperationException($"El nodo destino '{target.Descripcion}' está inactivo. Seleccione un activo válido y activo.");
+        }
+
+        IReadOnlyList<AssetNode> targetPath = tree.GetPathToRoot(targetAssetId);
+        if (targetPath.Count < 2)
+        {
+            throw new ArgumentException("Debe seleccionar un nodo de nivel 2 o superior (planta, equipo, máquina o componente) para asociar a las OTs.");
+        }
+
+        HashSet<int> expandedSources = [];
+        foreach (int id in sourceAssetIds?.Where(x => x > 0) ?? [])
+        {
+            if (id != targetAssetId)
+            {
+                expandedSources.Add(id);
+            }
+
+            if (includeDescendants)
+            {
+                foreach (int desc in tree.GetDescendantIds(id))
+                {
+                    if (desc != targetAssetId)
+                    {
+                        expandedSources.Add(desc);
+                    }
+                }
+            }
+        }
+
+        if (expandedSources.Count == 0)
+        {
+            throw new ArgumentException("Debe seleccionar al menos un nodo origen distinto al nodo destino.");
+        }
+
+        List<int> targetPathIds = targetPath.Select(n => n.IdActivo).ToList();
+        string targetBreadcrumb = string.Join(" \\ ", targetPath.Select(n => n.Descripcion));
+        int reassigned = tree.ReassignWorkOrdersNode(expandedSources.ToList(), targetPathIds, targetBreadcrumb);
+        audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", "REASIGNAR_ACTIVO_OTS",
+            $"{reassigned} OT(s) reasignada(s) al nodo '{target.Descripcion}' (ID #{targetAssetId}).");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Catalogs | DataChangeKind.Audit, "REASIGNAR_ACTIVO_OTS");
+        return reassigned;
+    }
+
+    public int ReassignWorkOrdersProvider(
+        UserSession session,
+        IReadOnlyCollection<int> assetIds,
+        int targetProviderId,
+        bool includeDescendants = true)
+    {
+        EnsureAdministrator(session, "Reasignar proveedor en OTs asociadas a activos");
+        if (providers is null)
+        {
+            throw new InvalidOperationException("El repositorio de proveedores no está disponible.");
+        }
+
+        Provider targetProvider = providers.GetById(targetProviderId)
+            ?? throw new InvalidOperationException("El proveedor destino seleccionado no existe.");
+        if (!targetProvider.Activo)
+        {
+            throw new InvalidOperationException($"El proveedor '{targetProvider.Nombre}' está inactivo.");
+        }
+
+        HashSet<int> expanded = [];
+        foreach (int id in assetIds?.Where(x => x > 0) ?? [])
+        {
+            expanded.Add(id);
+            if (includeDescendants)
+            {
+                foreach (int desc in tree.GetDescendantIds(id))
+                {
+                    expanded.Add(desc);
+                }
+            }
+        }
+
+        if (expanded.Count == 0)
+        {
+            return 0;
+        }
+
+        int reassigned = tree.ReassignWorkOrdersProviderForAssets(expanded.ToList(), targetProviderId);
+        audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", "REASIGNAR_PROVEEDOR_ACTIVO_OTS",
+            $"{reassigned} OT(s) de los activos seleccionados reasignada(s) al proveedor '{targetProvider.Nombre}'.");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Catalogs | DataChangeKind.Audit, "REASIGNAR_PROVEEDOR_ACTIVO_OTS");
+        return reassigned;
+    }
+
+    public MaintainerBatchResult ReassignChildrenAndMove(
+        UserSession session,
+        IReadOnlyCollection<int> sourceParentIds,
+        int targetParentId)
+    {
+        EnsureAdministrator(session, "Reasignar subnodos de activo a otro padre");
+        MaintainerBatchResult result = new() { ActionName = "Reasignar subnodos a otro nodo padre" };
+
+        AssetNode? targetParent = tree.GetById(targetParentId);
+        if (targetParent is null)
+        {
+            throw new InvalidOperationException("El nodo padre destino no existe.");
+        }
+
+        if (!targetParent.Activo)
+        {
+            throw new InvalidOperationException($"El nodo padre destino '{targetParent.Descripcion}' está inactivo.");
+        }
+
+        foreach (int parentId in sourceParentIds?.Where(x => x > 0 && x != targetParentId).Distinct() ?? [])
+        {
+            IReadOnlyList<AssetNode> children = tree.GetChildren(parentId, includeInactive: true);
+            foreach (AssetNode child in children)
+            {
+                try
+                {
+                    (_, int destDepth) = ValidateMoveTarget(child, targetParentId);
+                    tree.MoveSubtree(child.IdActivo, targetParentId, destDepth + 1);
+                    result.Succeeded.Add(child.Descripcion);
+                }
+                catch (Exception ex)
+                {
+                    result.FailedOrSkipped.Add((child.Descripcion, ex.Message));
+                }
+            }
+        }
+
+        if (result.Succeeded.Count > 0)
+        {
+            audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", "REASIGNAR_SUBNODOS_ACTIVO",
+                $"{result.Succeeded.Count} subnodo(s) reasignado(s) bajo '{targetParent.Descripcion}' (ID #{targetParentId}).");
+            syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.Audit, "REASIGNAR_SUBNODOS_ACTIVO");
+        }
+
+        return result;
+    }
+
+    public int DeleteRelatedWorkOrdersExplicitly(UserSession session, IReadOnlyCollection<int> idOts, string contextDescription)
+    {
+        EnsureAdministrator(session, "Eliminar explícitamente OTs asociadas al árbol de activos");
+        if (workOrders is null)
+        {
+            throw new InvalidOperationException("El repositorio de órdenes de trabajo no está disponible.");
+        }
+
+        List<int> normalized = idOts?.Where(x => x > 0).Distinct().ToList() ?? [];
+        if (normalized.Count == 0)
+        {
+            return 0;
+        }
+
+        int deleted = workOrders.DeleteMany(normalized);
+        audit.Log(session.Usuario.AliasUsuario, "Árbol de Activos", "ELIMINAR_OTS_ACTIVO_EXPLICITO",
+            $"{deleted} OT(s) eliminada(s) explícitamente desde Árbol de Activos ({contextDescription}).");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "ELIMINAR_OTS_ACTIVO_EXPLICITO");
+        return deleted;
+    }
+
+    private (AssetNode NewParent, int DestDepth) ValidateMoveTarget(AssetNode node, int newParentId)
+    {
         if (!node.ParentId.HasValue)
         {
             throw new InvalidOperationException("No es posible mover el nodo raíz de la empresa.");
         }
 
-        if (idActivo == newParentId)
+        if (node.IdActivo == newParentId)
         {
             throw new InvalidOperationException("No es posible mover un nodo dentro de sí mismo.");
         }
@@ -232,18 +556,19 @@ public sealed class AssetTreeService(
             throw new InvalidOperationException($"El nodo padre de destino '{newParent.Descripcion}' está inactivo.");
         }
 
-        IReadOnlyList<int> descendants = tree.GetDescendantIds(idActivo);
+        IReadOnlyList<int> descendants = tree.GetDescendantIds(node.IdActivo);
         if (descendants.Contains(newParentId))
         {
             throw new InvalidOperationException("No es posible mover un nodo dentro de uno de sus propios subnodos.");
         }
 
         int destDepth = tree.GetDepth(newParentId);
-        int subtreeHeight = tree.GetSubtreeHeight(idActivo);
+        int subtreeHeight = tree.GetSubtreeHeight(node.IdActivo);
         int resultingMaxDepth = destDepth + 1 + subtreeHeight;
         if (resultingMaxDepth > 10)
         {
-            throw new InvalidOperationException($"No es posible mover '{node.Descripcion}': la profundidad resultante ({resultingMaxDepth}) superaría el máximo permitido de 10 niveles.");
+            throw new InvalidOperationException(
+                $"No es posible mover '{node.Descripcion}': la profundidad resultante ({resultingMaxDepth}) superaría el máximo permitido de 10 niveles.");
         }
 
         IReadOnlyList<AssetNode> destSiblings = tree.GetChildren(newParentId, includeInactive: true);
@@ -252,13 +577,7 @@ public sealed class AssetTreeService(
             throw new InvalidOperationException($"Ya existe un nodo llamado '{node.Descripcion}' bajo '{newParent.Descripcion}'.");
         }
 
-        tree.MoveSubtree(idActivo, newParentId, destDepth + 1);
-        audit.Log(
-            session.Usuario.AliasUsuario,
-            "Árbol de Activos",
-            "MOVER_ACTIVO",
-            $"Nodo '{node.Descripcion}' (ID #{idActivo}) movido bajo '{newParent.Descripcion}' (ID #{newParentId}, nuevo nivel base {destDepth + 1}).");
-        syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.Audit, "MOVER_ACTIVO");
+        return (newParent, destDepth);
     }
 
     public void DeleteNode(UserSession session, int idActivo)

@@ -137,8 +137,8 @@ public sealed class SisproApplicationContext : IDisposable
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
-        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
-        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
+        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub, WorkOrders, Users);
+        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub, WorkOrders, Providers);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         ExcelExportService = new ExcelExportService(settings);
@@ -168,8 +168,8 @@ public sealed class SisproApplicationContext : IDisposable
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
-        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
-        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
+        MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub, WorkOrders, Users);
+        AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub, WorkOrders, Providers);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         ExcelExportService = new ExcelExportService(Settings);

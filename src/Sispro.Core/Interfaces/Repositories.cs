@@ -45,7 +45,11 @@ public interface IProviderRepository
     Provider? GetByName(string name);
     int Create(Provider provider);
     void Update(Provider provider);
+    int SetActiveMany(IReadOnlyCollection<int> ids, bool active);
     bool HasWorkOrders(int idProv);
+    int CountWorkOrders(int idProv);
+    IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> providerIds);
+    int ReassignWorkOrders(IReadOnlyCollection<int> sourceProviderIds, int targetProviderId);
     void Delete(int idProv);
 }
 
@@ -56,8 +60,13 @@ public interface IRequesterRepository
     Requester? GetByAlias(string alias);
     int Create(Requester requester);
     void Update(Requester requester);
+    int SetActiveMany(IReadOnlyCollection<int> ids, bool active);
+    int ClearSignaturesMany(IReadOnlyCollection<int> ids);
     void EnsureFromUser(User user);
     bool HasWorkOrders(int idSol);
+    int CountWorkOrders(int idSol);
+    IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> requesterIds, string relationLabel);
+    int ReassignWorkOrders(IReadOnlyCollection<int> sourceRequesterIds, int targetRequesterId);
     void Delete(int idSol);
 }
 
@@ -74,6 +83,9 @@ public interface IAssetTreeRepository
     int GetTotalCount();
     int CountChildren(int idActivo, bool includeInactive = true);
     int CountWorkOrderReferences(int idActivo);
+    IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> assetIds);
+    int ReassignWorkOrdersNode(IReadOnlyCollection<int> sourceAssetIds, IReadOnlyList<int> targetPathIds, string targetBreadcrumb);
+    int ReassignWorkOrdersProviderForAssets(IReadOnlyCollection<int> assetIds, int targetProviderId);
     IReadOnlyList<int> GetDescendantIds(int idActivo);
     int GetSubtreeHeight(int idActivo);
     int GetDepth(int idActivo);
@@ -88,10 +100,13 @@ public interface IWorkOrderRepository
 {
     WorkOrder? GetByNumber(int numeroOt);
     WorkOrder? GetById(int idOt);
+    IReadOnlyList<WorkOrder> GetByIds(IReadOnlyCollection<int> idOts);
     int GetNextWorkOrderNumber();
     int Create(WorkOrder workOrder);
     void Update(WorkOrder workOrder);
+    void UpdateSignatures(int idOt, SignatureOption firmas);
     void Delete(int idOt);
+    int DeleteMany(IReadOnlyCollection<int> idOts);
     IReadOnlyList<WorkOrderSearchRow> Search(WorkOrderSearchFilter filter);
     void SetApproval(int idOt, string idUsuario, ApprovalType type, bool approved);
     IReadOnlyList<WorkOrderApproval> GetApprovals(int idOt);

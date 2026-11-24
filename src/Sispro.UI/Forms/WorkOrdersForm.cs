@@ -49,6 +49,8 @@ public sealed class WorkOrdersForm : UserControl
     private readonly Button _btnAddDetail;
     private readonly Button _btnRemoveDetail;
     private readonly DataGridView _gridEntryDetails;
+    private readonly Font _valorNetoFont = new("Segoe UI", 15f, FontStyle.Bold);
+    private readonly Label _lblEntrySigHint;
     private readonly Button _btnSaveOt;
     private readonly Button _btnSaveAndExportOt;
     private readonly Button _btnUpdateOt;
@@ -58,6 +60,12 @@ public sealed class WorkOrdersForm : UserControl
     private readonly List<WorkOrderDetail> _entryDetails = [];
     private WorkOrder? _loadedOrder;
     private bool _suppressApprovalEvents;
+
+    internal TextBox TxtObservacionEntry { get; }
+    internal TextBox TxtValorNetoEntry { get; }
+    internal CheckBox ChkEntrySigJefatura { get; }
+    internal CheckBox ChkEntrySigTecnico { get; }
+    internal CheckBox ChkEntrySigSupervisor { get; }
 
     // Tab 1 (Búsqueda de OT)
     private readonly DateRangeFilterControl _searchDateRange;
@@ -76,8 +84,17 @@ public sealed class WorkOrdersForm : UserControl
     private readonly GridPagerBar _searchPager;
     private readonly ProgressBar _exportProgress;
     private readonly Label _lblSearchSummary;
+    private readonly GridCheckboxSelectionController<WorkOrderSearchRow> _searchSelection;
     private IReadOnlyList<WorkOrderSearchRow> _lastSearchResults = [];
     private bool _syncSubscribed;
+    private bool _suppressPrintSignaturePersist;
+
+    internal CheckBox ChkSelectAllSearchVisible { get; }
+    internal Label LblSearchSelectedCount { get; }
+    internal Button BtnExportSelectedSearch { get; }
+    internal Button BtnClearSearchSelection { get; }
+    internal DataGridView GridSearchResults => _gridSearchResults;
+    internal GridCheckboxSelectionController<WorkOrderSearchRow> SearchSelection => _searchSelection;
 
     // Tab 2 (Generar / Imprimir OT)
     private readonly TextBox _txtPrintOtNumber;
@@ -92,6 +109,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly TextBox _txtPrintSolActivo;
     private readonly PictureBox _picPrintSolSig;
     private readonly Label _lblPrintSolSigStatus;
+    private readonly Label _lblPrintMetaSummary;
     internal CheckBox ChkSigJefatura { get; }
     internal CheckBox ChkSigTecnico { get; }
     internal CheckBox ChkSigSupervisor { get; }
@@ -205,6 +223,7 @@ public sealed class WorkOrdersForm : UserControl
 
         _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
         _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 155 };
+        _cmbRequesterEntry.SelectedIndexChanged += (_, _) => UpdateEntrySignatureHint();
         _dtFechaOt = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "dd-MM-yyyy", Width = 120, Value = DateTime.Today };
 
         _chkVbs = new CheckBox
@@ -256,6 +275,68 @@ public sealed class WorkOrdersForm : UserControl
 
         _btnRemoveDetail = CambiasoTheme.CreateButton("Quitar Ítem", AppIcon.Remove, ButtonTone.Secondary, _toolTip, "Quitar fila seleccionada del detalle", width: 124, height: 32);
         _btnRemoveDetail.Click += (_, _) => RemoveSelectedEntryDetail();
+
+        TxtObservacionEntry = new TextBox
+        {
+            Name = "txtOtObservacion",
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill,
+            PlaceholderText = "Observaciones, condiciones de entrega, alcance adicional..."
+        };
+
+        TxtValorNetoEntry = new TextBox
+        {
+            Name = "txtOtValorNeto",
+            Font = _valorNetoFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            BackColor = Color.FromArgb(255, 250, 236),
+            BorderStyle = BorderStyle.FixedSingle,
+            TextAlign = HorizontalAlignment.Right,
+            Width = 175,
+            Text = "$ 0"
+        };
+        TxtValorNetoEntry.Leave += (_, _) => FormatAndValidateNetValueInput();
+        _toolTip.SetToolTip(TxtValorNetoEntry, "Valor neto de la orden en pesos chilenos ($ >= 0)");
+
+        ChkEntrySigJefatura = new CheckBox
+        {
+            Name = "chkEntrySigJefatura",
+            Text = "Jefatura",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(0, 4, 6, 2)
+        };
+        ChkEntrySigTecnico = new CheckBox
+        {
+            Name = "chkEntrySigTecnico",
+            Text = "Técnico (Sol.)",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(0, 4, 6, 2)
+        };
+        ChkEntrySigSupervisor = new CheckBox
+        {
+            Name = "chkEntrySigSupervisor",
+            Text = "Supervisor",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(0, 4, 2, 2)
+        };
+        ChkEntrySigJefatura.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
+        ChkEntrySigTecnico.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
+        ChkEntrySigSupervisor.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
+
+        _lblEntrySigHint = new Label
+        {
+            Dock = DockStyle.Fill,
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = CambiasoTheme.TextMuted,
+            AutoEllipsis = true
+        };
 
         _gridEntryDetails = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridEntryDetails);
@@ -324,7 +405,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 98, height: 30);
         _btnClearSearch.Click += (_, _) => ClearSearchTab();
 
-        _btnExportSearch = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar resultados filtrados a Excel, PDF, Word o CSV", width: 112, height: 30);
+        _btnExportSearch = CambiasoTheme.CreateButton("Exportar Lista", AppIcon.Download, ButtonTone.Secondary, _toolTip, "Exportar todos los resultados filtrados a Excel, PDF, Word o CSV", width: 138, height: 30);
         _btnExportSearch.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
             _btnExportSearch,
             this,
@@ -333,22 +414,66 @@ public sealed class WorkOrdersForm : UserControl
             () => DocumentExportService.BuildWorkOrdersReport(_lastSearchResults, BuildSearchFilterSummary()),
             file => _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Órdenes de Trabajo", "EXPORTAR_OT_LISTA", $"Exportados {_lastSearchResults.Count} registros a {Path.GetFileName(file)}."));
 
-        _gridSearchResults = new DataGridView { Dock = DockStyle.Fill };
+        ChkSelectAllSearchVisible = new CheckBox
+        {
+            Name = "chkSelectAllSearchOt",
+            Text = "Seleccionar todos (página visible)",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            Margin = new Padding(2, 7, 8, 0)
+        };
+
+        LblSearchSelectedCount = new Label
+        {
+            Name = "lblSearchSelectedCount",
+            Text = "OT seleccionadas: 0",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            Margin = new Padding(0, 8, 8, 0)
+        };
+
+        BtnExportSelectedSearch = CambiasoTheme.CreateButton("Exportar seleccionadas", AppIcon.Download, ButtonTone.Primary, _toolTip,
+            "Exportar únicamente las órdenes de trabajo seleccionadas a Excel (.xlsx), CSV (.csv) o PDF (.pdf)", width: 188, height: 30);
+        BtnExportSelectedSearch.Enabled = false;
+        BtnExportSelectedSearch.Click += (_, _) => ExportSelectedWorkOrders();
+
+        BtnClearSearchSelection = CambiasoTheme.CreateButton("Limpiar selección", AppIcon.Eraser, ButtonTone.Secondary, _toolTip,
+            "Desmarcar todas las órdenes de trabajo seleccionadas", width: 168, height: 30);
+        BtnClearSearchSelection.Enabled = false;
+
+        _gridSearchResults = new DataGridView { Name = "gridSearchOtResults", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridSearchResults);
+        _searchSelection = new GridCheckboxSelectionController<WorkOrderSearchRow>(
+            _gridSearchResults,
+            r => r.IdOt,
+            ChkSelectAllSearchVisible,
+            UpdateSearchSelectionState);
+        BtnClearSearchSelection.Click += (_, _) => _searchSelection.ClearSelection();
+
         _gridSearchResults.CellDoubleClick += (_, _) => OpenSelectedSearchOrder();
         _gridSearchResults.CellFormatting += (_, e) =>
         {
             WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridSearchResults, e.RowIndex);
-            if (row is null || e.CellStyle is null) return;
-            if (e.ColumnIndex == 6)
+            if (row is null || e.CellStyle is null || e.ColumnIndex < 0 || e.ColumnIndex >= _gridSearchResults.Columns.Count) return;
+
+            string prop = _gridSearchResults.Columns[e.ColumnIndex].DataPropertyName;
+            if (string.Equals(prop, nameof(WorkOrderGridRow.VBS), StringComparison.Ordinal))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
                 e.CellStyle.ForeColor = row.TieneVbs ? CambiasoTheme.Success : CambiasoTheme.Warning;
             }
-            else if (e.ColumnIndex == 7)
+            else if (string.Equals(prop, nameof(WorkOrderGridRow.VBJ), StringComparison.Ordinal))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
                 e.CellStyle.ForeColor = row.TieneVbj ? CambiasoTheme.Success : CambiasoTheme.Warning;
+            }
+            else if (string.Equals(prop, nameof(WorkOrderGridRow.Estado), StringComparison.Ordinal))
+            {
+                e.CellStyle.Font = CambiasoTheme.LabelFont;
+                e.CellStyle.ForeColor = row.Estado == WorkOrderStatus.Completada
+                    ? CambiasoTheme.Success
+                    : (row.Estado == WorkOrderStatus.Anulada ? CambiasoTheme.Danger : CambiasoTheme.Primary);
             }
         };
         ContextMenuHelper.AttachToGrid(_gridSearchResults, idx =>
@@ -405,6 +530,14 @@ public sealed class WorkOrdersForm : UserControl
         _txtPrintSolActivo = new TextBox { ReadOnly = true, Width = 240, BackColor = CambiasoTheme.Surface };
         _picPrintSolSig = new PictureBox { Size = new Size(124, 56), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
         _lblPrintSolSigStatus = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted, Text = "Sin firma" };
+        _lblPrintMetaSummary = new Label
+        {
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            Margin = new Padding(12, 8, 4, 2),
+            Text = "Valor Neto: $ 0"
+        };
 
         ChkSigJefatura = new CheckBox
         {
@@ -430,6 +563,9 @@ public sealed class WorkOrdersForm : UserControl
             Font = CambiasoTheme.BodyFont,
             Margin = new Padding(0, 5, 4, 2)
         };
+        ChkSigJefatura.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
+        ChkSigTecnico.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
+        ChkSigSupervisor.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
         _toolTip.SetToolTip(ChkSigJefatura, "Incluir firma de Jefatura Mantención al pie de la exportación/impresión");
         _toolTip.SetToolTip(ChkSigTecnico, "Incluir firma del Solicitante como Técnico al pie de la exportación/impresión");
         _toolTip.SetToolTip(ChkSigSupervisor, "Incluir firma de Supervisor Mantención al pie de la exportación/impresión");
@@ -509,13 +645,32 @@ public sealed class WorkOrdersForm : UserControl
 
     private void OnSyncChanged(object? sender, DataChangedEventArgs e)
     {
-        if (IsDisposed || (e.Kind & DataChangeKind.Catalogs) == 0)
+        if (IsDisposed || (e.Kind & (DataChangeKind.Catalogs | DataChangeKind.WorkOrders)) == 0)
         {
             return;
         }
 
-        if (InvokeRequired && IsHandleCreated) BeginInvoke(ReloadCatalogs);
-        else if (!InvokeRequired) ReloadCatalogs();
+        void RefreshView()
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            if ((e.Kind & DataChangeKind.Catalogs) != 0)
+            {
+                ReloadCatalogs();
+            }
+
+            RefreshNextOtBadge();
+            if ((e.Kind & DataChangeKind.WorkOrders) != 0 && _tabs.SelectedTab == _tabSearch && _lastSearchResults.Count > 0)
+            {
+                ExecuteSearchCore(showEmptyMessage: false);
+            }
+        }
+
+        if (InvokeRequired && IsHandleCreated) BeginInvoke(RefreshView);
+        else if (!InvokeRequired) RefreshView();
     }
 
     public void OpenOrderByNumber(int numeroOt)
@@ -626,15 +781,22 @@ public sealed class WorkOrdersForm : UserControl
             return;
         }
 
+        WorkOrder? target = _ctx.WorkOrderService.GetByNumber(numeroOt);
         OpenOrderByNumber(numeroOt);
         DeleteLoadedOrder();
+        if (target is not null)
+        {
+            _searchSelection.SetSelected(target.IdOt, false);
+        }
+
         ExecuteSearch();
     }
 
     private void BuildEntryTabLayout()
     {
-        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
+        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 152));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 134));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
@@ -642,7 +804,7 @@ public sealed class WorkOrdersForm : UserControl
         GroupBox grpHeader = CambiasoTheme.CreateGroupBox("Datos Generales de la Orden de Trabajo");
         grpHeader.Dock = DockStyle.Fill;
 
-        FlowLayoutPanel row1 = new() { Dock = DockStyle.Top, Height = 38, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+        FlowLayoutPanel row1 = new() { Dock = DockStyle.Top, Height = 36, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
         row1.Controls.AddRange(
         [
             WrapLabel("N° OT:", _txtNumeroOt),
@@ -651,21 +813,21 @@ public sealed class WorkOrdersForm : UserControl
             WrapLabel("Fecha:", _dtFechaOt)
         ]);
 
-        FlowLayoutPanel row2 = new() { Dock = DockStyle.Top, Height = 38, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
+        FlowLayoutPanel row2 = new() { Dock = DockStyle.Top, Height = 36, WrapContents = false, Padding = new Padding(4, 2, 4, 0) };
         row2.Controls.AddRange(
         [
             WrapLabel("Proveedor:", _cmbProviderEntry),
             WrapLabel("Solicitado por:", _cmbRequesterEntry)
         ]);
 
-        FlowLayoutPanel row3 = new() { Dock = DockStyle.Top, Height = 30, WrapContents = false, Padding = new Padding(6, 4, 4, 0) };
+        FlowLayoutPanel row3 = new() { Dock = DockStyle.Top, Height = 28, WrapContents = false, Padding = new Padding(6, 2, 4, 0) };
         _chkVbs.Margin = new Padding(0, 2, 4, 0);
         _chkVbj.Margin = new Padding(0, 2, 4, 0);
         Label lblVb = CambiasoTheme.CreateFieldLabel("Aprobaciones:");
         lblVb.Margin = new Padding(0, 3, 10, 0);
         row3.Controls.AddRange([lblVb, _chkVbs, _lblVbsDetail, _chkVbj, _lblVbjDetail]);
 
-        FlowLayoutPanel row4 = new() { Dock = DockStyle.Top, Height = 24, WrapContents = false, Padding = new Padding(6, 0, 4, 0) };
+        FlowLayoutPanel row4 = new() { Dock = DockStyle.Top, Height = 22, WrapContents = false, Padding = new Padding(6, 0, 4, 0) };
         row4.Controls.Add(_lblAuthorizedApprovers);
 
         grpHeader.Controls.Add(row4);
@@ -692,7 +854,7 @@ public sealed class WorkOrdersForm : UserControl
         descPanel.Controls.Add(_txtDetalle);
         descPanel.Controls.Add(lblDesc);
 
-        FlowLayoutPanel detBtns = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(4, 12, 0, 0) };
+        FlowLayoutPanel detBtns = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(4, 2, 0, 0) };
         detBtns.Controls.Add(_btnAddDetail);
         detBtns.Controls.Add(_btnRemoveDetail);
 
@@ -700,6 +862,48 @@ public sealed class WorkOrdersForm : UserControl
         detTbl.Controls.Add(descPanel, 1, 0);
         detTbl.Controls.Add(detBtns, 2, 0);
         grpDetail.Controls.Add(detTbl);
+
+        // Fila 2: Observación (inmediatamente después de Detalle) + Valor Neto destacado + Firmas al pie
+        TableLayoutPanel obsAndMoneySplit = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
+        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+
+        GroupBox grpObs = CambiasoTheme.CreateGroupBox("Observación de la OT");
+        grpObs.Dock = DockStyle.Fill;
+        Panel obsPad = new() { Dock = DockStyle.Fill, Padding = new Padding(4, 2, 4, 4) };
+        obsPad.Controls.Add(TxtObservacionEntry);
+        grpObs.Controls.Add(obsPad);
+
+        GroupBox grpNetAndSig = CambiasoTheme.CreateGroupBox("Valor Neto ($) y Firmas al Pie");
+        grpNetAndSig.Dock = DockStyle.Fill;
+        TableLayoutPanel netSigTbl = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(4, 2, 4, 2) };
+        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        FlowLayoutPanel moneyRow = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 0) };
+        Label lblNetTitle = new()
+        {
+            Text = "Valor Neto ($):",
+            Font = CambiasoTheme.SectionFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            AutoSize = true,
+            Margin = new Padding(0, 7, 8, 0)
+        };
+        moneyRow.Controls.AddRange([lblNetTitle, TxtValorNetoEntry]);
+
+        FlowLayoutPanel sigChecksRow = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 0) };
+        Label lblSigPick = CambiasoTheme.CreateFieldLabel("Firmas:");
+        lblSigPick.Margin = new Padding(0, 6, 6, 0);
+        sigChecksRow.Controls.AddRange([lblSigPick, ChkEntrySigJefatura, ChkEntrySigTecnico, ChkEntrySigSupervisor]);
+
+        netSigTbl.Controls.Add(moneyRow, 0, 0);
+        netSigTbl.Controls.Add(sigChecksRow, 0, 1);
+        netSigTbl.Controls.Add(_lblEntrySigHint, 0, 2);
+        grpNetAndSig.Controls.Add(netSigTbl);
+
+        obsAndMoneySplit.Controls.Add(grpObs, 0, 0);
+        obsAndMoneySplit.Controls.Add(grpNetAndSig, 1, 0);
 
         GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Ítems de la OT (doble clic para editar)");
         grpGrid.Dock = DockStyle.Fill;
@@ -710,8 +914,9 @@ public sealed class WorkOrdersForm : UserControl
 
         layout.Controls.Add(grpHeader, 0, 0);
         layout.Controls.Add(grpDetail, 0, 1);
-        layout.Controls.Add(grpGrid, 0, 2);
-        layout.Controls.Add(footer, 0, 3);
+        layout.Controls.Add(obsAndMoneySplit, 0, 2);
+        layout.Controls.Add(grpGrid, 0, 3);
+        layout.Controls.Add(footer, 0, 4);
         _tabEntry.Controls.Add(layout);
     }
 
@@ -738,10 +943,32 @@ public sealed class WorkOrdersForm : UserControl
         grpFilters.Controls.Add(f2);
         grpFilters.Controls.Add(f1);
 
-        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (orden cronológico descendente — doble clic para abrir · clic en columna para ordenar)");
+        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Resultados (marque casillas para exportar seleccionadas · doble clic para abrir OT)");
         grpResults.Dock = DockStyle.Fill;
-        grpResults.Controls.Add(_gridSearchResults);
-        grpResults.Controls.Add(_searchPager);
+
+        TableLayoutPanel resultsTbl = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        resultsTbl.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        resultsTbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        resultsTbl.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        FlowLayoutPanel selBar = new()
+        {
+            Dock = DockStyle.Top,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            MinimumSize = new Size(0, 40),
+            BackColor = CambiasoTheme.SubtleFill,
+            WrapContents = true,
+            Padding = new Padding(6, 4, 6, 4)
+        };
+        _toolTip.SetToolTip(ChkSelectAllSearchVisible, "Selecciona todos los registros de la página visible; la selección se conserva al ordenar o cambiar de página.");
+        _toolTip.SetToolTip(LblSearchSelectedCount, "Cantidad total de órdenes de trabajo marcadas (la selección se conserva al ordenar o cambiar de página).");
+        selBar.Controls.AddRange([ChkSelectAllSearchVisible, LblSearchSelectedCount, BtnExportSelectedSearch, BtnClearSearchSelection]);
+
+        resultsTbl.Controls.Add(selBar, 0, 0);
+        resultsTbl.Controls.Add(_gridSearchResults, 0, 1);
+        resultsTbl.Controls.Add(_searchPager, 0, 2);
+        grpResults.Controls.Add(resultsTbl);
 
         FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 8, 2, 4) };
         footer.Controls.AddRange([_btnExportSearch, _btnClearSearch, _exportProgress, _lblSearchSummary]);
@@ -765,7 +992,7 @@ public sealed class WorkOrdersForm : UserControl
         Label lblFirmas = CambiasoTheme.CreateFieldLabel("Firmas al pie:");
         lblFirmas.Margin = new Padding(10, 7, 4, 2);
         _toolTip.SetToolTip(lblFirmas, "Elija qué firmas se mostrarán al pie (desmarque todas para omitir firmas)");
-        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, lblFirmas, ChkSigJefatura, ChkSigTecnico, ChkSigSupervisor]);
+        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, lblFirmas, ChkSigJefatura, ChkSigTecnico, ChkSigSupervisor, _lblPrintMetaSummary]);
 
         TableLayoutPanel cards = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
@@ -890,13 +1117,18 @@ public sealed class WorkOrdersForm : UserControl
         }
 
         _loadedOrder = order;
-        _cmbProviderEntry.SelectedValue = order.IdProv;
+        SelectOrBindHistoricalProvider(_cmbProviderEntry, order.IdProv);
         if (order.IdSol.HasValue)
         {
-            _cmbRequesterEntry.SelectedValue = order.IdSol.Value;
+            SelectOrBindHistoricalRequester(_cmbRequesterEntry, order.IdSol.Value);
         }
 
         _dtFechaOt.Value = order.FechaOt;
+        TxtObservacionEntry.Text = order.Observacion;
+        TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
+        TxtValorNetoEntry.Text = $"$ {order.ValorNeto:N0}";
+        ApplyEntrySelectedSignature(order.FirmasSeleccionadas);
+
         _entryDetails.Clear();
         _entryDetails.AddRange(order.Detalles);
         RefreshEntryDetailsGrid();
@@ -913,7 +1145,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnUpdateOt.Enabled = true;
         _btnDeleteOt.Enabled = true;
         RefreshApprovalStatusBadges();
-        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · Solicitante: {order.AliasSolicitante} · {order.Detalles.Count} ítem(s)";
+        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · Neto: $ {order.ValorNeto:N0} · Firmas: {order.FirmasSeleccionadas.FormatResumen()}";
     }
 
     private void AddEntryDetail()
@@ -1113,6 +1345,14 @@ public sealed class WorkOrdersForm : UserControl
             throw new ArgumentException("Debe ingresar un número de OT válido.");
         }
 
+        if (!WorkOrderService.TryParseNetValue(TxtValorNetoEntry.Text, out decimal valorNeto) || valorNeto < 0m)
+        {
+            TxtValorNetoEntry.BackColor = Color.FromArgb(255, 232, 232);
+            TxtValorNetoEntry.Focus();
+            throw new ArgumentException("Debe ingresar un Valor Neto numérico válido mayor o igual a cero.");
+        }
+
+        TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
         int idProv = _cmbProviderEntry.SelectedValue is int p ? p : 0;
         int? idSol = _cmbRequesterEntry.SelectedValue is int s ? s : null;
         IReadOnlyList<int> pathIds = _assetTree.GetSelectedPathIds();
@@ -1123,6 +1363,9 @@ public sealed class WorkOrdersForm : UserControl
             IdProv = idProv,
             IdSol = idSol,
             FechaOt = _dtFechaOt.Value.Date,
+            Observacion = TxtObservacionEntry.Text.Trim(),
+            ValorNeto = valorNeto,
+            FirmasSeleccionadas = GetEntrySelectedSignature(),
             RutaActivo = _assetTree.CurrentBreadcrumb,
             Detalles = _entryDetails.Select(d => new WorkOrderDetail
             {
@@ -1133,6 +1376,90 @@ public sealed class WorkOrdersForm : UserControl
         };
         order.SetLevels(pathIds);
         return order;
+    }
+
+    private SignatureOption GetEntrySelectedSignature() =>
+        SignatureOptionExtensions.FromFlags(ChkEntrySigJefatura.Checked, ChkEntrySigSupervisor.Checked, ChkEntrySigTecnico.Checked);
+
+    private void ApplyEntrySelectedSignature(SignatureOption option)
+    {
+        ChkEntrySigJefatura.Checked = option.IncludeJefatura();
+        ChkEntrySigSupervisor.Checked = option.IncludeSupervisor();
+        ChkEntrySigTecnico.Checked = option.IncludeTecnico();
+        UpdateEntrySignatureHint();
+    }
+
+    private void UpdateEntrySignatureHint()
+    {
+        if (_lblEntrySigHint is null)
+        {
+            return;
+        }
+
+        SignatureOption sel = GetEntrySelectedSignature();
+        string sigText = sel.FormatResumen();
+        Requester? sol = _cmbRequesterEntry?.SelectedItem as Requester;
+        string techNote = ChkEntrySigTecnico.Checked && sol is not null
+            ? (sol.TieneFirma ? $" · Firma Técnico ({sol.Alias}): OK" : $" · {sol.Alias} sin imagen de firma (solo línea)")
+            : string.Empty;
+        _lblEntrySigHint.Text = $"Pie OT: {sigText}{techNote}";
+        _lblEntrySigHint.ForeColor = sel == SignatureOption.Ninguna ? CambiasoTheme.TextMuted : CambiasoTheme.Primary;
+    }
+
+    private void FormatAndValidateNetValueInput()
+    {
+        if (WorkOrderService.TryParseNetValue(TxtValorNetoEntry.Text, out decimal valor) && valor >= 0m)
+        {
+            TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
+            TxtValorNetoEntry.Text = $"$ {valor:N0}";
+        }
+        else
+        {
+            TxtValorNetoEntry.BackColor = Color.FromArgb(255, 232, 232);
+            _lblEntryStatus.Text = "Advertencia: Valor Neto inválido. Ingrese un monto numérico mayor o igual a cero.";
+        }
+    }
+
+    private void SelectOrBindHistoricalProvider(ComboBox combo, int idProv)
+    {
+        combo.SelectedValue = idProv;
+        if (combo.SelectedIndex >= 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<Provider> all = _ctx.MaintainerService.GetProviders(includeInactive: true);
+        Provider? match = all.FirstOrDefault(p => p.IdProv == idProv);
+        if (match is null)
+        {
+            return;
+        }
+
+        List<Provider> list = (combo.DataSource as IEnumerable<Provider>)?.ToList() ?? [];
+        list.Add(match);
+        combo.DataSource = list;
+        combo.SelectedValue = idProv;
+    }
+
+    private void SelectOrBindHistoricalRequester(ComboBox combo, int idSol)
+    {
+        combo.SelectedValue = idSol;
+        if (combo.SelectedIndex >= 0)
+        {
+            return;
+        }
+
+        IReadOnlyList<Requester> all = _ctx.MaintainerService.GetRequesters(includeInactive: true);
+        Requester? match = all.FirstOrDefault(r => r.IdSol == idSol);
+        if (match is null)
+        {
+            return;
+        }
+
+        List<Requester> list = (combo.DataSource as IEnumerable<Requester>)?.ToList() ?? [];
+        list.Add(match);
+        combo.DataSource = list;
+        combo.SelectedValue = idSol;
     }
 
     private void RefreshApprovalStatusBadges()
@@ -1179,11 +1506,16 @@ public sealed class WorkOrdersForm : UserControl
     {
         _loadedOrder = null;
         _entryDetails.Clear();
+        LoadCatalogs();
         _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
         RefreshNextOtBadge();
         _dtFechaOt.Value = DateTime.Today;
         _numCantidad.Value = 1;
         _txtDetalle.Clear();
+        TxtObservacionEntry.Clear();
+        TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
+        TxtValorNetoEntry.Text = "$ 0";
+        ApplyEntrySelectedSignature(SignatureOption.AmbasConSolicitante);
         _suppressApprovalEvents = true;
         _chkVbs.Checked = false;
         _chkVbj.Checked = false;
@@ -1197,7 +1529,11 @@ public sealed class WorkOrdersForm : UserControl
         RefreshEntryDetailsGrid();
     }
 
-    private void ExecuteSearch()
+    internal void ExecuteSearchForTest() => ExecuteSearch();
+
+    private void ExecuteSearch() => ExecuteSearchCore(showEmptyMessage: true);
+
+    private void ExecuteSearchCore(bool showEmptyMessage)
     {
         if (!_searchDateRange.TryValidate(this, out _))
         {
@@ -1222,7 +1558,10 @@ public sealed class WorkOrdersForm : UserControl
                 int realDepth = node is null ? 0 : _ctx.MaintainerService.GetAssetPath(node.IdActivo).Count;
                 if (node is null || realDepth < 2)
                 {
-                    CambiasoTheme.ShowWarning(this, "Seleccione al menos una planta (nivel 2 o superior) en el árbol izquierdo.");
+                    if (showEmptyMessage)
+                    {
+                        CambiasoTheme.ShowWarning(this, "Seleccione al menos una planta (nivel 2 o superior) en el árbol izquierdo.");
+                    }
                     return;
                 }
 
@@ -1235,15 +1574,19 @@ public sealed class WorkOrdersForm : UserControl
             _searchPager.ResetPageIndex();
             RenderSearchResultsPage();
 
-            _lblSearchSummary.Text = $"{_lastSearchResults.Count:N0} registro(s) encontrados (más recientes primero).";
-            if (_lastSearchResults.Count == 0)
+            int uniqueOts = _lastSearchResults.Select(r => r.IdOt).Distinct().Count();
+            _lblSearchSummary.Text = $"{_lastSearchResults.Count:N0} fila(s) / {uniqueOts:N0} OT única(s) (más recientes primero).";
+            if (showEmptyMessage && _lastSearchResults.Count == 0)
             {
                 CambiasoTheme.ShowInfo(this, "No se encontraron órdenes de trabajo con los criterios indicados.");
             }
         }
         catch (Exception ex)
         {
-            CambiasoTheme.ShowWarning(this, ex.Message);
+            if (showEmptyMessage)
+            {
+                CambiasoTheme.ShowWarning(this, ex.Message);
+            }
         }
         finally
         {
@@ -1258,17 +1601,53 @@ public sealed class WorkOrdersForm : UserControl
             slice.Select(r => new WorkOrderGridRow(r)));
         _searchPager.SetState(safePage, _searchPager.PageSize, _lastSearchResults.Count);
 
-        if (_gridSearchResults.Columns.Count >= 8)
+        if (_gridSearchResults.Columns.Count >= 13)
         {
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 0, "N° OT", 7);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 1, "Fecha", 9, "dd-MM-yyyy");
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 2, null, 17);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 3, null, 11);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 4, "Cant.", 5);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 5, null, 31);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 6, "VB Supervisor", 10);
-            GridBindingHelper.ConfigureColumn(_gridSearchResults, 7, "VB Jefatura", 10);
+            _searchSelection.ConfigureDataColumn(0, "N° OT", 9);
+            _searchSelection.ConfigureDataColumn(1, "Fecha", 11, "dd-MM-yyyy");
+            _searchSelection.ConfigureDataColumn(2, "Proveedor", 14);
+            _searchSelection.ConfigureDataColumn(3, "Solicitante", 10);
+            _searchSelection.ConfigureDataColumn(4, "Cant.", 6);
+            _searchSelection.ConfigureDataColumn(5, "Detalle", 16);
+            _searchSelection.ConfigureDataColumn(6, "Obs.", 8);
+            _searchSelection.ConfigureDataColumn(7, "Valor Neto", 10, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            _searchSelection.ConfigureDataColumn(8, "Estado", 7);
+            _searchSelection.ConfigureDataColumn(9, "Firmas", 9);
+            _searchSelection.ConfigureDataColumn(10, "VBS", 6);
+            _searchSelection.ConfigureDataColumn(11, "VBJ", 6);
         }
+
+        _searchSelection.EnsureSelectColumnAndSync();
+        UpdateSearchSelectionState();
+    }
+
+    private void UpdateSearchSelectionState()
+    {
+        int count = _searchSelection.SelectedCount;
+        LblSearchSelectedCount.Text = $"OT seleccionadas: {count:N0}";
+        BtnExportSelectedSearch.Enabled = count > 0;
+        BtnClearSearchSelection.Enabled = count > 0;
+    }
+
+    private void ExportSelectedWorkOrders()
+    {
+        IReadOnlyList<int> selectedIds = _searchSelection.SelectedIds;
+        if (selectedIds.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Debe seleccionar al menos una orden de trabajo mediante su casilla de verificación.");
+            return;
+        }
+
+        ExportUiHelper.ShowSelectedWorkOrdersExportMenu(
+            BtnExportSelectedSearch,
+            this,
+            _ctx.DocumentExportService,
+            () => _ctx.WorkOrderService.GetByIds(_session, _searchSelection.SelectedIds),
+            (file, count) => _ctx.Audit.Log(
+                _session.Usuario.AliasUsuario,
+                "Órdenes de Trabajo",
+                "EXPORTAR_OT_SELECCIONADAS",
+                $"Exportadas {count} OT(s) seleccionadas a {Path.GetFileName(file)}."));
     }
 
     private void ClearSearchTab()
@@ -1281,9 +1660,11 @@ public sealed class WorkOrdersForm : UserControl
         _chkPendingVb.Checked = false;
         _txtSearchKeyword.Clear();
         _lastSearchResults = [];
+        _searchSelection.ClearSelection();
         _gridSearchResults.DataSource = null;
         _searchPager.SetState(0, _searchPager.PageSize, 0);
-        _lblSearchSummary.Text = "Filtros restablecidos.";
+        _lblSearchSummary.Text = "Filtros y selección restablecidos.";
+        UpdateSearchSelectionState();
     }
 
     private string BuildSearchFilterSummary()
@@ -1318,16 +1699,31 @@ public sealed class WorkOrdersForm : UserControl
         }
 
         _printOrder = order;
-        _cmbProviderPrint.SelectedValue = order.IdProv;
+        SelectOrBindHistoricalProvider(_cmbProviderPrint, order.IdProv);
         if (order.IdSol.HasValue)
         {
-            _cmbRequesterPrint.SelectedValue = order.IdSol.Value;
+            SelectOrBindHistoricalRequester(_cmbRequesterPrint, order.IdSol.Value);
+        }
+
+        _suppressPrintSignaturePersist = true;
+        try
+        {
+            ChkSigJefatura.Checked = order.FirmasSeleccionadas.IncludeJefatura();
+            ChkSigSupervisor.Checked = order.FirmasSeleccionadas.IncludeSupervisor();
+            ChkSigTecnico.Checked = order.FirmasSeleccionadas.IncludeTecnico();
+        }
+        finally
+        {
+            _suppressPrintSignaturePersist = false;
         }
 
         SyncPrintProviderInfo();
         SyncPrintRequesterInfo();
         _txtPrintSolNombre.Text = order.SolicitanteDisplayNombre;
         _txtPrintSolActivo.Text = !string.IsNullOrWhiteSpace(order.RutaActivo) ? order.RutaActivo : _assetTree.CurrentBreadcrumb;
+        _lblPrintMetaSummary.Text = $"Valor Neto: $ {order.ValorNeto:N0}";
+        _toolTip.SetToolTip(_lblPrintMetaSummary,
+            string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones adicionales" : $"Observación: {order.Observacion}");
         _printDetails.Clear();
         _printDetails.AddRange(order.Detalles);
         RefreshPrintDetailsGrid();
@@ -1475,6 +1871,10 @@ public sealed class WorkOrdersForm : UserControl
             FirmaSolicitantePreviewPng = sol?.FirmaPreviewPng ?? _printOrder?.FirmaSolicitantePreviewPng,
             FirmaSolicitanteTipo = !string.IsNullOrWhiteSpace(sol?.FirmaTipo) ? sol.FirmaTipo : (_printOrder?.FirmaSolicitanteTipo ?? string.Empty),
             FirmaSolicitanteNombre = !string.IsNullOrWhiteSpace(sol?.FirmaNombre) ? sol.FirmaNombre : (_printOrder?.FirmaSolicitanteNombre ?? string.Empty),
+            Observacion = _printOrder?.Observacion ?? string.Empty,
+            ValorNeto = _printOrder?.ValorNeto ?? 0m,
+            Estado = _printOrder?.Estado ?? WorkOrderStatus.Abierta,
+            FirmasSeleccionadas = GetSelectedSignature(),
             RutaActivo = !string.IsNullOrWhiteSpace(_txtPrintSolActivo.Text) ? _txtPrintSolActivo.Text : (_printOrder?.RutaActivo ?? _assetTree.CurrentBreadcrumb),
             Detalles = [.. _printDetails],
             VistosBuenos = _printOrder?.VistosBuenos ?? []
@@ -1485,6 +1885,30 @@ public sealed class WorkOrdersForm : UserControl
 
     private SignatureOption GetSelectedSignature() =>
         SignatureOptionExtensions.FromFlags(ChkSigJefatura.Checked, ChkSigSupervisor.Checked, ChkSigTecnico.Checked);
+
+    private void PersistPrintSignatureSelection()
+    {
+        if (_suppressPrintSignaturePersist || _printOrder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            SignatureOption sel = GetSelectedSignature();
+            _ctx.WorkOrderService.UpdateSignatures(_session, _printOrder.IdOt, sel);
+            _printOrder.FirmasSeleccionadas = sel;
+            if (_loadedOrder is not null && _loadedOrder.IdOt == _printOrder.IdOt)
+            {
+                _loadedOrder.FirmasSeleccionadas = sel;
+                ApplyEntrySelectedSignature(sel);
+            }
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
 
     private void OpenWorkOrderExportMenu()
     {
@@ -1542,10 +1966,25 @@ public sealed class WorkOrdersForm : UserControl
     private void ClearPrintTab()
     {
         _printOrder = null;
+        LoadCatalogs();
         _txtPrintOtNumber.Clear();
         _printDetails.Clear();
         _txtPrintWork.Clear();
         _numPrintCantidad.Value = 1;
+        _lblPrintMetaSummary.Text = "Valor Neto: $ 0";
+        _toolTip.SetToolTip(_lblPrintMetaSummary, "Valor neto de la orden");
+        _suppressPrintSignaturePersist = true;
+        try
+        {
+            ChkSigJefatura.Checked = true;
+            ChkSigTecnico.Checked = true;
+            ChkSigSupervisor.Checked = true;
+        }
+        finally
+        {
+            _suppressPrintSignaturePersist = false;
+        }
+
         SyncPrintProviderInfo();
         SyncPrintRequesterInfo();
         RefreshPrintDetailsGrid();
@@ -1622,6 +2061,7 @@ public sealed class WorkOrdersForm : UserControl
                 _picPrintSolSig.Image = null;
             }
 
+            _valorNetoFont.Dispose();
             _toolTip.Dispose();
         }
 
@@ -1638,6 +2078,10 @@ public sealed class WorkOrdersForm : UserControl
         public string Solicitante => Source.Solicitante;
         public int Cantidad => Source.Cantidad;
         public string Detalle => Source.Detalle;
+        public string Observacion => Source.Observacion;
+        public decimal ValorNeto => Source.ValorNeto;
+        public string Estado => Source.EstadoDisplay;
+        public string Firmas => Source.FirmasDisplay;
         public string VBS => Source.VbsDisplay;
         public string VBJ => Source.VbjDisplay;
     }

@@ -4,19 +4,21 @@ using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
 using Sispro.Services;
+using Sispro.UI.Dialogs;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Controls;
 
 /// <summary>
 /// Control unificado para gestionar "Solicitado Por" y su Firma Digital (PNG, JPG o PDF),
-/// reutilizado en Gestión de Usuarios y en Mantenedores con sincronización inmediata.
+/// con selección múltiple, consulta de OT relacionadas, reasignación y sincronización inmediata.
 /// </summary>
 public sealed class RequesterManagerControl : UserControl
 {
     private readonly SisproApplicationContext _ctx;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
+    private readonly bool _isAdmin;
 
     private IReadOnlyList<Requester> _allRequesters = [];
     private int _selectedId;
@@ -44,6 +46,8 @@ public sealed class RequesterManagerControl : UserControl
     internal Label LblSignatureMeta { get; }
     internal Label LblModeBanner { get; }
     internal Label LblStats { get; }
+    internal Label LblSelectedCount { get; }
+    internal CheckBox ChkSelectAllVisible { get; }
 
     internal Button BtnNuevo { get; }
     internal Button BtnGuardar { get; }
@@ -52,6 +56,9 @@ public sealed class RequesterManagerControl : UserControl
     internal Button BtnActivar { get; }
     internal Button BtnDesactivar { get; }
     internal Button BtnEliminar { get; }
+    internal Button BtnConsultarOt { get; }
+    internal Button BtnReasignar { get; }
+    internal Button BtnClearSelection { get; }
     internal Button BtnAdjuntarFirma { get; }
     internal Button BtnQuitarFirma { get; }
     internal Button BtnExportar { get; }
@@ -60,11 +67,13 @@ public sealed class RequesterManagerControl : UserControl
     internal TextBox TxtSearch { get; }
     internal ComboBox CmbFilter { get; }
     internal DataGridView GridRequesters { get; }
+    internal GridCheckboxSelectionController<Requester> SelectionController { get; }
 
     public RequesterManagerControl(SisproApplicationContext ctx, UserSession session)
     {
         _ctx = ctx;
         _session = session;
+        _isAdmin = _ctx.MaintainerService.IsAdministrator(_session);
         CambiasoTheme.EnableDoubleBuffering(this);
         BackColor = CambiasoTheme.Surface;
         Font = CambiasoTheme.BodyFont;
@@ -135,14 +144,20 @@ public sealed class RequesterManagerControl : UserControl
         BtnCancelar = CreateActionButton("Cancelar", AppIcon.Cancel, ButtonTone.Secondary, "Cancelar edición y restaurar datos");
         BtnCancelar.Click += (_, _) => CancelEdit();
 
-        BtnActivar = CreateActionButton("Activar", AppIcon.Power, ButtonTone.Primary, "Activar solicitante seleccionado");
+        BtnActivar = CreateActionButton("Activar", AppIcon.Power, ButtonTone.Primary, "Activar solicitante(s) seleccionado(s) (solo Administrador)");
         BtnActivar.Click += (_, _) => SetSelectedActive(true);
 
-        BtnDesactivar = CreateActionButton("Desactivar", AppIcon.Ban, ButtonTone.Secondary, "Desactivar solicitante seleccionado");
+        BtnDesactivar = CreateActionButton("Desactivar", AppIcon.Ban, ButtonTone.Secondary, "Desactivar solicitante(s) conservando historial (solo Administrador)");
         BtnDesactivar.Click += (_, _) => SetSelectedActive(false);
 
-        BtnEliminar = CreateActionButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Eliminar o desactivar solicitante seleccionado");
+        BtnEliminar = CreateActionButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Eliminar o gestionar dependencias de solicitante(s) (solo Administrador)");
         BtnEliminar.Click += (_, _) => DeleteSelectedRequester();
+
+        BtnConsultarOt = CreateActionButton("Consultar OT", AppIcon.Search, ButtonTone.Accent, "Consultar órdenes de trabajo asociadas a los seleccionados");
+        BtnConsultarOt.Click += (_, _) => InspectSelectedRequesters();
+
+        BtnReasignar = CreateActionButton("Reasignar", AppIcon.MoveRight, ButtonTone.Secondary, "Reasignar OTs de los solicitantes seleccionados hacia otro activo (solo Administrador)");
+        BtnReasignar.Click += (_, _) => InspectSelectedRequesters();
 
         BtnExportar = CreateActionButton("Exportar", AppIcon.Download, ButtonTone.Accent, "Exportar catálogo de solicitantes y firmas");
         BtnExportar.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
@@ -155,8 +170,26 @@ public sealed class RequesterManagerControl : UserControl
         BtnRefrescar = CreateActionButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, "Recargar solicitantes y firmas desde SQLite");
         BtnRefrescar.Click += (_, _) => ReloadRequesters(_selectedId > 0 ? _selectedId : null);
 
+        ChkSelectAllVisible = new CheckBox
+        {
+            Name = "chkSelectAllSolicitantes",
+            Text = "Seleccionar todos visibles",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            Margin = new Padding(0, 6, 8, 0)
+        };
+        LblSelectedCount = new Label
+        {
+            Text = "Sel.: 0",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            Margin = new Padding(0, 7, 10, 0)
+        };
+        BtnClearSelection = CreateActionButton("Limpiar Sel.", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar casillas marcadas");
+
         // Filtros y Grilla
-        TxtSearch = new TextBox { Width = 220, PlaceholderText = "Buscar por alias, nombre, correo o archivo..." };
+        TxtSearch = new TextBox { Width = 200, PlaceholderText = "Buscar por alias, nombre, correo o archivo..." };
         TxtSearch.TextChanged += (_, _) => ApplyFilterAndBind();
 
         CmbFilter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 148 };
@@ -168,6 +201,13 @@ public sealed class RequesterManagerControl : UserControl
 
         GridRequesters = new DataGridView { Name = "gridSolicitantes", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(GridRequesters);
+        SelectionController = new GridCheckboxSelectionController<Requester>(
+            GridRequesters,
+            r => r.IdSol,
+            ChkSelectAllVisible,
+            UpdateActionStates);
+        BtnClearSelection.Click += (_, _) => SelectionController.ClearSelection();
+
         GridRequesters.SelectionChanged += (_, _) => OnGridSelectionChanged();
         GridRequesters.CellClick += (_, _) => OnGridSelectionChanged();
         GridRequesters.CellDoubleClick += (_, _) => TxtNombre.Focus();
@@ -181,15 +221,18 @@ public sealed class RequesterManagerControl : UserControl
                 return [ContextMenuHelper.Item("Nuevo solicitante", AppIcon.Add, CambiasoTheme.Primary, EnterNewMode)];
             }
 
+            List<int> targets = SelectionController.SelectedCount > 0 ? SelectionController.SelectedIds.ToList() : [req.IdSol];
             return
             [
                 ContextMenuHelper.Item("Editar solicitante", AppIcon.Edit, CambiasoTheme.Primary, () => { LoadRequesterToEditor(req); TxtNombre.Focus(); }),
                 ContextMenuHelper.Item("Adjuntar / Cambiar firma (PNG/JPG/PDF)…", AppIcon.FileText, CambiasoTheme.Accent, () => { LoadRequesterToEditor(req); BrowseSignatureFile(); }),
                 ContextMenuHelper.Item("Quitar firma digital", AppIcon.Remove, CambiasoTheme.Warning, () => { LoadRequesterToEditor(req); ClearSignature(); }, enabled: req.TieneFirma),
+                ContextMenuHelper.Item("Consultar OT asociadas…", AppIcon.Search, CambiasoTheme.Accent, () => MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted)),
                 ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => ToggleRequesterActive(req, true), enabled: !req.Activo),
-                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => ToggleRequesterActive(req, false), enabled: req.Activo),
-                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { LoadRequesterToEditor(req); DeleteSelectedRequester(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => ToggleRequesterActive(req, true), enabled: _isAdmin && !req.Activo),
+                ContextMenuHelper.Item("Desactivar / Verificar OT…", AppIcon.Ban, CambiasoTheme.Warning, () => { MaintainerBatchUiHelper.DeactivateChecked(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted); }, enabled: _isAdmin && (req.Activo || targets.Count > 1)),
+                ContextMenuHelper.Item("Reasignar relaciones en OT…", AppIcon.MoveRight, CambiasoTheme.Primary, () => MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted), enabled: _isAdmin),
+                ContextMenuHelper.Item("Eliminar / Verificar OT…", AppIcon.Delete, CambiasoTheme.Danger, () => { MaintainerBatchUiHelper.DeleteChecked(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted); }, enabled: _isAdmin),
                 ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Nuevo solicitante", AppIcon.Add, CambiasoTheme.Accent, EnterNewMode)
             ];
@@ -408,17 +451,61 @@ public sealed class RequesterManagerControl : UserControl
 
     private void SaveRequester(bool isUpdate) => SaveFromEditor(isUpdate, showConfirmationDialog: true);
 
+    private IReadOnlyCollection<int> GetTargetIds()
+    {
+        if (SelectionController.SelectedCount > 0)
+        {
+            return SelectionController.SelectedIds;
+        }
+
+        return _selectedId > 0 ? [_selectedId] : [];
+    }
+
+    private void InspectSelectedRequesters()
+    {
+        if (MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Solicitante, GetTargetIds(), OnBatchCompleted))
+        {
+            SelectionController.ClearSelection();
+        }
+    }
+
+    private void OnBatchCompleted()
+    {
+        ReloadRequesters();
+        EnterNewMode();
+        RequestersChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     private void SetSelectedActive(bool active)
     {
-        if (_selectedId <= 0)
+        IReadOnlyCollection<int> targets = GetTargetIds();
+        if (targets.Count == 0)
         {
+            CambiasoTheme.ShowWarning(this, "Seleccione o marque al menos un solicitante.");
             return;
         }
 
-        Requester? req = _allRequesters.FirstOrDefault(r => r.IdSol == _selectedId);
-        if (req is not null)
+        if (!active)
         {
-            ToggleRequesterActive(req, active);
+            if (MaintainerBatchUiHelper.DeactivateChecked(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted))
+            {
+                SelectionController.ClearSelection();
+            }
+
+            return;
+        }
+
+        try
+        {
+            MaintainerBatchResult res = _ctx.MaintainerService.SetRequestersActiveBatch(_session, targets, true);
+            CambiasoTheme.ShowInfo(this, res.BuildSummary());
+            SelectionController.ClearSelection();
+            ReloadRequesters(_selectedId > 0 ? _selectedId : null);
+            RequestersChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
         }
     }
 
@@ -438,28 +525,16 @@ public sealed class RequesterManagerControl : UserControl
 
     private void DeleteSelectedRequester()
     {
-        if (_selectedId <= 0)
+        IReadOnlyCollection<int> targets = GetTargetIds();
+        if (targets.Count == 0)
         {
-            CambiasoTheme.ShowWarning(this, "Seleccione un solicitante.");
+            CambiasoTheme.ShowWarning(this, "Seleccione o marque al menos un solicitante.");
             return;
         }
 
-        if (!CambiasoTheme.Confirm(this, $"¿Eliminar o desactivar al solicitante '{TxtAlias.Text}'?\n\nSi posee OTs históricas, se desactivará preservando el historial."))
+        if (MaintainerBatchUiHelper.DeleteChecked(this, _ctx, _session, MaintainerEntityKind.Solicitante, targets, OnBatchCompleted))
         {
-            return;
-        }
-
-        try
-        {
-            _ctx.MaintainerService.DeleteRequester(_session, _selectedId);
-            CambiasoTheme.ShowInfo(this, "Operación sobre solicitante completada.");
-            ReloadRequesters();
-            EnterNewMode();
-            RequestersChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowError(this, ex.Message);
+            SelectionController.ClearSelection();
         }
     }
 
@@ -495,15 +570,28 @@ public sealed class RequesterManagerControl : UserControl
     private void UpdateActionStates()
     {
         bool isEdit = _selectedId > 0;
+        int checkedCount = SelectionController.SelectedCount;
+        bool hasAnyTarget = checkedCount > 0 || isEdit;
         bool hasSig = _pendingSignature is not null || (!_clearSignature && ((_existingPreviewPng is { Length: > 0 }) || (_existingRawBytes is { Length: > 0 })));
         Requester? current = isEdit ? _allRequesters.FirstOrDefault(r => r.IdSol == _selectedId) : null;
+
+        LblSelectedCount.Text = $"Sel.: {checkedCount}";
 
         BtnGuardar.Enabled = !isEdit;
         BtnActualizar.Enabled = isEdit;
         BtnCancelar.Enabled = isEdit;
-        BtnActivar.Enabled = isEdit && current is { Activo: false };
-        BtnDesactivar.Enabled = isEdit && current is { Activo: true };
-        BtnEliminar.Enabled = isEdit;
+        BtnConsultarOt.Enabled = hasAnyTarget;
+
+        BtnActivar.Visible = _isAdmin;
+        BtnDesactivar.Visible = _isAdmin;
+        BtnEliminar.Visible = _isAdmin;
+        BtnReasignar.Visible = _isAdmin;
+
+        BtnActivar.Enabled = _isAdmin && (checkedCount > 0 || (isEdit && current is { Activo: false }));
+        BtnDesactivar.Enabled = _isAdmin && (checkedCount > 0 || (isEdit && current is { Activo: true }));
+        BtnEliminar.Enabled = _isAdmin && hasAnyTarget;
+        BtnReasignar.Enabled = _isAdmin && hasAnyTarget;
+        BtnClearSelection.Enabled = checkedCount > 0;
         BtnQuitarFirma.Enabled = hasSig;
 
         LblModeBanner.Text = isEdit
@@ -546,17 +634,19 @@ public sealed class RequesterManagerControl : UserControl
             GridRequesters.DataSource = new SortableBindingList<RequesterGridRow>(
                 filtered.Select(r => new RequesterGridRow(r)));
 
-            if (GridRequesters.Columns.Count >= 8)
+            if (GridRequesters.Columns.Count >= 9)
             {
-                GridBindingHelper.ConfigureColumn(GridRequesters, 0, "ID", 6);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 1, "Solicitado Por", 13);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 2, "Nombre Completo", 22);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 3, "Teléfono", 11);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 4, "Correo", 20);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 5, "Firma Digital", 10);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 6, "Archivo Firma", 11);
-                GridBindingHelper.ConfigureColumn(GridRequesters, 7, "Estado", 7);
+                SelectionController.ConfigureDataColumn(0, "ID", 6);
+                SelectionController.ConfigureDataColumn(1, "Solicitado Por", 13);
+                SelectionController.ConfigureDataColumn(2, "Nombre Completo", 22);
+                SelectionController.ConfigureDataColumn(3, "Teléfono", 11);
+                SelectionController.ConfigureDataColumn(4, "Correo", 20);
+                SelectionController.ConfigureDataColumn(5, "Firma Digital", 10);
+                SelectionController.ConfigureDataColumn(6, "Archivo Firma", 11);
+                SelectionController.ConfigureDataColumn(7, "Estado", 7);
             }
+
+            SelectionController.EnsureSelectColumnAndSync();
 
             int withSig = _allRequesters.Count(r => r.TieneFirma);
             LblStats.Text = $"Mostrando {filtered.Count} de {_allRequesters.Count} solicitante(s) · {withSig} con firma digital";
@@ -569,7 +659,7 @@ public sealed class RequesterManagerControl : UserControl
                     {
                         GridRequesters.ClearSelection();
                         GridRequesters.Rows[i].Selected = true;
-                        GridRequesters.CurrentCell = GridRequesters.Rows[i].Cells[1];
+                        GridRequesters.CurrentCell = GridRequesters.Rows[i].Cells[2];
                         break;
                     }
                 }
@@ -611,17 +701,18 @@ public sealed class RequesterManagerControl : UserControl
     private void OnGridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         Requester? r = GridBindingHelper.GetRowSource<Requester>(GridRequesters, e.RowIndex);
-        if (r is null || e.CellStyle is null)
+        if (r is null || e.CellStyle is null || e.ColumnIndex < 0 || e.ColumnIndex >= GridRequesters.Columns.Count)
         {
             return;
         }
 
-        if (e.ColumnIndex == 5)
+        string prop = GridRequesters.Columns[e.ColumnIndex].DataPropertyName;
+        if (string.Equals(prop, nameof(RequesterGridRow.Firma), StringComparison.Ordinal))
         {
             e.CellStyle.Font = CambiasoTheme.LabelFont;
             e.CellStyle.ForeColor = r.TieneFirma ? CambiasoTheme.Success : CambiasoTheme.TextMuted;
         }
-        else if (e.ColumnIndex == 7)
+        else if (string.Equals(prop, nameof(RequesterGridRow.Estado), StringComparison.Ordinal))
         {
             e.CellStyle.Font = CambiasoTheme.LabelFont;
             e.CellStyle.ForeColor = r.Activo ? CambiasoTheme.Success : CambiasoTheme.Danger;
@@ -665,8 +756,8 @@ public sealed class RequesterManagerControl : UserControl
             RowCount = 4,
             Padding = new Padding(4)
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 212));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 204));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -734,16 +825,16 @@ public sealed class RequesterManagerControl : UserControl
         topSplit.Controls.Add(grpSig, 1, 0);
 
         // 2. Action Bar
-        FlowLayoutPanel actionBar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(2, 6, 2, 2) };
-        actionBar.Controls.AddRange([BtnNuevo, BtnGuardar, BtnActualizar, BtnCancelar, BtnActivar, BtnDesactivar, BtnEliminar, BtnExportar, BtnRefrescar]);
+        FlowLayoutPanel actionBar = new() { Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(2, 4, 2, 2) };
+        actionBar.Controls.AddRange([BtnNuevo, BtnGuardar, BtnActualizar, BtnCancelar, BtnConsultarOt, BtnReasignar, BtnActivar, BtnDesactivar, BtnEliminar, BtnClearSelection, BtnExportar, BtnRefrescar]);
 
         // 3. Filter Bar
         FlowLayoutPanel filterBar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(2, 4, 2, 2) };
         Label lblBuscar = CambiasoTheme.CreateFieldLabel("Buscar:");
-        lblBuscar.Margin = new Padding(0, 6, 6, 0);
+        lblBuscar.Margin = new Padding(6, 6, 6, 0);
         Label lblFiltro = CambiasoTheme.CreateFieldLabel("Mostrar:");
-        lblFiltro.Margin = new Padding(12, 6, 6, 0);
-        filterBar.Controls.AddRange([lblBuscar, TxtSearch, lblFiltro, CmbFilter, LblStats]);
+        lblFiltro.Margin = new Padding(10, 6, 6, 0);
+        filterBar.Controls.AddRange([ChkSelectAllVisible, LblSelectedCount, lblBuscar, TxtSearch, lblFiltro, CmbFilter, LblStats]);
 
         // 4. Grid
         GroupBox grpGrid = CambiasoTheme.CreateGroupBox("CATÁLOGO DE SOLICITADOS POR Y FIRMAS DIGITALES");

@@ -74,11 +74,16 @@ public sealed class WorkOrderSearchRow
 {
     public int IdOt { get; set; }
     public int NumeroOt { get; set; }
+    public string TipoOrden { get; set; } = "Externa";
     public string Proveedor { get; set; } = string.Empty;
     public string Solicitante { get; set; } = string.Empty;
     public DateTime Fecha { get; set; }
     public int Cantidad { get; set; }
     public string Detalle { get; set; } = string.Empty;
+    public string Observacion { get; set; } = string.Empty;
+    public decimal ValorNeto { get; set; }
+    public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
+    public SignatureOption FirmasSeleccionadas { get; set; } = SignatureOption.AmbasConSolicitante;
     public string RutaActivo { get; set; } = string.Empty;
     public bool TieneVbs { get; set; }
     public string VbsUsuario { get; set; } = string.Empty;
@@ -88,6 +93,12 @@ public sealed class WorkOrderSearchRow
     public DateTime? VbjFecha { get; set; }
     public int IdDet { get; set; }
 
+    public string EstadoDisplay => Estado.ToString();
+
+    public string FirmasDisplay => FirmasSeleccionadas.FormatResumen();
+
+    public string ValorNetoDisplay => $"$ {ValorNeto:N0}";
+
     public string VbsDisplay => TieneVbs
         ? (string.IsNullOrWhiteSpace(VbsUsuario) ? "Sí" : $"Sí ({VbsUsuario})")
         : "Pendiente";
@@ -95,6 +106,77 @@ public sealed class WorkOrderSearchRow
     public string VbjDisplay => TieneVbj
         ? (string.IsNullOrWhiteSpace(VbjUsuario) ? "Sí" : $"Sí ({VbjUsuario})")
         : "Pendiente";
+}
+
+public enum MaintainerEntityKind
+{
+    Proveedor = 1,
+    Solicitante = 2,
+    Firma = 3,
+    Activo = 4
+}
+
+public sealed class RelatedWorkOrderInfo
+{
+    public int IdOt { get; set; }
+    public int NumeroOt { get; set; }
+    public DateTime FechaOt { get; set; }
+    public WorkOrderStatus Estado { get; set; }
+    public string TipoRelacion { get; set; } = string.Empty;
+    public string RegistroAsociado { get; set; } = string.Empty;
+    public string InfoAdicional { get; set; } = string.Empty;
+}
+
+public sealed class MaintainerDependencyReport
+{
+    public MaintainerEntityKind EntityKind { get; set; }
+    public IReadOnlyList<int> SelectedIds { get; set; } = [];
+    public IReadOnlyList<string> SelectedLabels { get; set; } = [];
+    public IReadOnlyList<RelatedWorkOrderInfo> RelatedWorkOrders { get; set; } = [];
+    public int DependentChildNodesCount { get; set; }
+}
+
+public sealed class MaintainerBatchResult
+{
+    public string ActionName { get; set; } = string.Empty;
+    public List<string> Succeeded { get; set; } = [];
+    public List<(string Target, string Reason)> FailedOrSkipped { get; set; } = [];
+    public int ReassignedWorkOrders { get; set; }
+    public int DeletedWorkOrders { get; set; }
+
+    public string BuildSummary()
+    {
+        List<string> lines =
+        [
+            $"{ActionName}: {Succeeded.Count} registro(s) procesado(s), {FailedOrSkipped.Count} omitido(s)/con error."
+        ];
+        if (ReassignedWorkOrders > 0)
+        {
+            lines.Add($"OTs reasignadas: {ReassignedWorkOrders}.");
+        }
+
+        if (DeletedWorkOrders > 0)
+        {
+            lines.Add($"OTs eliminadas explícitamente: {DeletedWorkOrders}.");
+        }
+
+        if (Succeeded.Count > 0)
+        {
+            lines.Add("Procesados: " + string.Join(", ", Succeeded.Take(6)) + (Succeeded.Count > 6 ? $" (+{Succeeded.Count - 6} más)" : string.Empty));
+        }
+
+        foreach ((string target, string reason) in FailedOrSkipped.Take(6))
+        {
+            lines.Add($"- {target}: {reason}");
+        }
+
+        if (FailedOrSkipped.Count > 6)
+        {
+            lines.Add($"... y {FailedOrSkipped.Count - 6} registro(s) adicional(es) con incidencia.");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
 }
 
 public sealed record ChartDataPoint(string Label, double Value);

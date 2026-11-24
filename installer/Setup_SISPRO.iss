@@ -1,6 +1,6 @@
 #define MyAppName "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"
 #define MyAppShortName "SISPRO"
-#define MyAppVersion "4.2.1"
+#define MyAppVersion "4.3.0"
 #define MyAppPublisher "Cambiaso Hnos S.A.C."
 #define MyAppExeName "SISPRO.exe"
 #define MyAppURL "https://github.com/barriagada666-collab/SISPRO-Proveedores"
@@ -14,8 +14,8 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
-AppCopyright=Copyright © 2026 {#MyAppPublisher} — Departamento Mantención
-AppComments=Sistema de Gestión de Proveedores, Órdenes de Trabajo Externas, Solicitantes con Firmas Digitales, Usuarios y Grupos (.NET 10)
+AppCopyright=Copyright © 2026 {#MyAppPublisher}
+AppComments=Sistema corporativo para gestión de proveedores, órdenes de trabajo externas, catálogo de activos, firmas digitales y control de usuarios (.NET 10).
 DefaultDirName=C:\Temp
 DisableDirPage=no
 DirExistsWarning=no
@@ -43,7 +43,7 @@ RestartApplications=no
 VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppShortName}
-VersionInfoDescription=Instalador Oficial de SISPRO v{#MyAppVersion} (.NET 10)
+VersionInfoDescription=Instalador de SISPRO v{#MyAppVersion} (.NET 10)
 VersionInfoCopyright=Copyright © 2026 {#MyAppPublisher}
 
 [Languages]
@@ -51,7 +51,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
 WelcomeLabel1=Bienvenido al Asistente de Instalación de [name]
-WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye base de datos SQLite migrada, gestión de solicitantes con firma digital, aprobadores VB, usuarios/grupos y exportaciones corporativas.
+WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye gestión integral de órdenes de trabajo externas, exportación masiva, firmas digitales, árbol de activos y control de usuarios y permisos.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

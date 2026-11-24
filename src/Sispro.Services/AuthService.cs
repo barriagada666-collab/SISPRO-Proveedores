@@ -130,6 +130,43 @@ public sealed class AuthService(IUserRepository users, IAuditRepository audit)
             "Acceso interrumpido: el usuario canceló el cambio obligatorio de contraseña del primer inicio de sesión.");
     }
 
+    public static bool IsAdministrator(UserSession? session, IUserRepository? users)
+    {
+        if (session is null || !session.Usuario.Activo || session.Usuario.Nivel != UserRoleLevel.Administrador)
+        {
+            return false;
+        }
+
+        if (users is null)
+        {
+            return true;
+        }
+
+        User? dbUser = users.GetById(session.Usuario.IdUsuario);
+        return dbUser is not null && dbUser.Activo && dbUser.Nivel == UserRoleLevel.Administrador;
+    }
+
+    public static void EnsureAdministrator(
+        UserSession? session,
+        IUserRepository? users,
+        IAuditRepository audit,
+        string module,
+        string actionDescription)
+    {
+        if (IsAdministrator(session, users))
+        {
+            return;
+        }
+
+        audit.Log(
+            session?.Usuario.AliasUsuario ?? "ANONIMO",
+            module,
+            "ACCESO_NO_AUTORIZADO",
+            $"Intento no autorizado: {actionDescription}.");
+
+        throw new UnauthorizedAccessException($"Acceso denegado: la acción '{actionDescription}' es exclusiva del perfil Administrador.");
+    }
+
     public static void EnsurePermission(UserSession? session, Func<UserPermissions, bool> predicate, string actionDescription)
     {
         if (session is null)

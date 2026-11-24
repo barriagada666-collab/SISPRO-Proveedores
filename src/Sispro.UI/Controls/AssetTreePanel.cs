@@ -24,9 +24,15 @@ public sealed class AssetTreePanel : UserControl
     private readonly TextBox _txtSearch;
     private readonly Button _btnSearch;
     private readonly Button _btnReset;
+    private readonly Panel _checkBar;
+    private readonly CheckBox _chkSelectAllVisible;
+    private readonly Label _lblCheckedCount;
+    private readonly Button _btnClearChecks;
     private readonly TreeView _treeView;
     private readonly Label _lblBreadcrumb;
+    private readonly HashSet<int> _checkedIds = [];
     private bool _includeInactive;
+    private bool _suppressCheckEvents;
 
     public bool CanEdit { get; }
 
@@ -35,8 +41,38 @@ public sealed class AssetTreePanel : UserControl
 
     public event EventHandler<AssetNode?>? SelectedAssetChanged;
     public event EventHandler<int?>? TreeModified;
+    public event EventHandler? CheckedAssetsChanged;
+    public event EventHandler<IReadOnlyList<int>>? InspectDependenciesRequested;
 
     public AssetNode? SelectedAsset => _treeView.SelectedNode?.Tag as AssetNode;
+
+    public IReadOnlyList<int> CheckedAssetIds => _checkedIds.ToList();
+
+    [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
+    public bool ShowCheckBoxes
+    {
+        get => _treeView.CheckBoxes;
+        set
+        {
+            if (_treeView.CheckBoxes == value)
+            {
+                return;
+            }
+
+            _treeView.CheckBoxes = value;
+            _checkBar.Visible = value;
+            if (value)
+            {
+                SyncNodeChecksRecursive(_treeView.Nodes);
+            }
+            else
+            {
+                _checkedIds.Clear();
+            }
+
+            UpdateCheckedCountLabel();
+        }
+    }
 
     public string CurrentBreadcrumb => _lblBreadcrumb.Text;
 
@@ -59,11 +95,14 @@ public sealed class AssetTreePanel : UserControl
     public AssetTreePanel(
         MaintainerService maintainerService,
         AssetTreeService? treeAdmin = null,
-        UserSession? session = null)
+        UserSession? session = null,
+        bool showCheckBoxes = false,
+        bool includeInactive = false)
     {
         _maintainerService = maintainerService;
         _treeAdmin = treeAdmin;
         _session = session;
+        _includeInactive = includeInactive;
         CanEdit = treeAdmin is not null && treeAdmin.IsAdministrator(session);
 
         CambiasoTheme.EnableDoubleBuffering(this);
@@ -135,12 +174,53 @@ public sealed class AssetTreePanel : UserControl
             ShowPlusMinus = true,
             ShowRootLines = true,
             ShowNodeToolTips = true,
+            CheckBoxes = showCheckBoxes,
             ImageList = _nodeIcons,
             ItemHeight = 22
         };
         _treeView.BeforeExpand += OnBeforeExpand;
         _treeView.AfterSelect += OnAfterSelect;
+        _treeView.AfterCheck += OnAfterCheck;
         _treeView.NodeMouseClick += OnTreeNodeMouseClick;
+
+        _checkBar = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 28,
+            Visible = showCheckBoxes,
+            Padding = new Padding(0, 2, 0, 2),
+            BackColor = CambiasoTheme.SubtleFill
+        };
+        _chkSelectAllVisible = new CheckBox
+        {
+            Name = "chkSelectAllAssets",
+            Text = "Marcar visibles",
+            AutoSize = true,
+            Font = CambiasoTheme.SmallFont,
+            Location = new Point(4, 5)
+        };
+        _chkSelectAllVisible.CheckedChanged += (_, _) =>
+        {
+            if (!_suppressCheckEvents)
+            {
+                SetAllVisibleChecked(_chkSelectAllVisible.Checked);
+            }
+        };
+        _lblCheckedCount = new Label
+        {
+            Text = "Sel.: 0",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            Location = new Point(116, 6)
+        };
+        _btnClearChecks = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip,
+            "Desmarcar todos los nodos seleccionados", width: 96, height: 24);
+        _btnClearChecks.Dock = DockStyle.Right;
+        _btnClearChecks.Font = CambiasoTheme.SmallFont;
+        _btnClearChecks.Padding = new Padding(4, 0, 4, 0);
+        _btnClearChecks.Click += (_, _) => ClearChecked();
+        _checkBar.Controls.AddRange([_chkSelectAllVisible, _lblCheckedCount, _btnClearChecks]);
 
         _lblBreadcrumb = new Label
         {
@@ -155,6 +235,7 @@ public sealed class AssetTreePanel : UserControl
         };
 
         Controls.Add(_treeView);
+        Controls.Add(_checkBar);
         Controls.Add(searchPanel);
         Controls.Add(lblHeader);
         Controls.Add(_lblBreadcrumb);
@@ -185,6 +266,153 @@ public sealed class AssetTreePanel : UserControl
         finally
         {
             _treeView.EndUpdate();
+        }
+
+        UpdateCheckedCountLabel();
+    }
+
+    public void SetAssetChecked(int idActivo, bool isChecked)
+    {
+        if (idActivo <= 0)
+        {
+            return;
+        }
+
+        bool changed = isChecked ? _checkedIds.Add(idActivo) : _checkedIds.Remove(idActivo);
+        SyncNodeChecksRecursive(_treeView.Nodes);
+        UpdateCheckedCountLabel();
+        if (changed)
+        {
+            CheckedAssetsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    public void SetAllVisibleChecked(bool isChecked)
+    {
+        SetVisibleCheckedRecursive(_treeView.Nodes, isChecked);
+        SyncNodeChecksRecursive(_treeView.Nodes);
+        UpdateCheckedCountLabel();
+        CheckedAssetsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ClearChecked()
+    {
+        if (_checkedIds.Count == 0 && !_chkSelectAllVisible.Checked)
+        {
+            return;
+        }
+
+        _checkedIds.Clear();
+        SyncNodeChecksRecursive(_treeView.Nodes);
+        UpdateCheckedCountLabel();
+        CheckedAssetsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void SetVisibleCheckedRecursive(TreeNodeCollection nodes, bool isChecked)
+    {
+        foreach (TreeNode tn in nodes)
+        {
+            if (tn.Tag is AssetNode a)
+            {
+                if (isChecked) _checkedIds.Add(a.IdActivo);
+                else _checkedIds.Remove(a.IdActivo);
+            }
+
+            if (tn.Nodes.Count > 0 && !(tn.Nodes.Count == 1 && tn.Nodes[0].Name == DummyKey))
+            {
+                SetVisibleCheckedRecursive(tn.Nodes, isChecked);
+            }
+        }
+    }
+
+    private void SyncNodeChecksRecursive(TreeNodeCollection nodes)
+    {
+        _suppressCheckEvents = true;
+        try
+        {
+            foreach (TreeNode tn in nodes)
+            {
+                if (tn.Tag is AssetNode a)
+                {
+                    bool shouldCheck = _treeView.CheckBoxes && _checkedIds.Contains(a.IdActivo);
+                    if (tn.Checked != shouldCheck)
+                    {
+                        tn.Checked = shouldCheck;
+                    }
+                }
+
+                if (tn.Nodes.Count > 0)
+                {
+                    SyncNodeChecksRecursive(tn.Nodes);
+                }
+            }
+        }
+        finally
+        {
+            _suppressCheckEvents = false;
+        }
+    }
+
+    private void OnAfterCheck(object? sender, TreeViewEventArgs e)
+    {
+        if (_suppressCheckEvents || e.Node?.Tag is not AssetNode asset)
+        {
+            return;
+        }
+
+        if (e.Node.Checked)
+        {
+            _checkedIds.Add(asset.IdActivo);
+        }
+        else
+        {
+            _checkedIds.Remove(asset.IdActivo);
+        }
+
+        UpdateCheckedCountLabel();
+        CheckedAssetsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void UpdateCheckedCountLabel()
+    {
+        if (_lblCheckedCount is null)
+        {
+            return;
+        }
+
+        _lblCheckedCount.Text = $"Sel.: {_checkedIds.Count}";
+        _btnClearChecks.Enabled = _checkedIds.Count > 0;
+        _suppressCheckEvents = true;
+        try
+        {
+            int visible = 0;
+            int checkedVis = 0;
+            CountVisibleChecks(_treeView.Nodes, ref visible, ref checkedVis);
+            _chkSelectAllVisible.Checked = visible > 0 && visible == checkedVis;
+        }
+        finally
+        {
+            _suppressCheckEvents = false;
+        }
+    }
+
+    private void CountVisibleChecks(TreeNodeCollection nodes, ref int visible, ref int checkedVis)
+    {
+        foreach (TreeNode tn in nodes)
+        {
+            if (tn.Tag is AssetNode a)
+            {
+                visible++;
+                if (_checkedIds.Contains(a.IdActivo))
+                {
+                    checkedVis++;
+                }
+            }
+
+            if (tn.IsExpanded && tn.Nodes.Count > 0 && !(tn.Nodes.Count == 1 && tn.Nodes[0].Name == DummyKey))
+            {
+                CountVisibleChecks(tn.Nodes, ref visible, ref checkedVis);
+            }
         }
     }
 
@@ -585,6 +813,20 @@ public sealed class AssetTreePanel : UserControl
             items.Add(ContextMenuHelper.Separator());
         }
 
+        if (InspectDependenciesRequested is not null)
+        {
+            List<int> targetIds = _checkedIds.Count > 0 ? _checkedIds.ToList() : [asset.IdActivo];
+            items.Add(ContextMenuHelper.Item("Consultar OT asociadas…", AppIcon.Search, CambiasoTheme.Accent,
+                () => InspectDependenciesRequested.Invoke(this, targetIds)));
+            if (CanEdit)
+            {
+                items.Add(ContextMenuHelper.Item("Reasignar OT / Subnodos…", AppIcon.MoveRight, CambiasoTheme.Primary,
+                    () => InspectDependenciesRequested.Invoke(this, targetIds)));
+            }
+
+            items.Add(ContextMenuHelper.Separator());
+        }
+
         if (ExtraMenuItemsProvider is not null)
         {
             List<ToolStripItem> extra = ExtraMenuItemsProvider(asset).ToList();
@@ -614,6 +856,8 @@ public sealed class AssetTreePanel : UserControl
 
         IReadOnlyList<AssetNode> matches = _maintainerService.SearchAssets(q, _includeInactive);
         _treeView.BeginUpdate();
+        bool prevSuppress = _suppressCheckEvents;
+        _suppressCheckEvents = true;
         try
         {
             _treeView.Nodes.Clear();
@@ -636,6 +880,7 @@ public sealed class AssetTreePanel : UserControl
                     Tag = node,
                     ImageKey = imageKey,
                     SelectedImageKey = imageKey,
+                    Checked = _treeView.CheckBoxes && _checkedIds.Contains(node.IdActivo),
                     ToolTipText = $"{string.Join(" \\ ", path.Select(p => p.Descripcion))}  |  ID #{node.IdActivo} · {AssetNodeTypes.GetLabel(node.Categoria)} · Nivel {realDepth}",
                     ForeColor = node.Activo ? CambiasoTheme.TextPrimary : Color.Gray
                 };
@@ -646,8 +891,11 @@ public sealed class AssetTreePanel : UserControl
         }
         finally
         {
+            _suppressCheckEvents = prevSuppress;
             _treeView.EndUpdate();
         }
+
+        UpdateCheckedCountLabel();
     }
 
     private void OnBeforeExpand(object? sender, TreeViewCancelEventArgs e)
@@ -660,6 +908,7 @@ public sealed class AssetTreePanel : UserControl
         if (e.Node.Nodes.Count == 1 && e.Node.Nodes[0].Name == DummyKey)
         {
             LoadChildrenInto(e.Node);
+            UpdateCheckedCountLabel();
         }
     }
 
@@ -687,11 +936,20 @@ public sealed class AssetTreePanel : UserControl
             return;
         }
 
-        parentTreeNode.Nodes.Clear();
-        IReadOnlyList<AssetNode> children = _maintainerService.GetAssetChildren(parentAsset.IdActivo, _includeInactive);
-        foreach (AssetNode child in children)
+        bool prevSuppress = _suppressCheckEvents;
+        _suppressCheckEvents = true;
+        try
         {
-            parentTreeNode.Nodes.Add(CreateTreeNode(child));
+            parentTreeNode.Nodes.Clear();
+            IReadOnlyList<AssetNode> children = _maintainerService.GetAssetChildren(parentAsset.IdActivo, _includeInactive);
+            foreach (AssetNode child in children)
+            {
+                parentTreeNode.Nodes.Add(CreateTreeNode(child));
+            }
+        }
+        finally
+        {
+            _suppressCheckEvents = prevSuppress;
         }
     }
 
@@ -704,6 +962,7 @@ public sealed class AssetTreePanel : UserControl
             Tag = node,
             ImageKey = imageKey,
             SelectedImageKey = imageKey,
+            Checked = _treeView.CheckBoxes && _checkedIds.Contains(node.IdActivo),
             ToolTipText = $"ID #{node.IdActivo} · {AssetNodeTypes.GetLabel(node.Categoria)} · Nivel {node.Nivel}",
             ForeColor = node.Activo ? CambiasoTheme.TextPrimary : Color.Gray
         };

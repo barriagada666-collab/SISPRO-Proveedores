@@ -1,5 +1,8 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
+using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Core.Interfaces;
 using Sispro.Data.Database;
 
@@ -147,6 +150,45 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         }
     }
 
+    public int SetActiveMany(IReadOnlyCollection<int> ids, bool active)
+    {
+        int[] uniqueIds = RepositoryHelpers.NormalizePositiveIds(ids);
+        if (uniqueIds.Length == 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "sid", uniqueIds);
+        cmd.Parameters.AddWithValue("$act", active ? 1 : 0);
+        cmd.CommandText = $"UPDATE Solicitantes SET activo = $act WHERE id_sol IN ({inClause});";
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
+    }
+
+    public int ClearSignaturesMany(IReadOnlyCollection<int> ids)
+    {
+        int[] uniqueIds = RepositoryHelpers.NormalizePositiveIds(ids);
+        if (uniqueIds.Length == 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "sig", uniqueIds);
+        cmd.CommandText = $"UPDATE Solicitantes SET firma_bytes = NULL, firma_nombre = '', firma_tipo = '', firma_preview_png = NULL WHERE id_sol IN ({inClause});";
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
+    }
+
     public bool HasWorkOrders(int idSol)
     {
         using SqliteConnection conn = factory.OpenConnection();
@@ -154,6 +196,83 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM OrdenesTrabajo WHERE id_sol = $id);";
         cmd.Parameters.AddWithValue("$id", idSol);
         return Convert.ToInt32(cmd.ExecuteScalar()) != 0;
+    }
+
+    public int CountWorkOrders(int idSol)
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM OrdenesTrabajo WHERE id_sol = $id;";
+        cmd.Parameters.AddWithValue("$id", idSol);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    public IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> requesterIds, string relationLabel)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(requesterIds);
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "s", ids);
+        cmd.CommandText = $"""
+            SELECT o.id_ot, o.n_ot, o.fecha_ot, o.estado,
+                   COALESCE(s.alias, ''), TRIM(COALESCE(s.nombre_sol, '') || ' ' || COALESCE(s.ape_pat_sol, '')),
+                   p.nom_prov, o.ruta_activo, COALESCE(s.firma_nombre, '')
+            FROM OrdenesTrabajo o
+            INNER JOIN Solicitantes s ON s.id_sol = o.id_sol
+            INNER JOIN Proveedores p ON p.id_prov = o.id_prov
+            WHERE o.id_sol IN ({inClause})
+            ORDER BY o.fecha_ot DESC, o.id_ot DESC;
+            """;
+
+        List<RelatedWorkOrderInfo> list = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            string alias = rdr.GetString(4);
+            string fullName = rdr.GetString(5).Trim();
+            string regLabel = string.IsNullOrWhiteSpace(fullName) ? alias : $"{fullName} ({alias})";
+            string sigName = rdr.GetString(8);
+            string sigSuffix = string.IsNullOrWhiteSpace(sigName) ? string.Empty : $" | Firma: {sigName}";
+            list.Add(new RelatedWorkOrderInfo
+            {
+                IdOt = rdr.GetInt32(0),
+                NumeroOt = rdr.GetInt32(1),
+                FechaOt = DateTime.TryParseExact(rdr.GetString(2), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt) ? dt : DateTime.Today,
+                Estado = (WorkOrderStatus)rdr.GetInt32(3),
+                TipoRelacion = relationLabel,
+                RegistroAsociado = regLabel,
+                InfoAdicional = $"Proveedor: {rdr.GetString(6)} | Activo: {rdr.GetString(7)}{sigSuffix}"
+            });
+        }
+
+        return list;
+    }
+
+    public int ReassignWorkOrders(IReadOnlyCollection<int> sourceRequesterIds, int targetRequesterId)
+    {
+        int[] srcIds = RepositoryHelpers.NormalizePositiveIds(sourceRequesterIds)
+            .Where(id => id != targetRequesterId)
+            .ToArray();
+        if (srcIds.Length == 0 || targetRequesterId <= 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "src", srcIds);
+        cmd.Parameters.AddWithValue("$target", targetRequesterId);
+        cmd.CommandText = $"UPDATE OrdenesTrabajo SET id_sol = $target WHERE id_sol IN ({inClause});";
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
     }
 
     public void Delete(int idSol)

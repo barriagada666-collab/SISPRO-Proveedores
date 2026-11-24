@@ -24,6 +24,7 @@ public sealed class PrintService(AppSettings settings)
         string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
         int currentDetailIndex = 0;
         bool detailsFinished = false;
+        bool summaryDrawn = false;
         int pageNumber = 1;
         List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);
 
@@ -36,6 +37,7 @@ public sealed class PrintService(AppSettings settings)
         {
             currentDetailIndex = 0;
             detailsFinished = false;
+            summaryDrawn = false;
             pageNumber = 1;
         };
 
@@ -168,6 +170,44 @@ public sealed class PrintService(AppSettings settings)
                 }
 
                 detailsFinished = true;
+            }
+
+            // Bloque de Observaciones y Valor Neto
+            if (!summaryDrawn)
+            {
+                string obsText = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
+                int netBoxW = 190;
+                int obsBoxW = bounds.Width - netBoxW - 10;
+                SizeF obsSize = g.MeasureString($"Observaciones: {obsText}", regularFont, obsBoxW - 14);
+                float summaryH = Math.Max(42f, obsSize.Height + 14f);
+
+                if (y + 10 + summaryH > bounds.Bottom - 36)
+                {
+                    DrawFooter(g, bounds, smallFont, pageNumber++);
+                    e.HasMorePages = true;
+                    return;
+                }
+
+                y += 10;
+                RectangleF obsRect = new(bounds.Left, y, obsBoxW, summaryH);
+                RectangleF netRect = new(bounds.Right - netBoxW, y, netBoxW, summaryH);
+
+                g.FillRectangle(lightBrush, obsRect);
+                g.DrawRectangle(gridPen, obsRect.X, obsRect.Y, obsRect.Width, obsRect.Height);
+                g.DrawString($"Observaciones: {obsText}", regularFont, Brushes.Black,
+                    new RectangleF(obsRect.X + 7, obsRect.Y + 6, obsRect.Width - 14, obsRect.Height - 10));
+
+                g.FillRectangle(goldBrush, netRect);
+                g.DrawRectangle(olivePen, netRect.X, netRect.Y, netRect.Width, netRect.Height);
+                using Font netTitleFont = new("Segoe UI", 8f, FontStyle.Bold);
+                using Font netValueFont = new("Segoe UI", 13.5f, FontStyle.Bold);
+                using StringFormat rightAlign = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
+                g.DrawString("VALOR NETO", netTitleFont, navyBrush, netRect.X + 8, netRect.Y + 5);
+                g.DrawString($"$ {order.ValorNeto:N0}", netValueFont, navyBrush,
+                    new RectangleF(netRect.X + 8, netRect.Y + 18, netRect.Width - 16, summaryH - 22), rightAlign);
+
+                y += summaryH + 6;
+                summaryDrawn = true;
             }
 
             // Pie dinámico de firmas (si está vacío, no se dibuja nada)
@@ -342,7 +382,7 @@ public sealed class PrintService(AppSettings settings)
     private void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
     {
         g.DrawLine(Pens.LightGray, bounds.Left, bounds.Bottom - 20, bounds.Right, bounds.Bottom - 20);
-        g.DrawString($"SISPRO v4.2 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
+        g.DrawString($"SISPRO v4.3 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
         using StringFormat right = new() { Alignment = StringAlignment.Far };
         g.DrawString($"Página {pageNumber}", smallFont, Brushes.Gray, new RectangleF(bounds.Left, bounds.Bottom - 16, bounds.Width, 16), right);
     }

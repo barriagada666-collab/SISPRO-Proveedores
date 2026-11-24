@@ -161,7 +161,10 @@ public static class SchemaInitializer
             id_n9 INTEGER NOT NULL DEFAULT 0,
             id_n10 INTEGER NOT NULL DEFAULT 0,
             id_nivel INTEGER NOT NULL DEFAULT 1,
-            ruta_activo TEXT NOT NULL DEFAULT ''
+            ruta_activo TEXT NOT NULL DEFAULT '',
+            observacion TEXT NOT NULL DEFAULT '',
+            valor_neto REAL NOT NULL DEFAULT 0,
+            firmas_mask INTEGER NOT NULL DEFAULT 7
         );
 
         CREATE INDEX IF NOT EXISTS IX_OT_Numero ON OrdenesTrabajo(n_ot);
@@ -213,6 +216,7 @@ public static class SchemaInitializer
         MigrateUsuariosSchema(conn);
         MigrateSolicitantesSchema(conn);
         MigrateActivosSchema(conn);
+        MigrateOrdenesTrabajoSchema(conn);
         EnsurePerformanceIndexes(conn);
         SeedLevels(conn);
         SeedInitialGroups(conn);
@@ -246,6 +250,35 @@ public static class SchemaInitializer
             if (!cols.Contains(name))
             {
                 ExecuteNonQuery(conn, $"ALTER TABLE Solicitantes ADD COLUMN {name} {ddl};");
+            }
+        }
+    }
+
+    private static void MigrateOrdenesTrabajoSchema(SqliteConnection conn)
+    {
+        HashSet<string> cols = new(StringComparer.OrdinalIgnoreCase);
+        using (SqliteCommand infoCmd = conn.CreateCommand())
+        {
+            infoCmd.CommandText = "PRAGMA table_info(OrdenesTrabajo);";
+            using SqliteDataReader rdr = infoCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                cols.Add(rdr.GetString(1));
+            }
+        }
+
+        (string Name, string Ddl)[] otColumns =
+        [
+            ("observacion", "TEXT NOT NULL DEFAULT ''"),
+            ("valor_neto", "REAL NOT NULL DEFAULT 0"),
+            ("firmas_mask", "INTEGER NOT NULL DEFAULT 7")
+        ];
+
+        foreach ((string name, string ddl) in otColumns)
+        {
+            if (!cols.Contains(name))
+            {
+                ExecuteNonQuery(conn, $"ALTER TABLE OrdenesTrabajo ADD COLUMN {name} {ddl};");
             }
         }
     }

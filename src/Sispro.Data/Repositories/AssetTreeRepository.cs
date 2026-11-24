@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.Data.Sqlite;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Core.Interfaces;
 using Sispro.Data.Database;
 
@@ -299,6 +300,155 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
         }
 
         return total;
+    }
+
+    public IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> assetIds)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(assetIds);
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        List<string> cols = GetExistingLevelColumns(conn, "OrdenesTrabajo");
+        if (cols.Count == 0)
+        {
+            return [];
+        }
+
+        // Cargar nombres de los nodos consultados para mostrar el registro exacto asociado
+        Dictionary<int, (string Desc, int Nivel)> nodeNames = [];
+        using (SqliteCommand nCmd = conn.CreateCommand())
+        {
+            string nClause = RepositoryHelpers.AddInParameters(nCmd, "nd", ids);
+            nCmd.CommandText = $"SELECT id_activo, descripcion, nivel FROM Activos WHERE id_activo IN ({nClause});";
+            using SqliteDataReader nRdr = nCmd.ExecuteReader();
+            while (nRdr.Read())
+            {
+                nodeNames[nRdr.GetInt32(0)] = (nRdr.GetString(1), nRdr.GetInt32(2));
+            }
+        }
+
+        using SqliteCommand cmd = conn.CreateCommand();
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "aid", ids);
+        string orClause = string.Join(" OR ", cols.Select(c => $"o.{c} IN ({inClause})"));
+
+        cmd.CommandText = $"""
+            SELECT o.id_ot, o.n_ot, o.fecha_ot, o.estado,
+                   o.id_n1, o.id_n2, o.id_n3, o.id_n4, o.id_n5,
+                   o.id_n6, o.id_n7, o.id_n8, o.id_n9, o.id_n10,
+                   p.nom_prov, COALESCE(s.alias, 'Sin solicitante'), o.ruta_activo
+            FROM OrdenesTrabajo o
+            INNER JOIN Proveedores p ON p.id_prov = o.id_prov
+            LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
+            WHERE {orClause}
+            ORDER BY o.fecha_ot DESC, o.id_ot DESC;
+            """;
+
+        HashSet<int> idSet = [.. ids];
+        List<RelatedWorkOrderInfo> result = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            int matchedId = 0;
+            int matchedLevel = 0;
+            for (int lvl = 10; lvl >= 1; lvl--)
+            {
+                int val = rdr.GetInt32(3 + lvl);
+                if (val > 0 && idSet.Contains(val))
+                {
+                    matchedId = val;
+                    matchedLevel = lvl;
+                    break;
+                }
+            }
+
+            string nodeLabel = nodeNames.TryGetValue(matchedId, out (string Desc, int Nivel) info)
+                ? $"{info.Desc} (#{matchedId})"
+                : $"Activo #{matchedId}";
+
+            result.Add(new RelatedWorkOrderInfo
+            {
+                IdOt = rdr.GetInt32(0),
+                NumeroOt = rdr.GetInt32(1),
+                FechaOt = DateTime.TryParseExact(rdr.GetString(2), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt) ? dt : DateTime.Today,
+                Estado = (WorkOrderStatus)rdr.GetInt32(3),
+                TipoRelacion = $"Activo Nivel {matchedLevel}",
+                RegistroAsociado = nodeLabel,
+                InfoAdicional = $"Proveedor: {rdr.GetString(14)} | Solicitante: {rdr.GetString(15)} | Ruta: {rdr.GetString(16)}"
+            });
+        }
+
+        return result;
+    }
+
+    public int ReassignWorkOrdersNode(IReadOnlyCollection<int> sourceAssetIds, IReadOnlyList<int> targetPathIds, string targetBreadcrumb)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(sourceAssetIds);
+        if (ids.Length == 0 || targetPathIds.Count < 2)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        List<string> cols = GetExistingLevelColumns(conn, "OrdenesTrabajo");
+        if (cols.Count == 0)
+        {
+            return 0;
+        }
+
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "src", ids);
+        string orClause = string.Join(" OR ", cols.Select(c => $"{c} IN ({inClause})"));
+
+        for (int i = 0; i < 10; i++)
+        {
+            cmd.Parameters.AddWithValue($"$n{i + 1}", i < targetPathIds.Count ? targetPathIds[i] : 0);
+        }
+        cmd.Parameters.AddWithValue("$niv", Math.Clamp(targetPathIds.Count, 2, 10));
+        cmd.Parameters.AddWithValue("$ruta", targetBreadcrumb.Trim());
+
+        cmd.CommandText = $"""
+            UPDATE OrdenesTrabajo
+            SET id_n1 = $n1, id_n2 = $n2, id_n3 = $n3, id_n4 = $n4, id_n5 = $n5,
+                id_n6 = $n6, id_n7 = $n7, id_n8 = $n8, id_n9 = $n9, id_n10 = $n10,
+                id_nivel = $niv, ruta_activo = $ruta
+            WHERE {orClause};
+            """;
+
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
+    }
+
+    public int ReassignWorkOrdersProviderForAssets(IReadOnlyCollection<int> assetIds, int targetProviderId)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(assetIds);
+        if (ids.Length == 0 || targetProviderId <= 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        List<string> cols = GetExistingLevelColumns(conn, "OrdenesTrabajo");
+        if (cols.Count == 0)
+        {
+            return 0;
+        }
+
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "aid", ids);
+        string orClause = string.Join(" OR ", cols.Select(c => $"{c} IN ({inClause})"));
+        cmd.Parameters.AddWithValue("$prov", targetProviderId);
+        cmd.CommandText = $"UPDATE OrdenesTrabajo SET id_prov = $prov WHERE {orClause};";
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
     }
 
     public IReadOnlyList<int> GetDescendantIds(int idActivo)

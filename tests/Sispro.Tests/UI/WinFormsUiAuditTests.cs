@@ -177,6 +177,14 @@ public sealed class WinFormsUiAuditTests
 
             using AssetNodeMoveDialog assetMoveDlg = new(temp.Context.MaintainerService, childNode, $"{rootNode.Descripcion} \\ {childNode.Descripcion}");
             AssertAllButtonsValid(assetMoveDlg, "AssetNodeMoveDialog");
+
+            MaintainerDependencyReport depReport = temp.Context.MaintainerService.InspectDependencies(admin, MaintainerEntityKind.Activo, [childNode.IdActivo]);
+            using MaintainerDependenciesDialog depDlg = new(temp.Context, admin, depReport);
+            AssertAllButtonsValid(depDlg, "MaintainerDependenciesDialog");
+
+            using MaintainersForm directMaintainers = new(temp.Context, admin);
+            Assert.Equal(4, directMaintainers.TabControlMain.TabPages.Count);
+            AssertAllButtonsValid(directMaintainers, "MaintainersForm.Direct4Tabs");
         });
     }
 

@@ -2,6 +2,28 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.3.0] — 2026-11-24
+
+### Agregado y Mejorado
+- **Búsqueda y Exportación Masiva Exclusiva de Órdenes de Trabajo (`WorkOrdersForm`, `GridCheckboxSelectionController`, `ExportUiHelper`, `DocumentExportService`)**:
+  - Columna de checkboxes por fila en `Búsqueda de OT`, casilla `"Seleccionar todos (página visible)"`, contador en vivo (`OT seleccionadas: N`), botón **Exportar seleccionadas** (deshabilitado cuando no hay selección) y **Limpiar selección**.
+  - Selección persistente al ordenar columnas o cambiar de página/filtros de resultado, con confirmación previa indicando la cantidad exacta de OTs a exportar.
+  - Nuevo generador `DocumentExportService.BuildSelectedWorkOrdersReport` que consolida exclusivamente las OTs seleccionadas sin duplicar ítems por orden, exportable en **Excel (`.xlsx`)**, **CSV (`.csv`)** y **PDF (`.pdf`)** vía `ExportUiHelper.ShowSelectedWorkOrdersExportMenu`.
+- **Observación, Valor Neto ($) CLP Destacado y Persistencia de Firmas al Pie (`SchemaInitializer`, `WorkOrderService`, `WorkOrdersForm`)**:
+  - Migración idempotente de `OrdenesTrabajo` agregando `observacion` (`TEXT NOT NULL DEFAULT ''`), `valor_neto` (`REAL NOT NULL DEFAULT 0`) y `firmas_mask` (`INTEGER NOT NULL DEFAULT 7`).
+  - Nuevos campos en `Ingreso / Edición de OT`: **Observación de la OT** (inmediatamente bajo *Detalle*), **Valor Neto ($)** con tipografía destacada (`15pt` Bold), formateo `$ #,##0` y validación `>= 0` (`WorkOrderService.TryParseNetValue`), además de casillas de firma (`Jefatura`, `Técnico (Sol.)`, `Supervisor`) persistidas en `firmas_mask` y reflejadas tanto en documentos individuales como en la exportación masiva.
+- **Gestión Masiva y Control de Integridad en 4 Mantenedores (`MaintainersForm`, `SignatureManagerControl`, `RequesterManagerControl`, `AssetTreePanel`, `AssetTreeEditorView`)**:
+  - **Proveedores**, **Solicitantes**, **Firmas** (nueva pestaña dedicada con vista previa PNG/JPG/PDF) y **Árbol de Activos** equipados con checkboxes por registro, acciones masivas (**Consultar OT**, **Reasignar Rel.**, **Activar / Desactivar**, **Eliminar**) y sincronización inmediata.
+  - Restricción estricta de operaciones destructivas, reasignaciones y cambios de estado exclusivamente a **Administradores** tanto en interfaz como en capa de servicios (`AuthService.EnsureAdministrator`, `MaintainerService`, `AssetTreeService`, `WorkOrderService.DeleteManyExplicitly`).
+  - Nuevo diálogo modal `MaintainerDependenciesDialog` y asistente `MaintainerBatchUiHelper`: consulta de OTs dependientes, reasignación de proveedor, solicitante, firma, activo/subnodos (con protección contra ciclos y tope de 10 niveles), desactivación conservando historial, eliminación compatible sin romper historial y eliminación explícita de OTs asociadas con doble confirmación exclusiva para Administradores.
+
+### Verificado
+- **Compilación y Seguridad NuGet**: `Debug` y `Release` `0` errores, `0` advertencias; `0` paquetes vulnerables en los 5 proyectos (`dotnet list SISPRO.sln package --vulnerable --include-transitive`).
+- **Suite Automatizada (`Release`)**: `65 / 65` pruebas `xUnit` aprobadas (`BulkOperationsAndExtendedWorkOrderTests` + suite previa) e inspección visual directa de las capturas regeneradas en `docs/screenshots/`.
+- **Instalador `SISPRO_Setup_v4.3.0_win-x64.exe`**: `57.859.985` bytes (`SHA-256`: `C3F54BE3B15BE9D59670EC8C0A6A632346D6D09D8B7C5E128077A104F07F403E`), validada actualización silenciosa `v4.2.1 → v4.3.0` (preservación íntegra de `Data\sispro.db` con hash `F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`) y desinstalación limpia.
+
+---
+
 ## [4.2.1] — 2026-11-24
 
 ### Mejorado y Rediseñado

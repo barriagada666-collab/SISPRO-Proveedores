@@ -54,6 +54,20 @@ public static class SignatureOptionExtensions
         if (tecnico) option |= SignatureOption.Solicitante;
         return option;
     }
+
+    public static string FormatResumen(this SignatureOption option)
+    {
+        if (option == SignatureOption.Ninguna)
+        {
+            return "Sin firmas";
+        }
+
+        List<string> parts = [];
+        if (option.IncludeJefatura()) parts.Add("Jefatura");
+        if (option.IncludeTecnico()) parts.Add("Técnico");
+        if (option.IncludeSupervisor()) parts.Add("Supervisor");
+        return parts.Count == 0 ? "Sin firmas" : string.Join(", ", parts);
+    }
 }
 
 [Flags]

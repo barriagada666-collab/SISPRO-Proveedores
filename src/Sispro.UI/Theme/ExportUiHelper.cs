@@ -33,6 +33,86 @@ public static class ExportUiHelper
         ]);
     }
 
+    public static void ShowSelectedWorkOrdersExportMenu(
+        Control anchor,
+        IWin32Window owner,
+        DocumentExportService exportService,
+        Func<IReadOnlyList<WorkOrder>> ordersLoader,
+        Action<string, int>? onCompleted = null)
+    {
+        ContextMenuHelper.ShowBelow(anchor,
+        [
+            ContextMenuHelper.Item("Exportar seleccionadas a Excel (.xlsx)", AppIcon.Excel, CambiasoTheme.Success,
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Excel, ordersLoader, onCompleted)),
+            ContextMenuHelper.Item("Exportar seleccionadas a CSV (.csv)", AppIcon.Download, CambiasoTheme.Accent,
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Csv, ordersLoader, onCompleted)),
+            ContextMenuHelper.Item("Exportar seleccionadas a PDF (.pdf)", AppIcon.FileText, CambiasoTheme.Danger,
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Pdf, ordersLoader, onCompleted))
+        ]);
+    }
+
+    private static void RunSelectedWorkOrdersExport(
+        IWin32Window owner,
+        DocumentExportService exportService,
+        ExportFormat format,
+        Func<IReadOnlyList<WorkOrder>> ordersLoader,
+        Action<string, int>? onCompleted)
+    {
+        IReadOnlyList<WorkOrder> orders = ordersLoader();
+        List<WorkOrder> distinctOrders = orders
+            .Where(o => o.IdOt > 0 || o.NumeroOt > 0)
+            .GroupBy(o => o.IdOt > 0 ? o.IdOt : o.NumeroOt)
+            .Select(g => g.First())
+            .ToList();
+
+        if (distinctOrders.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(owner, "Debe seleccionar al menos una orden de trabajo antes de exportar.");
+            return;
+        }
+
+        string formatLabel = format switch
+        {
+            ExportFormat.Excel => "Excel (.xlsx)",
+            ExportFormat.Csv => "CSV (.csv)",
+            ExportFormat.Pdf => "PDF (.pdf)",
+            _ => format.ToString()
+        };
+
+        if (!CambiasoTheme.Confirm(
+                owner,
+                $"Se exportarán exactamente {distinctOrders.Count:N0} orden(es) de trabajo seleccionada(s) a {formatLabel}.\n\n¿Desea continuar?"))
+        {
+            return;
+        }
+
+        (string ext, string filter) = GetFileDialogSpec(format);
+        using SaveFileDialog sfd = new()
+        {
+            Filter = filter,
+            FileName = $"OT_Seleccionadas_{DateTime.Today:yyyy-MM-dd}.{ext}"
+        };
+
+        if (sfd.ShowDialog(owner) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            TabularReportData report = DocumentExportService.BuildSelectedWorkOrdersReport(
+                distinctOrders,
+                $"OT seleccionadas: {distinctOrders.Count:N0} orden(es) única(s)");
+            exportService.ExportReport(report, format, sfd.FileName);
+            onCompleted?.Invoke(sfd.FileName, distinctOrders.Count);
+            CambiasoTheme.ShowInfo(owner, $"Se exportaron {distinctOrders.Count:N0} orden(es) seleccionada(s):\n{sfd.FileName}");
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowError(owner, $"No se pudo exportar la selección de OTs: {ex.Message}");
+        }
+    }
+
     public static void ShowWorkOrderExportMenu(
         Control anchor,
         IWin32Window owner,

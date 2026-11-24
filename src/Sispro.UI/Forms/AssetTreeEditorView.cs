@@ -4,6 +4,7 @@ using Sispro.Core.Entities;
 using Sispro.Core.Enums;
 using Sispro.Services;
 using Sispro.UI.Controls;
+using Sispro.UI.Dialogs;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Forms;
@@ -38,9 +39,12 @@ public sealed class AssetTreeEditorView : UserControl
     internal Button BtnAddChild { get; }
     internal Button BtnEdit { get; }
     internal Button BtnMove { get; }
+    internal Button BtnInspectOts { get; }
+    internal Button BtnReassign { get; }
     internal Button BtnActivate { get; }
     internal Button BtnDeactivate { get; }
     internal Button BtnDelete { get; }
+    internal Button BtnClearChecks { get; }
     internal Button BtnNormalize { get; }
     internal Button BtnExport { get; }
     internal Button BtnRefresh { get; }
@@ -54,6 +58,8 @@ public sealed class AssetTreeEditorView : UserControl
 
         _ctx = ctx;
         _session = session;
+        SuspendLayout();
+        Size = new Size(1120, 680);
         CambiasoTheme.EnableDoubleBuffering(this);
         BackColor = CambiasoTheme.Surface;
         Font = CambiasoTheme.BodyFont;
@@ -107,6 +113,8 @@ public sealed class AssetTreeEditorView : UserControl
             SplitterDistance = 400,
             BackColor = CambiasoTheme.BorderColor
         };
+        ((System.ComponentModel.ISupportInitialize)split).BeginInit();
+        split.SuspendLayout();
         Load += (_, _) =>
         {
             if (split.Width > 720)
@@ -115,13 +123,19 @@ public sealed class AssetTreeEditorView : UserControl
             }
         };
 
-        _treePanel = new AssetTreePanel(_ctx.MaintainerService, _ctx.AssetTreeService, _session)
+        _treePanel = new AssetTreePanel(
+            _ctx.MaintainerService,
+            _ctx.AssetTreeService,
+            _session,
+            showCheckBoxes: true,
+            includeInactive: true)
         {
-            Dock = DockStyle.Fill,
-            IncludeInactive = true
+            Dock = DockStyle.Fill
         };
         _treePanel.SelectedAssetChanged += (_, node) => RefreshNodeDetails(node);
         _treePanel.TreeModified += (_, _) => RefreshAnomaliesAndDetails();
+        _treePanel.CheckedAssetsChanged += (_, _) => UpdateSelectionActionStates();
+        _treePanel.InspectDependenciesRequested += (_, ids) => RunTreeAction(() => OpenDependencies(ids));
         split.Panel1.Controls.Add(_treePanel);
 
         // --- PANEL DERECHO ---
@@ -133,28 +147,37 @@ public sealed class AssetTreeEditorView : UserControl
         };
 
         // Botones de barra superior
-        BtnAddChild = CambiasoTheme.CreateButton("Agregar Hijo", AppIcon.Add, ButtonTone.Primary, _toolTip, "Crear nuevo subnodo bajo el nodo seleccionado", width: 132, height: 32);
+        BtnAddChild = CambiasoTheme.CreateButton("Agregar Hijo", AppIcon.Add, ButtonTone.Primary, _toolTip, "Crear nuevo subnodo bajo el nodo seleccionado", width: 142, height: 30);
         BtnAddChild.Click += (_, _) => RunTreeAction(_treePanel.AddChildToSelected);
 
-        BtnEdit = CambiasoTheme.CreateButton("Editar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Editar propiedades y ficha técnica del nodo seleccionado", width: 98, height: 32);
+        BtnEdit = CambiasoTheme.CreateButton("Editar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Editar propiedades y ficha técnica del nodo seleccionado", width: 88, height: 30);
         BtnEdit.Click += (_, _) => RunTreeAction(_treePanel.EditSelected);
 
-        BtnMove = CambiasoTheme.CreateButton("Mover", AppIcon.MoveRight, ButtonTone.Secondary, _toolTip, "Reubicar este nodo y su subárbol bajo otro padre", width: 98, height: 32);
+        BtnMove = CambiasoTheme.CreateButton("Mover", AppIcon.MoveRight, ButtonTone.Secondary, _toolTip, "Reubicar este nodo y su subárbol bajo otro padre", width: 88, height: 30);
         BtnMove.Click += (_, _) => RunTreeAction(_treePanel.MoveSelected);
 
-        BtnActivate = CambiasoTheme.CreateButton("Activar", AppIcon.Power, ButtonTone.Primary, _toolTip, "Activar nodo seleccionado", width: 102, height: 32);
-        BtnActivate.Click += (_, _) => RunTreeAction(() => _treePanel.SetSelectedActive(true));
+        BtnInspectOts = CambiasoTheme.CreateButton("Consultar OT", AppIcon.Search, ButtonTone.Accent, _toolTip, "Consultar órdenes de trabajo asociadas a los nodos seleccionados o marcados", width: 122, height: 30);
+        BtnInspectOts.Click += (_, _) => RunTreeAction(() => OpenDependencies(GetActionTargetIds()));
 
-        BtnDeactivate = CambiasoTheme.CreateButton("Desactivar", AppIcon.Ban, ButtonTone.Secondary, _toolTip, "Desactivar nodo y sus subnodos activos", width: 118, height: 32);
-        BtnDeactivate.Click += (_, _) => RunTreeAction(() => _treePanel.SetSelectedActive(false));
+        BtnReassign = CambiasoTheme.CreateButton("Reasignar Rel.", AppIcon.MoveRight, ButtonTone.Secondary, _toolTip, "Reasignar OTs, proveedor o subnodos dependientes hacia otro activo o proveedor", width: 128, height: 30);
+        BtnReassign.Click += (_, _) => RunTreeAction(() => OpenDependencies(GetActionTargetIds()));
 
-        BtnDelete = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar nodo hoja sin OTs históricas asociadas", width: 108, height: 32);
-        BtnDelete.Click += (_, _) => RunTreeAction(_treePanel.DeleteSelected);
+        BtnActivate = CambiasoTheme.CreateButton("Activar", AppIcon.Power, ButtonTone.Primary, _toolTip, "Activar nodo seleccionado o nodos marcados", width: 92, height: 30);
+        BtnActivate.Click += (_, _) => RunTreeAction(ActivateCheckedOrSelected);
 
-        BtnNormalize = CambiasoTheme.CreateButton("Normalizar Niveles", AppIcon.Check, ButtonTone.Secondary, _toolTip, "Recalcular columna nivel según profundidad real desde la raíz", width: 164, height: 32);
+        BtnDeactivate = CambiasoTheme.CreateButton("Desactivar", AppIcon.Ban, ButtonTone.Secondary, _toolTip, "Verificar dependencias y desactivar nodo(s) conservando historial", width: 108, height: 30);
+        BtnDeactivate.Click += (_, _) => RunTreeAction(DeactivateCheckedOrSelected);
+
+        BtnDelete = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Verificar dependencias y eliminar nodos compatibles sin romper OTs", width: 98, height: 30);
+        BtnDelete.Click += (_, _) => RunTreeAction(DeleteCheckedOrSelected);
+
+        BtnClearChecks = CambiasoTheme.CreateButton("Limpiar Sel.", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Desmarcar casillas del árbol", width: 132, height: 30);
+        BtnClearChecks.Click += (_, _) => _treePanel.ClearChecked();
+
+        BtnNormalize = CambiasoTheme.CreateButton("Normalizar", AppIcon.Check, ButtonTone.Secondary, _toolTip, "Recalcular columna nivel según profundidad real desde la raíz", width: 112, height: 30);
         BtnNormalize.Click += (_, _) => NormalizeLevels();
 
-        BtnExport = CambiasoTheme.CreateButton("Exportar Rama", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar subárbol seleccionado a Excel, PDF, Word o CSV", width: 140, height: 32);
+        BtnExport = CambiasoTheme.CreateButton("Exportar Rama", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar subárbol seleccionado a Excel, PDF, Word o CSV", width: 148, height: 30);
         BtnExport.Click += (_, _) =>
         {
             int rootId = _treePanel.SelectedAsset?.IdActivo ?? 1;
@@ -170,27 +193,27 @@ public sealed class AssetTreeEditorView : UserControl
                 file => _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Árbol de Activos", "EXPORTAR_ARBOL", $"Exportado subárbol #{rootId} a {Path.GetFileName(file)}."));
         };
 
-        BtnRefresh = CambiasoTheme.CreateButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar árbol conservando la selección actual", width: 112, height: 32);
+        BtnRefresh = CambiasoTheme.CreateButton("Refrescar", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar árbol conservando la selección actual", width: 104, height: 30);
         BtnRefresh.Click += (_, _) =>
         {
             _treePanel.ReloadPreservingSelection();
             RefreshAnomaliesAndDetails();
         };
 
-        GroupBox grpActions = CambiasoTheme.CreateGroupBox("Acciones del Administrador sobre el Árbol (también disponibles con clic derecho)");
+        GroupBox grpActions = CambiasoTheme.CreateGroupBox("Acciones del Administrador sobre el Árbol (soporta selección múltiple y clic derecho)");
         grpActions.Dock = DockStyle.Top;
-        grpActions.Height = 104;
+        grpActions.Height = 146;
         FlowLayoutPanel actionFlow = new()
         {
             Dock = DockStyle.Fill,
             WrapContents = true,
             Padding = new Padding(2, 2, 2, 2)
         };
-        foreach (Button b in new[] { BtnAddChild, BtnEdit, BtnMove, BtnActivate, BtnDeactivate, BtnDelete, BtnNormalize, BtnExport, BtnRefresh })
+        foreach (Button b in new[] { BtnAddChild, BtnEdit, BtnMove, BtnInspectOts, BtnReassign, BtnActivate, BtnDeactivate, BtnDelete, BtnClearChecks, BtnNormalize, BtnExport, BtnRefresh })
         {
             b.Margin = new Padding(0, 2, 6, 4);
         }
-        actionFlow.Controls.AddRange([BtnAddChild, BtnEdit, BtnMove, BtnActivate, BtnDeactivate, BtnDelete, BtnNormalize, BtnExport, BtnRefresh]);
+        actionFlow.Controls.AddRange([BtnAddChild, BtnEdit, BtnMove, BtnInspectOts, BtnReassign, BtnActivate, BtnDeactivate, BtnDelete, BtnClearChecks, BtnNormalize, BtnExport, BtnRefresh]);
         grpActions.Controls.Add(actionFlow);
 
         // Panel estado anomalías
@@ -309,6 +332,9 @@ public sealed class AssetTreeEditorView : UserControl
 
         Controls.Add(split);
         Controls.Add(headerBanner);
+        ((System.ComponentModel.ISupportInitialize)split).EndInit();
+        split.ResumeLayout(false);
+        ResumeLayout(false);
 
         _ctx.SyncHub.DataChanged += OnSyncChanged;
         _syncSubscribed = true;
@@ -422,9 +448,7 @@ public sealed class AssetTreeEditorView : UserControl
             BtnAddChild.Enabled = false;
             BtnEdit.Enabled = false;
             BtnMove.Enabled = false;
-            BtnActivate.Enabled = false;
-            BtnDeactivate.Enabled = false;
-            BtnDelete.Enabled = false;
+            UpdateSelectionActionStates();
             return;
         }
 
@@ -462,9 +486,75 @@ public sealed class AssetTreeEditorView : UserControl
         BtnAddChild.Enabled = info.Node.Activo && info.Depth < 10;
         BtnEdit.Enabled = true;
         BtnMove.Enabled = info.Node.ParentId.HasValue;
-        BtnActivate.Enabled = !info.Node.Activo;
-        BtnDeactivate.Enabled = info.Node.Activo && info.Node.ParentId.HasValue;
-        BtnDelete.Enabled = info.Node.ParentId.HasValue;
+        UpdateSelectionActionStates();
+    }
+
+    private IReadOnlyList<int> GetActionTargetIds()
+    {
+        if (_treePanel.CheckedAssetIds.Count > 0)
+        {
+            return _treePanel.CheckedAssetIds;
+        }
+
+        return _treePanel.SelectedAsset is not null ? [_treePanel.SelectedAsset.IdActivo] : [];
+    }
+
+    private void OpenDependencies(IReadOnlyCollection<int> targetIds)
+    {
+        if (MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Activo, targetIds, RefreshAfterBatch))
+        {
+            RefreshAnomaliesAndDetails();
+        }
+    }
+
+    private void ActivateCheckedOrSelected()
+    {
+        if (_treePanel.CheckedAssetIds.Count > 0)
+        {
+            MaintainerBatchResult res = _ctx.AssetTreeService.SetActiveBatch(_session, _treePanel.CheckedAssetIds, true, includeDescendants: true);
+            CambiasoTheme.ShowInfo(this, res.BuildSummary());
+            RefreshAfterBatch();
+            return;
+        }
+
+        _treePanel.SetSelectedActive(true);
+    }
+
+    private void DeactivateCheckedOrSelected()
+    {
+        if (MaintainerBatchUiHelper.DeactivateChecked(this, _ctx, _session, MaintainerEntityKind.Activo, GetActionTargetIds(), RefreshAfterBatch))
+        {
+            RefreshAnomaliesAndDetails();
+        }
+    }
+
+    private void DeleteCheckedOrSelected()
+    {
+        if (MaintainerBatchUiHelper.DeleteChecked(this, _ctx, _session, MaintainerEntityKind.Activo, GetActionTargetIds(), RefreshAfterBatch))
+        {
+            RefreshAnomaliesAndDetails();
+        }
+    }
+
+    private void RefreshAfterBatch()
+    {
+        _treePanel.ClearChecked();
+        _treePanel.ReloadPreservingSelection();
+        RefreshAnomaliesAndDetails();
+    }
+
+    private void UpdateSelectionActionStates()
+    {
+        int checkedCount = _treePanel.CheckedAssetIds.Count;
+        AssetNode? sel = _treePanel.SelectedAsset;
+        bool hasTarget = checkedCount > 0 || sel is not null;
+
+        BtnInspectOts.Enabled = hasTarget;
+        BtnReassign.Enabled = hasTarget;
+        BtnClearChecks.Enabled = checkedCount > 0;
+        BtnActivate.Enabled = checkedCount > 0 || (sel is not null && !sel.Activo);
+        BtnDeactivate.Enabled = checkedCount > 0 || (sel is not null && sel.Activo && sel.ParentId.HasValue);
+        BtnDelete.Enabled = checkedCount > 0 || (sel is not null && sel.ParentId.HasValue);
     }
 
     private static Label CreateValueLabel(bool bold) => new()

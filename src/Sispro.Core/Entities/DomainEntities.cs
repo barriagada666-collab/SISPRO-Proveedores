@@ -181,6 +181,9 @@ public sealed class WorkOrder
         : AliasSolicitante;
     public DateTime FechaOt { get; set; } = DateTime.Today;
     public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
+    public string Observacion { get; set; } = string.Empty;
+    public decimal ValorNeto { get; set; }
+    public SignatureOption FirmasSeleccionadas { get; set; } = SignatureOption.AmbasConSolicitante;
     public int IdN1 { get; set; } = 1;
     public int IdN2 { get; set; }
     public int IdN3 { get; set; }

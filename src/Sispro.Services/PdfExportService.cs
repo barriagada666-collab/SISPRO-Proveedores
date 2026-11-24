@@ -378,6 +378,50 @@ public sealed class PdfExportService(AppSettings settings)
         sb.AppendLine(BorderStroke);
         sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
 
+        // Bloque de Observaciones y Valor Neto destacado
+        y -= 10;
+        double obsBoxW = contentW - 165;
+        double netBoxW = 155;
+        string obsBody = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
+        List<string> obsLines = WrapText($"Observaciones: {obsBody}", obsBoxW - 14, 8.2);
+        double summaryH = Math.Max(36, 12 + (obsLines.Count * 11.5));
+
+        if (y - summaryH < marginBottom + 32)
+        {
+            sb = new();
+            pageBuilders.Add(sb);
+            DrawOtBanner(sb, isContinuation: true);
+            y = pageH - marginTop - 94;
+        }
+
+        sb.AppendLine("0.98 0.99 1 rg");
+        sb.AppendLine(Fmt($"{marginX} {y - summaryH} {obsBoxW} {summaryH} re f"));
+        sb.AppendLine("0.6 w");
+        sb.AppendLine(BorderStroke);
+        sb.AppendLine(Fmt($"{marginX} {y - summaryH} {obsBoxW} {summaryH} re S"));
+
+        sb.AppendLine(TextPrimaryFill);
+        double obsY = y - 14;
+        foreach (string line in obsLines)
+        {
+            DrawText(sb, "F1", 8.2, marginX + 7, obsY, line);
+            obsY -= 11.5;
+        }
+
+        double netX = marginX + obsBoxW + 10;
+        sb.AppendLine(GoldFill);
+        sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re f"));
+        sb.AppendLine("0.8 w");
+        sb.AppendLine(PrimaryDarkFill.Replace(" rg", " RG"));
+        sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re S"));
+
+        sb.AppendLine(PrimaryDarkFill);
+        DrawText(sb, "F2", 7.8, netX + 8, y - 13, "VALOR NETO");
+        string netStr = $"$ {order.ValorNeto:N0}";
+        DrawText(sb, "F2", 13.5, netX + 8, y - 30, TruncateText(netStr, netBoxW - 16, 13.5));
+
+        y -= summaryH;
+
         // Pie dinámico de firmas: se renderizan solo las seleccionadas; si está vacío no se dibuja ninguna
         if (slotImages.Count > 0)
         {

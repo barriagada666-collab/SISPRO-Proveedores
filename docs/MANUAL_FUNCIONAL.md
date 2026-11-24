@@ -1,4 +1,4 @@
-# Manual Funcional de Usuario — SISPRO v4.2.1
+# Manual Funcional de Usuario — SISPRO v4.3.0
 
 ## 1. Acceso al Sistema
 
@@ -34,40 +34,56 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
 ### 3.1 Pestaña Ingreso / Edición de OT (`tab_0_1`)
 - **Crear nueva OT**:
   1. Presione **Siguiente N°** (o ingrese el correlativo manual).
-  2. Seleccione **Fecha**, **Proveedor** y **Solicitado por**.
+  2. Seleccione **Fecha**, **Proveedor** y **Solicitado por** (solo permite registros activos al crear nuevas órdenes).
   3. Seleccione en el árbol izquierdo la planta/sección/equipo destino (mínimo nivel 2).
   4. Ingrese **Cantidad** y **Descripción del trabajo**, y presione **Agregar Ítem** (puede agregar múltiples ítems; doble clic sobre la grilla permite editarlos).
-  5. Presione **Guardar Nueva**.
+  5. Complete opcionalmente **Observación de la OT**, ingrese el **Valor Neto ($)** en formato peso chileno destacado (`$ >= 0`) y seleccione qué **Firmas** irán al pie del documento (**Jefatura**, **Técnico (Sol.)**, **Supervisor**; combinables o vacías, persistidas junto con la OT).
+  6. Presione **Guardar Nueva** (o **Guardar y Exportar**).
 - **Consultar / Modificar / Eliminar OT existente**:
   1. Ingrese el **N° OT** y presione **Buscar OT** (o tecla `Enter`).
-  2. El árbol se expande automáticamente al activo correspondiente.
+  2. El árbol se expande automáticamente al activo correspondiente y se restauran **Observación**, **Valor Neto ($)** y las casillas de **Firmas** almacenadas.
   3. Realice cambios y presione **Modificar**, o elimine con **Eliminar** cuando corresponda.
 - **Visto Bueno (`VB Supervisor` / `VB Jefatura`)**:
   - Solo visibles/habilitados para usuarios con permiso `tab_0_VBS` o `tab_0_VBJ` respectivamente.
   - Junto a cada casilla se muestra en tiempo real **quién aprobó y cuándo** (`✓ Aprobado por <Usuario> (<fecha>)`) o los **usuarios autorizados vigentes** cuando está `Pendiente`.
   - Al marcar/desmarcar la casilla sobre una OT cargada, la aprobación se registra inmediatamente con usuario y fecha en la base y en la bitácora.
 
-### 3.2 Pestaña Búsqueda de OT (`tab_0_2`)
-- Permite combinar filtros por **Rango de fechas**, **Proveedor**, **Palabra clave / N° OT**, **Nodo seleccionado del árbol** y **Solo pendientes de VB**.
-- Muestra las columnas `VBS` y `VBJ` con el alias de quien aprobó o `Pendiente`.
+### 3.2 Pestaña Búsqueda de OT (`tab_0_2`) y Exportación Masiva Exclusiva
+- Permite combinar filtros por **Rango de fechas**, **Proveedor**, **Solicitante**, **Palabra clave / N° OT**, **Nodo seleccionado del árbol** y **Solo pendientes de VB**.
+- **Selección individual y masiva por Checkboxes**:
+  - Marque cada orden deseada en la columna `Sel.` o use **Seleccionar todos (página visible)**.
+  - La selección **se conserva** al ordenar columnas o navegar entre páginas de resultados (`OT seleccionadas: N`).
+  - **Exportar seleccionadas** (habilitado solo con 1+ selección) solicita confirmación indicando la cantidad exacta de OTs a exportar y genera **exclusivamente las órdenes seleccionadas** (sin duplicar ítems por OT, incluyendo número, fecha, proveedor, solicitante, cantidad total, detalle resumido, observaciones, valor neto, estado, firmas seleccionadas y `VBS`/`VBJ`) en **Excel (`.xlsx`)**, **CSV (`.csv`)** o **PDF (`.pdf`)**.
+  - **Limpiar selección** desmarca toda la selección acumulada.
 - Dispone de **ordenamiento por clic en cualquier columna** y **barra de paginación inferior** (`50`, `100`, `200`, `500` registros por página).
 - **Doble clic** o menú de **clic derecho** sobre un resultado abre la OT para edición o impresión.
-- **Exportar** genera archivos `.xlsx`, `.pdf`, `.docx` o `.csv` con todos los resultados filtrados e identidad de aprobadores VB.
+- **Exportar Lista** exporta el listado completo filtrado actual (`.xlsx`, `.pdf`, `.docx` o `.csv`).
 
 ### 3.3 Pestaña Generar / Imprimir OT (`tab_0_3`)
 - Cargue una OT existente por su número (o componga ítems manualmente).
 - Revise las tarjetas alineadas de **Datos del Proveedor** (`Proveedor`, `Dirección`, `Correo`) y **Datos del Solicitante y Firma Técnico** (`Solicitante`, `Nombre`, `Correo`, `Teléfono`, `Activo` junto con la vista previa de firma digital).
-- Seleccione libremente las **Firmas al pie** mediante casillas independientes (**Jefatura**, **Técnico (Solicitante)**, **Supervisor**) — puede combinar cualquiera o **desmarcar todas** para dejar el pie de página sin firmas.
-- Todas las exportaciones/impresiones individuales de OT (`.xlsx`, `.pdf`, `.docx`, impresión directa y vista previa) destacan el **N° de OT grande en la esquina superior derecha**, muestran **Nombre Apellido**, correo, teléfono y **Activo** en *Datos del Solicitante*, presentan la firma del solicitante como **Técnico**, omiten líneas de `VB` y columnas `Guía / Estado` o `Valor / Ref.`, y solo imprimen las firmas seleccionadas.
+- Seleccione libremente las **Firmas al pie** mediante casillas independientes (**Jefatura**, **Técnico (Solicitante)**, **Supervisor**) — se sincronizan con `OrdenesTrabajo.firmas_mask` al cargar una OT y permiten combinar cualquiera o **desmarcar todas** para dejar el pie de página sin firmas.
+- Todas las exportaciones/impresiones individuales de OT (`.xlsx`, `.pdf`, `.docx`, impresión directa y vista previa) destacan el **N° de OT grande en la esquina superior derecha**, muestran **Nombre Apellido**, correo, teléfono y **Activo** en *Datos del Solicitante*, presentan la firma del solicitante como **Técnico**, incluyen **Observaciones** y **Valor Neto ($)** cuando aplica, omiten líneas de `VB` y columnas `Guía / Estado` o `Valor / Ref.`, y solo imprimen las firmas seleccionadas.
 - Utilice **Exportar OT** (`.xlsx`, `.pdf`, `.docx`, `.csv`), **Vista Previa** o **Imprimir**.
 
 ---
 
-## 4. Módulo Mantenedores (`M2`)
+## 4. Módulo Mantenedores (`M2`) y Gestión Masiva con Integridad
 
-- **Proveedores**: alta, edición, activación/desactivación rápida mediante menú de clic derecho, búsqueda instantánea, exportación multiformato (Excel, PDF, Word, CSV) y eliminación lógica automática si existen OTs históricas.
-- **Solicitantes y Firmas**: catálogo compartido (`RequesterManagerControl`) sincronizado al instante con `Usuarios y Solicitantes` para gestionar **Solicitado Por** y adjuntar su **Firma Digital** en `PNG`, `JPG` o `PDF`.
-- **Árbol de Activos**: visualización del árbol industrial de 10 niveles con íconos por tipo estructural (`Empresa`, `Planta`, `Sección / Área`, `Máquina`, `Módulo`, `Componente`). Solo usuarios con perfil **Administrador** pueden modificar la ficha técnica, crear hijos o acceder al módulo dedicado **Editor de Árbol**.
+Los **4 mantenedores** operan sobre pestañas integradas con **casillas de verificación por fila**, botón **Limpiar Sel.**, consulta de dependencias y sincronización instantánea entre módulos:
+
+- **Proveedores**: alta, edición, checkboxes por fila, **Consultar OT**, **Reasignar Rel.**, **Activar / Desactivar Sel.**, **Eliminar** y exportación multiformato (Excel, PDF, Word, CSV).
+- **Solicitantes**: catálogo unificado (`RequesterManagerControl`) sincronizado con `Usuarios y Solicitantes` para administrar **Solicitado Por** con checkboxes, **Consultar OT**, **Reasignar**, **Activar / Desactivar** y **Eliminar**.
+- **Firmas**: pestaña dedicada (`SignatureManagerControl`) con vista previa en vivo (`PNG`/`JPG`/`PDF`), filtros (`Todos los solicitantes`, `Con firma digital (todas)`, `Con firma y activos`, `Sin firma adjunta`, `Solo inactivos`), adjunto/reemplazo y checkboxes para **Consultar OT**, **Reasignar Firma**, **Desactivar Sel.** y **Eliminar Firma(s)**.
+- **Árbol de Activos**: árbol industrial de 10 niveles con checkboxes por nodo, menú de clic derecho (*Consultar OT asociadas…*, *Reasignar OT / Subnodos…*, CRUD completo para Administradores) e íconos por tipo estructural (`Empresa`, `Planta`, `Sección / Área`, `Máquina`, `Módulo`, `Componente`).
+
+### Reglas de Integridad, RBAC y Diálogo de Dependencias (`MaintainerDependenciesDialog`)
+- **Exclusivo Administrador (UI y Backend)**: solo perfiles **Administrador** pueden desactivar/reactivar, eliminar, reasignar o borrar OTs relacionadas en Proveedores, Solicitantes, Firmas o Árbol de Activos; demás perfiles solo consultan.
+- **Sin borrados silenciosos de historial**: ninguna operación sobre un mantenedor borra órdenes de trabajo automáticamente. Si existen OTs asociadas, `MaintainerDependenciesDialog` exhibe la grilla de OTs vinculadas y ofrece:
+  1. **Reasignar proveedor / solicitante / firma / activo / subnodos** hacia otro registro activo destino (respetando jerarquía máx. 10 niveles y bloqueo de ciclos en el árbol).
+  2. **Desactivar conservando historial** (oculta el registro para nuevas OTs preservando 100% los registros pasados).
+  3. **Eliminar seleccionados (compatibles sin OTs)**.
+  4. **Eliminar explícitamente OTs asociadas** (opción destacada en peligro, únicamente mediante **doble confirmación explícita** exclusiva para Administradores).
 
 ---
 

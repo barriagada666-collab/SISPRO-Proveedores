@@ -2,26 +2,31 @@ using System.ComponentModel;
 using System.Drawing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Services;
 using Sispro.UI.Controls;
+using Sispro.UI.Dialogs;
 using Sispro.UI.Theme;
 
 namespace Sispro.UI.Forms;
 
 /// <summary>
-/// Módulo Mantenedores (M3): Proveedores, Solicitantes y Árbol de Activos (10 niveles).
-/// Implementa de forma completa lo que en VB6 estaba incompleto/comentado (frm_prov.frm + BD MANTENCION).
+/// Módulo Mantenedores (M3): Proveedores, Solicitantes, Firmas Digitales y Árbol de Activos (10 niveles),
+/// con selección múltiple, consulta de OT relacionadas, reasignación y control de permisos Admin.
 /// </summary>
 public sealed class MaintainersForm : UserControl
 {
     private readonly SisproApplicationContext _ctx;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
+    private readonly bool _isAdmin;
 
     public event EventHandler? CatalogsChanged;
     public event EventHandler? OpenTreeEditorRequested;
     private bool _syncSubscribed;
     private bool _suppressTreeSync;
+
+    internal TabControl TabControlMain { get; }
 
     // Proveedores controls
     private readonly TextBox _txtProvSearch;
@@ -34,12 +39,22 @@ public sealed class MaintainersForm : UserControl
     private readonly TextBox _txtProvMailContacto;
     private readonly TextBox _txtProvObs;
     private readonly CheckBox _chkProvActivo;
+    private readonly CheckBox _chkSelectAllProv;
+    private readonly Label _lblProvSelectedCount;
     private readonly DataGridView _gridProviders;
+    private readonly GridCheckboxSelectionController<Provider> _provSelection;
+    private readonly Button _btnProvConsultOt;
+    private readonly Button _btnProvReassign;
+    private readonly Button _btnProvActivate;
+    private readonly Button _btnProvDeactivate;
+    private readonly Button _btnProvDelete;
+    private readonly Button _btnProvClearSel;
     private IReadOnlyList<Provider> _providers = [];
     private int _selectedProvId;
 
-    // Solicitantes control unificado
+    // Solicitantes y Firmas
     private readonly RequesterManagerControl _requestersControl;
+    private readonly SignatureManagerControl _signaturesControl;
 
     // Asset Tree controls
     private readonly AssetTreePanel _assetTree;
@@ -56,21 +71,33 @@ public sealed class MaintainersForm : UserControl
     private readonly ComboBox _cmbNewChildTipo;
     private readonly CheckBox _chkAssetActive;
     private readonly Label _lblAssetMeta;
+    private readonly Button _btnAssetInspectOt;
+    private readonly Button _btnAssetReassign;
+    private readonly Button _btnAssetDeactivateSel;
+    private readonly Button _btnAssetDeleteSel;
+
+    internal DataGridView GridProviders => _gridProviders;
+    internal GridCheckboxSelectionController<Provider> ProviderSelection => _provSelection;
+    internal RequesterManagerControl RequestersControl => _requestersControl;
+    internal SignatureManagerControl SignaturesControl => _signaturesControl;
+    internal AssetTreePanel AssetTreePanelControl => _assetTree;
 
     public MaintainersForm(SisproApplicationContext ctx, UserSession session)
     {
         _ctx = ctx;
         _session = session;
+        _isAdmin = _ctx.MaintainerService.IsAdministrator(_session);
+
         CambiasoTheme.EnableDoubleBuffering(this);
         BackColor = CambiasoTheme.Surface;
         Font = CambiasoTheme.BodyFont;
         Dock = DockStyle.Fill;
 
-        TabControl tabs = new() { Dock = DockStyle.Fill, Font = CambiasoTheme.LabelFont, Padding = new Point(14, 6) };
+        TabControlMain = new TabControl { Dock = DockStyle.Fill, Font = CambiasoTheme.LabelFont, Padding = new Point(14, 6) };
 
-        // --- TAB PROVEEDORES ---
+        // --- TAB 1: PROVEEDORES ---
         TabPage tabProv = new("Proveedores") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
-        _txtProvSearch = new TextBox { Width = 240, PlaceholderText = "Filtrar proveedor por nombre, dirección o correo..." };
+        _txtProvSearch = new TextBox { Width = 220, PlaceholderText = "Filtrar proveedor por nombre, dirección o correo..." };
         _txtProvSearch.TextChanged += (_, _) => LoadProviders();
         _txtProvNombre = new TextBox { Width = 240 };
         _txtProvDir = new TextBox { Width = 320 };
@@ -81,9 +108,54 @@ public sealed class MaintainersForm : UserControl
         _txtProvMailContacto = new TextBox { Width = 240 };
         _txtProvObs = new TextBox { Width = 460 };
         _chkProvActivo = new CheckBox { Text = "Proveedor activo", Checked = true, AutoSize = true };
-        _gridProviders = new DataGridView { Dock = DockStyle.Fill };
+
+        _chkSelectAllProv = new CheckBox
+        {
+            Name = "chkSelectAllProveedores",
+            Text = "Seleccionar todos visibles",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            Margin = new Padding(0, 6, 10, 0)
+        };
+        _lblProvSelectedCount = new Label
+        {
+            Text = "Seleccionados: 0",
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.PrimaryDark,
+            Margin = new Padding(0, 7, 12, 0)
+        };
+
+        _btnProvConsultOt = CreateActionBtn("Consultar OT", AppIcon.Search, ButtonTone.Accent, "Consultar órdenes de trabajo asociadas a los proveedores marcados o seleccionados");
+        _btnProvConsultOt.Click += (_, _) => InspectProviders();
+
+        _btnProvReassign = CreateActionBtn("Reasignar Rel.", AppIcon.MoveRight, ButtonTone.Secondary, "Reasignar OTs de los proveedores seleccionados hacia otro activo (solo Administrador)");
+        _btnProvReassign.Click += (_, _) => InspectProviders();
+
+        _btnProvActivate = CreateActionBtn("Activar Sel.", AppIcon.Power, ButtonTone.Primary, "Activar proveedores seleccionados (solo Administrador)");
+        _btnProvActivate.Click += (_, _) => SetCheckedProvidersActive(true);
+
+        _btnProvDeactivate = CreateActionBtn("Desactivar Sel.", AppIcon.Ban, ButtonTone.Secondary, "Verificar OT y desactivar proveedores seleccionados conservando historial (solo Administrador)");
+        _btnProvDeactivate.Click += (_, _) => SetCheckedProvidersActive(false);
+
+        _btnProvDelete = CreateActionBtn("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Verificar dependencias y eliminar proveedores compatibles (solo Administrador)");
+        _btnProvDelete.Click += (_, _) => DeleteProvider();
+
+        _btnProvClearSel = CreateActionBtn("Limpiar Sel.", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar casillas marcadas");
+
+        _gridProviders = new DataGridView { Name = "gridProveedores", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridProviders);
+        _provSelection = new GridCheckboxSelectionController<Provider>(
+            _gridProviders,
+            p => p.IdProv,
+            _chkSelectAllProv,
+            UpdateProviderActionStates);
+        _btnProvClearSel.Click += (_, _) => _provSelection.ClearSelection();
+
         _gridProviders.CellClick += (_, _) => SelectProviderFromGrid();
+        _gridProviders.SelectionChanged += (_, _) => UpdateProviderActionStates();
+        _gridProviders.CellFormatting += OnProviderCellFormatting;
+
         ContextMenuHelper.AttachToGrid(_gridProviders, idx =>
         {
             Provider? prov = GridBindingHelper.GetRowSource<Provider>(_gridProviders, idx);
@@ -92,27 +164,54 @@ public sealed class MaintainersForm : UserControl
                 return [];
             }
 
+            List<int> targets = _provSelection.SelectedCount > 0 ? _provSelection.SelectedIds.ToList() : [prov.IdProv];
             return
             [
                 ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectProviderFromGrid(idx); _txtProvNombre.Focus(); }),
-                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetProviderActive(prov, true), enabled: !prov.Activo),
-                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetProviderActive(prov, false), enabled: prov.Activo),
+                ContextMenuHelper.Item("Consultar OT asociadas…", AppIcon.Search, CambiasoTheme.Accent, () => RunProviderInspect(targets)),
+                ContextMenuHelper.Item("Reasignar relaciones en OT…", AppIcon.MoveRight, CambiasoTheme.Primary, () => RunProviderInspect(targets), enabled: _isAdmin),
                 ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectProviderFromGrid(idx); DeleteProvider(); }),
+                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetProviderActive(prov, true), enabled: _isAdmin && !prov.Activo),
+                ContextMenuHelper.Item("Desactivar / Verificar OT…", AppIcon.Ban, CambiasoTheme.Warning, () => RunProviderDeactivate(targets), enabled: _isAdmin && (prov.Activo || targets.Count > 1)),
+                ContextMenuHelper.Item("Eliminar / Verificar OT…", AppIcon.Delete, CambiasoTheme.Danger, () => RunProviderDelete(targets), enabled: _isAdmin),
+                ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearProviderForm(); _txtProvNombre.Focus(); })
             ];
         });
         BuildProvidersTab(tabProv);
 
-        // --- TAB SOLICITANTES ---
-        TabPage tabSol = new("Solicitantes y Firmas") { BackColor = CambiasoTheme.Surface, Padding = new Padding(6) };
+        // --- TAB 2: SOLICITANTES ---
+        TabPage tabSol = new("Solicitantes") { BackColor = CambiasoTheme.Surface, Padding = new Padding(6) };
         _requestersControl = new RequesterManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
-        _requestersControl.RequestersChanged += (_, _) => CatalogsChanged?.Invoke(this, EventArgs.Empty);
         tabSol.Controls.Add(_requestersControl);
 
-        // --- TAB ÁRBOL DE ACTIVOS ---
+        // --- TAB 3: FIRMAS DIGITALES ---
+        TabPage tabFirmas = new("Firmas") { BackColor = CambiasoTheme.Surface, Padding = new Padding(6) };
+        _signaturesControl = new SignatureManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
+        tabFirmas.Controls.Add(_signaturesControl);
+
+        _requestersControl.RequestersChanged += (_, _) =>
+        {
+            _signaturesControl.Reload();
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        };
+        _signaturesControl.SignaturesChanged += (_, _) =>
+        {
+            _requestersControl.ReloadRequesters();
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        };
+
+        // --- TAB 4: ÁRBOL DE ACTIVOS ---
         TabPage tabAssets = new("Árbol de Activos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
-        _assetTree = new AssetTreePanel(_ctx.MaintainerService, _ctx.AssetTreeService, _session) { Dock = DockStyle.Fill, IncludeInactive = true };
+        _assetTree = new AssetTreePanel(
+            _ctx.MaintainerService,
+            _ctx.AssetTreeService,
+            _session,
+            showCheckBoxes: true,
+            includeInactive: true)
+        {
+            Dock = DockStyle.Fill
+        };
         bool canEditTree = _assetTree.CanEdit;
         _txtAssetName = new TextBox { Dock = DockStyle.Fill, ReadOnly = !canEditTree };
         _txtAssetSap = new TextBox { Dock = DockStyle.Fill, PlaceholderText = "Código SAP", ReadOnly = !canEditTree };
@@ -135,27 +234,64 @@ public sealed class MaintainersForm : UserControl
         }
         _chkAssetActive = new CheckBox { Text = "Nodo activo en árbol", Checked = true, AutoSize = true, Enabled = canEditTree };
         _lblAssetMeta = new Label { AutoSize = true, Font = CambiasoTheme.LabelFont, ForeColor = CambiasoTheme.Primary };
-        _assetTree.SelectedAssetChanged += (_, node) => BindSelectedAsset(node);
+
+        _btnAssetInspectOt = CreateActionBtn("Consultar OT", AppIcon.Search, ButtonTone.Accent, "Consultar OTs asociadas a los activos marcados o seleccionados");
+        _btnAssetInspectOt.Click += (_, _) => ManageAssetDependencies(GetAssetTargetIds());
+
+        _btnAssetReassign = CreateActionBtn("Reasignar Rel.", AppIcon.MoveRight, ButtonTone.Secondary, "Reasignar OTs, proveedor o subnodos dependientes (solo Administrador)");
+        _btnAssetReassign.Visible = canEditTree;
+        _btnAssetReassign.Click += (_, _) => ManageAssetDependencies(GetAssetTargetIds());
+
+        _btnAssetDeactivateSel = CreateActionBtn("Desactivar Sel.", AppIcon.Ban, ButtonTone.Secondary, "Verificar OTs y desactivar nodos seleccionados conservando historial (solo Administrador)");
+        _btnAssetDeactivateSel.Visible = canEditTree;
+        _btnAssetDeactivateSel.Click += (_, _) => DeactivateAssetTargets();
+
+        _btnAssetDeleteSel = CreateActionBtn("Eliminar Sel.", AppIcon.Delete, ButtonTone.Danger, "Verificar dependencias y eliminar nodos compatibles (solo Administrador)");
+        _btnAssetDeleteSel.Visible = canEditTree;
+        _btnAssetDeleteSel.Click += (_, _) => DeleteAssetTargets();
+
+        _assetTree.SelectedAssetChanged += (_, node) => { BindSelectedAsset(node); UpdateAssetBatchButtonsState(); };
+        _assetTree.CheckedAssetsChanged += (_, _) => UpdateAssetBatchButtonsState();
+        _assetTree.InspectDependenciesRequested += (_, ids) => ManageAssetDependencies(ids);
         _assetTree.TreeModified += (_, _) =>
         {
             BindSelectedAsset(_assetTree.SelectedAsset);
+            UpdateAssetBatchButtonsState();
             CatalogsChanged?.Invoke(this, EventArgs.Empty);
         };
         BuildAssetsTab(tabAssets);
 
-        tabs.TabPages.AddRange([tabProv, tabSol, tabAssets]);
-        Controls.Add(tabs);
+        TabControlMain.TabPages.AddRange([tabProv, tabSol, tabFirmas, tabAssets]);
+        Controls.Add(TabControlMain);
 
         LoadProviders();
         BindSelectedAsset(_assetTree.SelectedAsset);
+        UpdateProviderActionStates();
+        UpdateAssetBatchButtonsState();
 
         _ctx.SyncHub.DataChanged += OnSyncChanged;
         _syncSubscribed = true;
     }
 
+    private Button CreateActionBtn(string text, AppIcon icon, ButtonTone tone, string tooltip)
+    {
+        Button btn = CambiasoTheme.CreateButton(text, icon, tone, _toolTip, tooltip, width: 92, height: 30);
+        btn.AutoSize = true;
+        btn.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        btn.MinimumSize = new Size(0, 30);
+        btn.Padding = new Padding(6, 0, 8, 0);
+        btn.Margin = new Padding(0, 2, 5, 2);
+        return btn;
+    }
+
     private void OnSyncChanged(object? sender, DataChangedEventArgs e)
     {
-        if (IsDisposed || _suppressTreeSync || (e.Kind & Sispro.Core.Enums.DataChangeKind.Catalogs) == 0)
+        if (IsDisposed || _suppressTreeSync)
+        {
+            return;
+        }
+
+        if ((e.Kind & (DataChangeKind.Catalogs | DataChangeKind.WorkOrders)) == 0)
         {
             return;
         }
@@ -163,8 +299,13 @@ public sealed class MaintainersForm : UserControl
         void RefreshCatalogs()
         {
             if (IsDisposed) return;
-            _assetTree.ReloadPreservingSelection();
-            BindSelectedAsset(_assetTree.SelectedAsset);
+            LoadProviders();
+            if ((e.Kind & DataChangeKind.Catalogs) != 0)
+            {
+                _assetTree.ReloadPreservingSelection();
+                BindSelectedAsset(_assetTree.SelectedAsset);
+                UpdateAssetBatchButtonsState();
+            }
         }
 
         if (InvokeRequired && IsHandleCreated) BeginInvoke(RefreshCatalogs);
@@ -173,9 +314,10 @@ public sealed class MaintainersForm : UserControl
 
     private void BuildProvidersTab(TabPage page)
     {
-        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 198));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 186));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         GroupBox grpForm = CambiasoTheme.CreateGroupBox("Ficha de Proveedor");
@@ -192,14 +334,12 @@ public sealed class MaintainersForm : UserControl
         f.Controls.AddRange([r1, r2, r3, r4]);
         grpForm.Controls.Add(f);
 
-        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 4) };
-        Button btnSave = CambiasoTheme.CreateButton("Guardar", AppIcon.Save, ButtonTone.Primary, _toolTip, "Guardar proveedor nuevo o modificado", width: 120);
+        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 4, 0, 2) };
+        Button btnSave = CreateActionBtn("Guardar", AppIcon.Save, ButtonTone.Primary, "Guardar proveedor nuevo o modificado");
         btnSave.Click += (_, _) => SaveProvider();
-        Button btnDel = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar o desactivar proveedor seleccionado", width: 118);
-        btnDel.Click += (_, _) => DeleteProvider();
-        Button btnClear = CambiasoTheme.CreateButton("Nuevo / Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar ficha para nuevo proveedor", width: 144);
+        Button btnClear = CreateActionBtn("Nuevo / Limpiar", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar ficha para nuevo proveedor");
         btnClear.Click += (_, _) => ClearProviderForm();
-        Button btnExcel = CambiasoTheme.CreateButton("Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Exportar catálogo de proveedores a Excel, PDF, Word o CSV", width: 118);
+        Button btnExcel = CreateActionBtn("Exportar", AppIcon.Download, ButtonTone.Accent, "Exportar catálogo de proveedores a Excel, PDF, Word o CSV");
         btnExcel.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
             btnExcel,
             this,
@@ -207,15 +347,19 @@ public sealed class MaintainersForm : UserControl
             "SISPRO_Proveedores",
             () => DocumentExportService.BuildProvidersReport(_providers, string.IsNullOrWhiteSpace(_txtProvSearch.Text) ? "Catálogo completo" : $"Filtro: {_txtProvSearch.Text}"));
 
-        bar.Controls.AddRange([btnSave, btnDel, btnClear, btnExcel, Wrap("Buscar:", _txtProvSearch)]);
+        bar.Controls.AddRange([btnSave, btnClear, _btnProvConsultOt, _btnProvReassign, _btnProvActivate, _btnProvDeactivate, _btnProvDelete, btnExcel]);
 
-        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Catálogo de Proveedores");
+        FlowLayoutPanel filterBar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 2) };
+        filterBar.Controls.AddRange([_chkSelectAllProv, _lblProvSelectedCount, _btnProvClearSel, Wrap("Buscar:", _txtProvSearch)]);
+
+        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Catálogo de Proveedores (Marque casillas para consultar OTs o acciones masivas)");
         grpGrid.Dock = DockStyle.Fill;
         grpGrid.Controls.Add(_gridProviders);
 
         layout.Controls.Add(grpForm, 0, 0);
         layout.Controls.Add(bar, 0, 1);
-        layout.Controls.Add(grpGrid, 0, 2);
+        layout.Controls.Add(filterBar, 0, 2);
+        layout.Controls.Add(grpGrid, 0, 3);
         page.Controls.Add(layout);
     }
 
@@ -229,15 +373,15 @@ public sealed class MaintainersForm : UserControl
 
         GroupBox grpEdit = CambiasoTheme.CreateGroupBox("Ficha Técnica del Activo Seleccionado");
         grpEdit.Dock = DockStyle.Top;
-        grpEdit.Height = 338;
+        grpEdit.Height = 376;
 
         TableLayoutPanel techGrid = new() { Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 7, Padding = new Padding(6) };
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
         techGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        for (int r = 0; r < 6; r++) techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        for (int r = 0; r < 6; r++) techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        techGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
 
         techGrid.Controls.Add(_lblAssetMeta, 0, 0);
         techGrid.SetColumnSpan(_lblAssetMeta, 2);
@@ -272,18 +416,18 @@ public sealed class MaintainersForm : UserControl
         techGrid.Controls.Add(_txtAssetObs, 1, 5);
         techGrid.SetColumnSpan(_txtAssetObs, 3);
 
-        FlowLayoutPanel editButtons = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 4, 0, 0) };
-        Button btnUpdateNode = CambiasoTheme.CreateButton("Guardar Ficha del Activo", AppIcon.Cpu, ButtonTone.Primary, _toolTip, "Guardar descripción, estado y ficha técnica del activo", width: 204);
+        FlowLayoutPanel editButtons = new() { Dock = DockStyle.Fill, WrapContents = true, Padding = new Padding(0, 4, 0, 0) };
+        Button btnUpdateNode = CreateActionBtn("Guardar Ficha del Activo", AppIcon.Cpu, ButtonTone.Primary, "Guardar descripción, estado y ficha técnica del activo");
         btnUpdateNode.Visible = canEdit;
         btnUpdateNode.Click += (_, _) => SaveSelectedAsset();
 
-        Button btnOpenTreeEditor = CambiasoTheme.CreateButton("Abrir Editor de Árbol", AppIcon.Tree, ButtonTone.Accent, _toolTip, "Abrir módulo completo de edición estructural del árbol (solo Administrador)", width: 196);
+        Button btnOpenTreeEditor = CreateActionBtn("Editor de Árbol", AppIcon.Tree, ButtonTone.Accent, "Abrir módulo completo de edición estructural del árbol (solo Administrador)");
         btnOpenTreeEditor.Visible = canEdit;
         btnOpenTreeEditor.Click += (_, _) => OpenTreeEditorRequested?.Invoke(this, EventArgs.Empty);
 
         Label lblReadOnlyHint = new()
         {
-            Text = "Solo lectura — la modificación del árbol es exclusiva del perfil Administrador.",
+            Text = "Solo lectura — la edición/eliminación del árbol es exclusiva del perfil Administrador.",
             Font = CambiasoTheme.LabelFont,
             ForeColor = CambiasoTheme.Warning,
             AutoSize = true,
@@ -291,7 +435,7 @@ public sealed class MaintainersForm : UserControl
             Margin = new Padding(4, 8, 4, 0)
         };
 
-        editButtons.Controls.AddRange([btnUpdateNode, btnOpenTreeEditor, lblReadOnlyHint]);
+        editButtons.Controls.AddRange([btnUpdateNode, btnOpenTreeEditor, _btnAssetInspectOt, _btnAssetReassign, _btnAssetDeactivateSel, _btnAssetDeleteSel, lblReadOnlyHint]);
         techGrid.Controls.Add(editButtons, 0, 6);
         techGrid.SetColumnSpan(editButtons, 4);
         grpEdit.Controls.Add(techGrid);
@@ -303,7 +447,7 @@ public sealed class MaintainersForm : UserControl
         FlowLayoutPanel addFlow = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
         FlowLayoutPanel addInputs = new() { AutoSize = true, WrapContents = false };
         addInputs.Controls.AddRange([Wrap("Nuevo Activo:", _txtNewChildName), Wrap("Tipo:", _cmbNewChildTipo)]);
-        Button btnAddChild = CambiasoTheme.CreateButton("Agregar Hijo", AppIcon.Add, ButtonTone.Accent, _toolTip, "Crear un nuevo nodo hijo bajo el nodo seleccionado", width: 146);
+        Button btnAddChild = CreateActionBtn("Agregar Hijo", AppIcon.Add, ButtonTone.Accent, "Crear un nuevo nodo hijo bajo el nodo seleccionado");
         btnAddChild.Visible = canEdit;
         btnAddChild.Click += (_, _) => AddAssetChild();
         addFlow.Controls.AddRange([addInputs, btnAddChild]);
@@ -321,16 +465,127 @@ public sealed class MaintainersForm : UserControl
         _gridProviders.DataSource = new SortableBindingList<ProviderGridRow>(
             _providers.Select(p => new ProviderGridRow(p)));
 
-        if (_gridProviders.Columns.Count >= 7)
+        if (_gridProviders.Columns.Count >= 8)
         {
-            GridBindingHelper.ConfigureColumn(_gridProviders, 0, "ID", 6);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 1, "Proveedor", 20);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 2, "Dirección", 26);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 3, "Teléfono", 12);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 4, "Correo", 18);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 5, "Contacto", 10);
-            GridBindingHelper.ConfigureColumn(_gridProviders, 6, "Estado", 8);
+            _provSelection.ConfigureDataColumn(0, "ID", 6);
+            _provSelection.ConfigureDataColumn(1, "Proveedor", 20);
+            _provSelection.ConfigureDataColumn(2, "Dirección", 25);
+            _provSelection.ConfigureDataColumn(3, "Teléfono", 11);
+            _provSelection.ConfigureDataColumn(4, "Correo", 18);
+            _provSelection.ConfigureDataColumn(5, "Contacto", 11);
+            _provSelection.ConfigureDataColumn(6, "Estado", 9);
         }
+
+        _provSelection.EnsureSelectColumnAndSync();
+        UpdateProviderActionStates();
+    }
+
+    private void OnProviderCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        Provider? p = GridBindingHelper.GetRowSource<Provider>(_gridProviders, e.RowIndex);
+        if (p is null || e.CellStyle is null || e.ColumnIndex < 0 || e.ColumnIndex >= _gridProviders.Columns.Count)
+        {
+            return;
+        }
+
+        if (string.Equals(_gridProviders.Columns[e.ColumnIndex].DataPropertyName, nameof(ProviderGridRow.Estado), StringComparison.Ordinal))
+        {
+            e.CellStyle.Font = CambiasoTheme.LabelFont;
+            e.CellStyle.ForeColor = p.Activo ? CambiasoTheme.Success : CambiasoTheme.Danger;
+        }
+    }
+
+    private IReadOnlyCollection<int> GetProviderTargetIds()
+    {
+        if (_provSelection.SelectedCount > 0)
+        {
+            return _provSelection.SelectedIds;
+        }
+
+        return _selectedProvId > 0 ? [_selectedProvId] : [];
+    }
+
+    private void UpdateProviderActionStates()
+    {
+        int checkedCount = _provSelection.SelectedCount;
+        bool hasAnyTarget = checkedCount > 0 || _selectedProvId > 0;
+        _lblProvSelectedCount.Text = $"Seleccionados: {checkedCount}";
+
+        _btnProvConsultOt.Enabled = hasAnyTarget;
+        _btnProvReassign.Visible = _isAdmin;
+        _btnProvActivate.Visible = _isAdmin;
+        _btnProvDeactivate.Visible = _isAdmin;
+        _btnProvDelete.Visible = _isAdmin;
+
+        _btnProvReassign.Enabled = _isAdmin && hasAnyTarget;
+        _btnProvActivate.Enabled = _isAdmin && hasAnyTarget;
+        _btnProvDeactivate.Enabled = _isAdmin && hasAnyTarget;
+        _btnProvDelete.Enabled = _isAdmin && hasAnyTarget;
+        _btnProvClearSel.Enabled = checkedCount > 0;
+    }
+
+    private void InspectProviders() => RunProviderInspect(GetProviderTargetIds());
+
+    private void RunProviderInspect(IReadOnlyCollection<int> targets)
+    {
+        if (MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Proveedor, targets, OnProvidersBatchUpdated))
+        {
+            _provSelection.ClearSelection();
+        }
+    }
+
+    private void SetCheckedProvidersActive(bool active)
+    {
+        IReadOnlyCollection<int> targets = GetProviderTargetIds();
+        if (targets.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Seleccione o marque al menos un proveedor.");
+            return;
+        }
+
+        if (!active)
+        {
+            RunProviderDeactivate(targets);
+            return;
+        }
+
+        try
+        {
+            MaintainerBatchResult res = _ctx.MaintainerService.SetProvidersActiveBatch(_session, targets, true);
+            CambiasoTheme.ShowInfo(this, res.BuildSummary());
+            _provSelection.ClearSelection();
+            LoadProviders();
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    private void RunProviderDeactivate(IReadOnlyCollection<int> targets)
+    {
+        if (MaintainerBatchUiHelper.DeactivateChecked(this, _ctx, _session, MaintainerEntityKind.Proveedor, targets, OnProvidersBatchUpdated))
+        {
+            _provSelection.ClearSelection();
+        }
+    }
+
+    private void DeleteProvider() => RunProviderDelete(GetProviderTargetIds());
+
+    private void RunProviderDelete(IReadOnlyCollection<int> targets)
+    {
+        if (MaintainerBatchUiHelper.DeleteChecked(this, _ctx, _session, MaintainerEntityKind.Proveedor, targets, OnProvidersBatchUpdated))
+        {
+            _provSelection.ClearSelection();
+        }
+    }
+
+    private void OnProvidersBatchUpdated()
+    {
+        ClearProviderForm();
+        LoadProviders();
+        CatalogsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void SelectProviderFromGrid(int? rowIndex = null)
@@ -351,6 +606,7 @@ public sealed class MaintainersForm : UserControl
         _txtProvMailContacto.Text = p.CorreoContacto;
         _txtProvObs.Text = p.Observaciones;
         _chkProvActivo.Checked = p.Activo;
+        UpdateProviderActionStates();
     }
 
     private void SaveProvider()
@@ -380,33 +636,6 @@ public sealed class MaintainersForm : UserControl
         catch (Exception ex)
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
-        }
-    }
-
-    private void DeleteProvider()
-    {
-        if (_selectedProvId <= 0)
-        {
-            CambiasoTheme.ShowWarning(this, "Seleccione un proveedor de la lista.");
-            return;
-        }
-
-        if (!CambiasoTheme.Confirm(this, $"¿Eliminar o desactivar el proveedor '{_txtProvNombre.Text}'?"))
-        {
-            return;
-        }
-
-        try
-        {
-            _ctx.MaintainerService.DeleteProvider(_session, _selectedProvId);
-            CambiasoTheme.ShowInfo(this, "Operación completada correctamente.");
-            ClearProviderForm();
-            LoadProviders();
-            CatalogsChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowError(this, ex.Message);
         }
     }
 
@@ -440,6 +669,58 @@ public sealed class MaintainersForm : UserControl
         _txtProvMailContacto.Clear();
         _txtProvObs.Clear();
         _chkProvActivo.Checked = true;
+        UpdateProviderActionStates();
+    }
+
+    private IReadOnlyList<int> GetAssetTargetIds()
+    {
+        if (_assetTree.CheckedAssetIds.Count > 0)
+        {
+            return _assetTree.CheckedAssetIds;
+        }
+
+        return _assetTree.SelectedAsset is not null ? [_assetTree.SelectedAsset.IdActivo] : [];
+    }
+
+    private void UpdateAssetBatchButtonsState()
+    {
+        bool hasTarget = _assetTree.CheckedAssetIds.Count > 0 || _assetTree.SelectedAsset is not null;
+        _btnAssetInspectOt.Enabled = hasTarget;
+        _btnAssetReassign.Enabled = _assetTree.CanEdit && hasTarget;
+        _btnAssetDeactivateSel.Enabled = _assetTree.CanEdit && hasTarget;
+        _btnAssetDeleteSel.Enabled = _assetTree.CanEdit && hasTarget;
+    }
+
+    private void ManageAssetDependencies(IReadOnlyCollection<int> ids)
+    {
+        if (MaintainerBatchUiHelper.InspectAndManage(this, _ctx, _session, MaintainerEntityKind.Activo, ids, RefreshAssetTreeAfterBatch))
+        {
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void DeactivateAssetTargets()
+    {
+        if (MaintainerBatchUiHelper.DeactivateChecked(this, _ctx, _session, MaintainerEntityKind.Activo, GetAssetTargetIds(), RefreshAssetTreeAfterBatch))
+        {
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void DeleteAssetTargets()
+    {
+        if (MaintainerBatchUiHelper.DeleteChecked(this, _ctx, _session, MaintainerEntityKind.Activo, GetAssetTargetIds(), RefreshAssetTreeAfterBatch))
+        {
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void RefreshAssetTreeAfterBatch()
+    {
+        _assetTree.ClearChecked();
+        _assetTree.ReloadPreservingSelection();
+        BindSelectedAsset(_assetTree.SelectedAsset);
+        UpdateAssetBatchButtonsState();
     }
 
     private void BindSelectedAsset(AssetNode? node)

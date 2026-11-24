@@ -1,5 +1,8 @@
+using System.Globalization;
 using Microsoft.Data.Sqlite;
+using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
+using Sispro.Core.Enums;
 using Sispro.Core.Interfaces;
 using Sispro.Data.Database;
 
@@ -105,6 +108,27 @@ public sealed class ProviderRepository(SqliteConnectionFactory factory) : IProvi
         cmd.ExecuteNonQuery();
     }
 
+    public int SetActiveMany(IReadOnlyCollection<int> ids, bool active)
+    {
+        int[] uniqueIds = RepositoryHelpers.NormalizePositiveIds(ids);
+        if (uniqueIds.Length == 0)
+        {
+            return 0;
+        }
+
+        int updated = 0;
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "pid", uniqueIds);
+        cmd.Parameters.AddWithValue("$act", active ? 1 : 0);
+        cmd.CommandText = $"UPDATE Proveedores SET activo = $act WHERE id_prov IN ({inClause});";
+        updated += cmd.ExecuteNonQuery();
+        tx.Commit();
+        return updated;
+    }
+
     public bool HasWorkOrders(int idProv)
     {
         using SqliteConnection conn = factory.OpenConnection();
@@ -112,6 +136,77 @@ public sealed class ProviderRepository(SqliteConnectionFactory factory) : IProvi
         cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM OrdenesTrabajo WHERE id_prov = $id);";
         cmd.Parameters.AddWithValue("$id", idProv);
         return Convert.ToInt32(cmd.ExecuteScalar()) != 0;
+    }
+
+    public int CountWorkOrders(int idProv)
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM OrdenesTrabajo WHERE id_prov = $id;";
+        cmd.Parameters.AddWithValue("$id", idProv);
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    public IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> providerIds)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(providerIds);
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "p", ids);
+        cmd.CommandText = $"""
+            SELECT o.id_ot, o.n_ot, o.fecha_ot, o.estado,
+                   p.nom_prov, COALESCE(s.alias, 'Sin solicitante'), o.ruta_activo
+            FROM OrdenesTrabajo o
+            INNER JOIN Proveedores p ON p.id_prov = o.id_prov
+            LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
+            WHERE o.id_prov IN ({inClause})
+            ORDER BY o.fecha_ot DESC, o.id_ot DESC;
+            """;
+
+        List<RelatedWorkOrderInfo> list = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            list.Add(new RelatedWorkOrderInfo
+            {
+                IdOt = rdr.GetInt32(0),
+                NumeroOt = rdr.GetInt32(1),
+                FechaOt = DateTime.TryParseExact(rdr.GetString(2), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt) ? dt : DateTime.Today,
+                Estado = (WorkOrderStatus)rdr.GetInt32(3),
+                TipoRelacion = "Proveedor de OT",
+                RegistroAsociado = rdr.GetString(4),
+                InfoAdicional = $"Solicitante: {rdr.GetString(5)} | Activo: {rdr.GetString(6)}"
+            });
+        }
+
+        return list;
+    }
+
+    public int ReassignWorkOrders(IReadOnlyCollection<int> sourceProviderIds, int targetProviderId)
+    {
+        int[] srcIds = RepositoryHelpers.NormalizePositiveIds(sourceProviderIds)
+            .Where(id => id != targetProviderId)
+            .ToArray();
+        if (srcIds.Length == 0 || targetProviderId <= 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        string inClause = RepositoryHelpers.AddInParameters(cmd, "src", srcIds);
+        cmd.Parameters.AddWithValue("$target", targetProviderId);
+        cmd.CommandText = $"UPDATE OrdenesTrabajo SET id_prov = $target WHERE id_prov IN ({inClause});";
+        int affected = cmd.ExecuteNonQuery();
+        tx.Commit();
+        return affected;
     }
 
     public void Delete(int idProv)

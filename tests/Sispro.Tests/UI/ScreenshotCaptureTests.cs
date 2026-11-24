@@ -65,6 +65,15 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
+            // Captura de Búsqueda de OT con checkboxes y Exportar seleccionadas
+            WorkOrdersForm? woCtrl = FindChildControl<WorkOrdersForm>(main);
+            if (woCtrl is not null)
+            {
+                woCtrl.OpenSearchTab();
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "12_busqueda_ot_masiva.png"));
+            }
+
             main.ShowWorkOrderPrint(14828);
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "11_generar_imprimir_ot.png"));
@@ -72,6 +81,16 @@ public sealed class ScreenshotCaptureTests
             main.ShowMaintainers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "05_mantenedores.png"));
+
+            // Captura de pestaña dedicada Firmas en Mantenedores
+            MaintainersForm? maintCtrl = FindChildControl<MaintainersForm>(main);
+            if (maintCtrl is not null && maintCtrl.TabControlMain.TabPages.Count >= 3)
+            {
+                maintCtrl.TabControlMain.SelectedIndex = 2;
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "13_mantenedores_firmas.png"));
+                maintCtrl.TabControlMain.SelectedIndex = 0;
+            }
 
             main.ShowUsers();
             Application.DoEvents();
@@ -110,5 +129,17 @@ public sealed class ScreenshotCaptureTests
         using Bitmap bmp = new(form.Width, form.Height);
         form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
         bmp.Save(filePath, ImageFormat.Png);
+    }
+
+    private static T? FindChildControl<T>(Control root) where T : Control
+    {
+        foreach (Control c in root.Controls)
+        {
+            if (c is T typed) return typed;
+            T? nested = FindChildControl<T>(c);
+            if (nested is not null) return nested;
+        }
+
+        return null;
     }
 }

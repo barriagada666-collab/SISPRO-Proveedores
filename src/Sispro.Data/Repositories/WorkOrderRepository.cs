@@ -18,7 +18,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                o.id_n1, o.id_n2, o.id_n3, o.id_n4, o.id_n5,
                o.id_n6, o.id_n7, o.id_n8, o.id_n9, o.id_n10,
                o.id_nivel, o.ruta_activo,
-               COALESCE(s.nombre_sol, ''), COALESCE(s.ape_pat_sol, ''), COALESCE(s.ape_mat_sol, '')
+               COALESCE(s.nombre_sol, ''), COALESCE(s.ape_pat_sol, ''), COALESCE(s.ape_mat_sol, ''),
+               COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), COALESCE(o.firmas_mask, 7)
         FROM OrdenesTrabajo o
         INNER JOIN Proveedores p ON p.id_prov = o.id_prov
         LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -60,6 +61,42 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         return order;
     }
 
+    public IReadOnlyList<WorkOrder> GetByIds(IReadOnlyCollection<int> idOts)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(idOts);
+        if (ids.Length == 0)
+        {
+            return [];
+        }
+
+        List<WorkOrder> result = [];
+        using SqliteConnection conn = factory.OpenConnection();
+
+        const int chunkSize = 400;
+        for (int offset = 0; offset < ids.Length; offset += chunkSize)
+        {
+            int[] slice = ids.Skip(offset).Take(chunkSize).ToArray();
+            using SqliteCommand cmd = conn.CreateCommand();
+            string inClause = RepositoryHelpers.AddInParameters(cmd, "ot", slice);
+            cmd.CommandText = $"{SelectOrderSql} WHERE o.id_ot IN ({inClause}) ORDER BY o.fecha_ot DESC, o.id_ot DESC;";
+            using SqliteDataReader rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                result.Add(MapOrder(rdr));
+            }
+        }
+
+        foreach (WorkOrder order in result)
+        {
+            LoadDetailsAndApprovals(conn, order);
+        }
+
+        return result
+            .OrderByDescending(static o => o.FechaOt)
+            .ThenByDescending(static o => o.IdOt)
+            .ToList();
+    }
+
     public int GetNextWorkOrderNumber()
     {
         using SqliteConnection conn = factory.OpenConnection();
@@ -80,11 +117,11 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                 INSERT INTO OrdenesTrabajo(
                     n_ot, id_prov, id_sol, fecha_ot, estado,
                     id_n1, id_n2, id_n3, id_n4, id_n5, id_n6, id_n7, id_n8, id_n9, id_n10,
-                    id_nivel, ruta_activo
+                    id_nivel, ruta_activo, observacion, valor_neto, firmas_mask
                 ) VALUES (
                     $not, $prov, $sol, $fecha, $est,
                     $n1, $n2, $n3, $n4, $n5, $n6, $n7, $n8, $n9, $n10,
-                    $niv, $ruta
+                    $niv, $ruta, $obs, $vneto, $fmask
                 );
                 SELECT last_insert_rowid();
                 """;
@@ -111,7 +148,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                     estado = $est,
                     id_n1 = $n1, id_n2 = $n2, id_n3 = $n3, id_n4 = $n4, id_n5 = $n5,
                     id_n6 = $n6, id_n7 = $n7, id_n8 = $n8, id_n9 = $n9, id_n10 = $n10,
-                    id_nivel = $niv, ruta_activo = $ruta
+                    id_nivel = $niv, ruta_activo = $ruta,
+                    observacion = $obs, valor_neto = $vneto, firmas_mask = $fmask
                 WHERE id_ot = $id;
                 """;
             cmd.Parameters.AddWithValue("$id", workOrder.IdOt);
@@ -131,6 +169,16 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         tx.Commit();
     }
 
+    public void UpdateSignatures(int idOt, SignatureOption firmas)
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE OrdenesTrabajo SET firmas_mask = $fmask WHERE id_ot = $id;";
+        cmd.Parameters.AddWithValue("$id", idOt);
+        cmd.Parameters.AddWithValue("$fmask", (int)firmas & 7);
+        cmd.ExecuteNonQuery();
+    }
+
     public void Delete(int idOt)
     {
         using SqliteConnection conn = factory.OpenConnection();
@@ -138,6 +186,32 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         cmd.CommandText = "DELETE FROM OrdenesTrabajo WHERE id_ot = $id;";
         cmd.Parameters.AddWithValue("$id", idOt);
         cmd.ExecuteNonQuery();
+    }
+
+    public int DeleteMany(IReadOnlyCollection<int> idOts)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(idOts);
+        if (ids.Length == 0)
+        {
+            return 0;
+        }
+
+        int deleted = 0;
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        const int chunkSize = 400;
+        for (int offset = 0; offset < ids.Length; offset += chunkSize)
+        {
+            int[] slice = ids.Skip(offset).Take(chunkSize).ToArray();
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            string inClause = RepositoryHelpers.AddInParameters(cmd, "del", slice);
+            cmd.CommandText = $"DELETE FROM OrdenesTrabajo WHERE id_ot IN ({inClause});";
+            deleted += cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return deleted;
     }
 
     public IReadOnlyList<WorkOrderSearchRow> Search(WorkOrderSearchFilter filter)
@@ -184,7 +258,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
 
         if (!string.IsNullOrWhiteSpace(filter.TextoBusqueda))
         {
-            where.Add("(d.detalle_ot LIKE $txt OR p.nom_prov LIKE $txt OR o.ruta_activo LIKE $txt OR CAST(o.n_ot AS TEXT) LIKE $txt)");
+            where.Add("(d.detalle_ot LIKE $txt OR p.nom_prov LIKE $txt OR o.ruta_activo LIKE $txt OR o.observacion LIKE $txt OR CAST(o.n_ot AS TEXT) LIKE $txt)");
             cmd.Parameters.AddWithValue("$txt", $"%{filter.TextoBusqueda.Trim()}%");
         }
 
@@ -213,7 +287,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                    o.fecha_ot, d.cantidad_det, d.detalle_ot, o.ruta_activo,
                    vbs.id_vb IS NOT NULL, COALESCE(us_vbs.alias_usuario, COALESCE(vbs.id_usuario, '')), vbs.fecha_vb,
                    vbj.id_vb IS NOT NULL, COALESCE(us_vbj.alias_usuario, COALESCE(vbj.id_usuario, '')), vbj.fecha_vb,
-                   d.id_det
+                   d.id_det, COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), o.estado, COALESCE(o.firmas_mask, 7)
             FROM OrdenesTrabajo o
             INNER JOIN Proveedores p ON p.id_prov = o.id_prov
             LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -235,6 +309,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
             {
                 IdOt = rdr.GetInt32(0),
                 NumeroOt = rdr.GetInt32(1),
+                TipoOrden = "Externa",
                 Proveedor = rdr.GetString(2),
                 Solicitante = rdr.GetString(3),
                 Fecha = DateTime.ParseExact(rdr.GetString(4), "yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -247,7 +322,11 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                 TieneVbj = rdr.GetInt32(11) != 0,
                 VbjUsuario = rdr.IsDBNull(12) ? string.Empty : rdr.GetString(12),
                 VbjFecha = !rdr.IsDBNull(13) && DateTime.TryParse(rdr.GetString(13), out DateTime dtVbj) ? dtVbj : null,
-                IdDet = rdr.GetInt32(14)
+                IdDet = rdr.GetInt32(14),
+                Observacion = rdr.IsDBNull(15) ? string.Empty : rdr.GetString(15),
+                ValorNeto = rdr.IsDBNull(16) ? 0m : Convert.ToDecimal(rdr.GetDouble(16), CultureInfo.InvariantCulture),
+                Estado = rdr.IsDBNull(17) ? WorkOrderStatus.Abierta : (WorkOrderStatus)rdr.GetInt32(17),
+                FirmasSeleccionadas = rdr.IsDBNull(18) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(18), 0, 7)
             });
         }
 
@@ -451,6 +530,9 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         cmd.Parameters.AddWithValue("$n10", o.IdN10);
         cmd.Parameters.AddWithValue("$niv", Math.Clamp(o.IdNivel, 1, 10));
         cmd.Parameters.AddWithValue("$ruta", o.RutaActivo.Trim());
+        cmd.Parameters.AddWithValue("$obs", o.Observacion.Trim());
+        cmd.Parameters.AddWithValue("$vneto", Convert.ToDouble(Math.Max(0m, o.ValorNeto)));
+        cmd.Parameters.AddWithValue("$fmask", (int)o.FirmasSeleccionadas & 7);
     }
 
     private static WorkOrder MapOrder(SqliteDataReader rdr) => new()
@@ -487,6 +569,9 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         IdN9 = rdr.GetInt32(23),
         IdN10 = rdr.GetInt32(24),
         IdNivel = rdr.GetInt32(25),
-        RutaActivo = rdr.GetString(26)
+        RutaActivo = rdr.GetString(26),
+        Observacion = rdr.IsDBNull(30) ? string.Empty : rdr.GetString(30),
+        ValorNeto = rdr.IsDBNull(31) ? 0m : Convert.ToDecimal(rdr.GetDouble(31), CultureInfo.InvariantCulture),
+        FirmasSeleccionadas = rdr.IsDBNull(32) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(32), 0, 7)
     };
 }
