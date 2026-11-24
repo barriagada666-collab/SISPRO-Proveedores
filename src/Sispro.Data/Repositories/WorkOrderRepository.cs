@@ -17,7 +17,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                o.fecha_ot, o.estado,
                o.id_n1, o.id_n2, o.id_n3, o.id_n4, o.id_n5,
                o.id_n6, o.id_n7, o.id_n8, o.id_n9, o.id_n10,
-               o.id_nivel, o.ruta_activo
+               o.id_nivel, o.ruta_activo,
+               COALESCE(s.nombre_sol, ''), COALESCE(s.ape_pat_sol, ''), COALESCE(s.ape_mat_sol, '')
         FROM OrdenesTrabajo o
         INNER JOIN Proveedores p ON p.id_prov = o.id_prov
         LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -462,6 +463,12 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         CorreoProveedor = rdr.GetString(5),
         IdSol = rdr.IsDBNull(6) ? null : rdr.GetInt32(6),
         AliasSolicitante = rdr.GetString(7),
+        NombreSolicitante = string.Join(" ", new[]
+        {
+            rdr.GetString(27).Trim(),
+            rdr.GetString(28).Trim(),
+            rdr.GetString(29).Trim()
+        }.Where(static part => !string.IsNullOrWhiteSpace(part))),
         TelefonoSolicitante = rdr.GetString(8),
         CorreoSolicitante = rdr.GetString(9),
         FirmaSolicitantePreviewPng = rdr.IsDBNull(10) ? null : (byte[])rdr.GetValue(10),

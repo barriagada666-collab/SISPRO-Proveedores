@@ -65,6 +65,10 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
+            main.ShowWorkOrderPrint(14828);
+            Application.DoEvents();
+            SaveFormBitmap(main, Path.Combine(outDir, "11_generar_imprimir_ot.png"));
+
             main.ShowMaintainers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "05_mantenedores.png"));

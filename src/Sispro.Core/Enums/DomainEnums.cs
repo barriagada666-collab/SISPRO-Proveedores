@@ -22,14 +22,38 @@ public enum UserRoleLevel
     Administrador = 4
 }
 
+[Flags]
 public enum SignatureOption
 {
     Ninguna = 0,
     JuanRamos = 1,
     MarceloSilva = 2,
-    Ambas = 3,
+    Ambas = JuanRamos | MarceloSilva,
     Solicitante = 4,
-    AmbasConSolicitante = 5
+    JefaturaYTecnico = JuanRamos | Solicitante,
+    SupervisorYTecnico = MarceloSilva | Solicitante,
+    AmbasConSolicitante = JuanRamos | MarceloSilva | Solicitante
+}
+
+public static class SignatureOptionExtensions
+{
+    public static bool IncludeJefatura(this SignatureOption option) =>
+        (option & SignatureOption.JuanRamos) == SignatureOption.JuanRamos;
+
+    public static bool IncludeSupervisor(this SignatureOption option) =>
+        (option & SignatureOption.MarceloSilva) == SignatureOption.MarceloSilva;
+
+    public static bool IncludeTecnico(this SignatureOption option) =>
+        (option & SignatureOption.Solicitante) == SignatureOption.Solicitante;
+
+    public static SignatureOption FromFlags(bool jefatura, bool supervisor, bool tecnico)
+    {
+        SignatureOption option = SignatureOption.Ninguna;
+        if (jefatura) option |= SignatureOption.JuanRamos;
+        if (supervisor) option |= SignatureOption.MarceloSilva;
+        if (tecnico) option |= SignatureOption.Solicitante;
+        return option;
+    }
 }
 
 [Flags]

@@ -1,14 +1,14 @@
-# SISPRO v4.2.0 — Sistema de Gestión de Proveedores, Trabajos Externos y Solicitantes
+# SISPRO v4.2.1 — Sistema de Gestión de Proveedores, Trabajos Externos y Solicitantes
 
 > **Cambiaso Hnos S.A.C. — Departamento Mantención (Placilla, Valparaíso)**  
-> Aplicación de escritorio corporativa desarrollada en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con gestión integral de Trabajos Externos (OT), **Solicitado Por** con **Firma Digital** (`PNG`, `JPG`, `PDF`), identificación en vivo de aprobadores **VB Supervisor (`VBS`)** y **VB Jefatura (`VBJ`)**, Árbol de Activos de 10 niveles, Proveedores, Gestión Dinámica de Usuarios y Grupos en 3 áreas, exportaciones corporativas multiformato (**Excel, PDF, Word, CSV**) e instalador **Inno Setup 6**.
+> Aplicación de escritorio corporativa desarrollada en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con gestión integral de Trabajos Externos (OT), **Solicitado Por** con **Firma Digital** (`PNG`, `JPG`, `PDF`), selector flexible de firmas al pie (**Jefatura**, **Técnico**, **Supervisor** o vacío), identificación en vivo de aprobadores **VB Supervisor (`VBS`)** y **VB Jefatura (`VBJ`)**, Árbol de Activos de 10 niveles, Proveedores, Gestión Dinámica de Usuarios y Grupos, exportaciones corporativas multiformato (**Excel, PDF, Word, CSV**) e instalador **Inno Setup 6**.
 
 ---
 
 ## Características Principales
 
 - **Panel de Control y Trabajos Externos en Primer Plano:** Banner Hero principal con el botón dorado **Nueva OT Externa**, resumen en vivo de aprobadores vigentes **VB Supervisor** y **VB Jefatura**, **5 KPIs clicables** (**OTs Externas**, **Proveedores**, **Activos Reales**, **Pendientes VB**, **Solicitantes / Firmas**), 3 gráficos vectoriales High-DPI y tabla reciente con columnas `VBS` / `VBJ` mostrando identidad de quien aprobó (`Sí (<alias>)` / `Pendiente`) y menús contextuales de clic derecho.
-- **Órdenes de Trabajo Externas (`M1`):** Acceso rápido **Nueva OT Externa**, botón **Exportar / Imprimir OT**, **Guardar y Exportar**, árbol industrial de 10 niveles con preservación de selección ante sincronización, correlativo automático, aprobaciones `VBS`/`VBJ` con usuario y fecha/hora (o autorizados vigentes), búsqueda combinada con Date Pickers (`dd-MM-yyyy`), generación e impresión oficial con firma digital del solicitante (`PNG`/`JPG`/`PDF`) y/o firmas corporativas, y exportación en **Excel, PDF, Word y CSV** (vía `ContextMenuHelper` libre de `ObjectDisposedException`).
+- **Órdenes de Trabajo Externas (`M1`):** Acceso rápido **Nueva OT Externa**, botón **Exportar / Imprimir OT**, **Guardar y Exportar**, árbol industrial de 10 niveles con preservación de selección ante sincronización, correlativo automático, aprobaciones `VBS`/`VBJ` con usuario y fecha/hora, búsqueda combinada con Date Pickers (`dd-MM-yyyy`), **selector multi-checkbox de firmas al pie (`Jefatura`, `Técnico (Solicitante)`, `Supervisor` o vacío)**, y exportación/impresión oficial con **N° OT destacado arriba a la derecha**, **Nombre Apellido + Correo + Teléfono + Activo** en *Datos del Solicitante*, y tabla limpia sin líneas `VB` ni columnas `Guía / Estado` o `Valor / Ref.` (vía `ContextMenuHelper` libre de `ObjectDisposedException`).
 - **Gestión de "Solicitado Por" y Firma Digital (`PNG`, `JPG`, `PDF`):** Subpestaña dedicada `Solicitados Por y Firmas Digitales` en **Usuarios y Solicitantes**, pestaña compartida `Solicitantes y Firmas` en **Mantenedores** (`RequesterManagerControl`), y adjunto/vista previa directa al crear o editar un usuario marcado `Solicitante OT`. Archivos `PDF` se rasterizan automáticamente en su página 1 vía `Windows.Data.Pdf.PdfDocument` para vista previa e incrustación en documentos sin dependencias vulnerables.
 - **Editor Especial del Árbol de Activos (Exclusivo Administrador):** Acceso dedicado en el menú lateral (**Editor de Árbol**) y menús de clic derecho sobre `AssetTreePanel` para **Crear hijos**, **Editar ficha técnica y tipo estructural** (`Empresa`, `Planta`, `Sección / Área`, `Máquina`, `Módulo`, `Componente`), **Mover subárboles**, **Activar / Desactivar en cascada**, **Eliminar nodos hoja sin dependencias**, **Normalizar niveles** y **Exportar Rama** (`.xlsx`, `.pdf`, `.docx`, `.csv`). Protegido por RBAC estricto en BD (`AssetTreeService`) y auditoría de accesos denegados.
 - **Menús Contextuales Universales de Clic Derecho (`ContextMenuHelper`):** Disponibles en Árbol de Activos, Trabajos Externos, Mantenedores (Proveedores/Solicitantes), Gestión de Usuarios y Grupos (grilla y grupos) y Panel de Control.
@@ -35,7 +35,7 @@
 
 - **Sistema Operativo:** Windows 10 (19041+) / Windows 11 (64 bits, `win-x64`).
 - **Instalador oficial (autocontenido — no requiere instalar .NET previamente):**
-  1. Descargar `SISPRO_Setup_v4.2.0_win-x64.exe` desde la sección [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
+  1. Descargar `SISPRO_Setup_v4.2.1_win-x64.exe` desde la sección [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
   2. Ejecutar el asistente de instalación. **Ruta predeterminada:** `C:\Temp` (modificable por el usuario durante la instalación).
   3. El instalador configura accesos directos, ícono corporativo multi-resolución y copia la base de datos inicial solo si no existe (las actualizaciones y desinstalaciones preservan los datos).
 
@@ -93,17 +93,21 @@ La base operativa `data/sispro.db` mantiene íntegramente los datos migrados de 
 |---|---|
 | ![Dashboard](docs/screenshots/02_dashboard.png) | ![Trabajos Externos](docs/screenshots/03_ordenes_trabajo.png) |
 
-| Órdenes de Trabajo y Botón OT Externa | Usuarios, Aprobadores VB y Grupos |
+| Órdenes de Trabajo y Botón OT Externa | Generar / Imprimir OT (Selector de Firmas) |
 |---|---|
-| ![OTs](docs/screenshots/10_ot_externa.png) | ![Usuarios y Grupos](docs/screenshots/06_usuarios_rbac.png) |
+| ![OTs](docs/screenshots/10_ot_externa.png) | ![Imprimir OT](docs/screenshots/11_generar_imprimir_ot.png) |
 
-| Gestión de Solicitado Por y Firmas Digitales | Auditoría y Fechas |
+| Usuarios, Aprobadores VB y Grupos | Gestión de Solicitado Por y Firmas Digitales |
 |---|---|
-| ![Solicitantes y Firmas](docs/screenshots/07_solicitantes_firmas.png) | ![Auditoría](docs/screenshots/08_auditoria_fechas.png) |
+| ![Usuarios y Grupos](docs/screenshots/06_usuarios_rbac.png) | ![Solicitantes y Firmas](docs/screenshots/07_solicitantes_firmas.png) |
 
 | Editor de Árbol (Administrador) | Mantenedores |
 |---|---|
 | ![Editor de Árbol](docs/screenshots/09_editor_arbol.png) | ![Mantenedores](docs/screenshots/05_mantenedores.png) |
+
+| Auditoría y Fechas | — |
+|---|---|
+| ![Auditoría](docs/screenshots/08_auditoria_fechas.png) | |
 
 ---
 
@@ -117,7 +121,7 @@ dotnet build SISPRO.sln -c Release
 # Ejecutar las 62 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build
 
-# Compilar publicación autocontenida win-x64 + instalador Inno Setup v4.2.0 + SHA-256
+# Compilar publicación autocontenida win-x64 + instalador Inno Setup v4.2.1 + SHA-256
 .\scripts\Build-Release.ps1
 ```
 
@@ -125,6 +129,7 @@ dotnet test SISPRO.sln -c Release --no-build
 
 ## Documentación, Versionado e Historial
 
+- [Informe de Entrega `v4.2.1`](docs/INFORME_ENTREGA_v4.2.1.md)
 - [Informe de Entrega `v4.2.0`](docs/INFORME_ENTREGA_v4.2.0.md)
 - [Informe de Entrega `v4.1.0`](docs/INFORME_ENTREGA_v4.1.0.md)
 - [Informe Final de Entrega Base `v4.0.0` (Secciones A–S)](docs/INFORME_FINAL_ENTREGA.md)

@@ -136,101 +136,169 @@ public sealed class WordExportService(AppSettings settings)
         mainPart.Document = new Document(new Body());
         Body body = mainPart.Document.Body!;
 
-        AppendCorporateBanner(
-            mainPart,
-            body,
-            $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}",
-            $"{settings.CompanyDepartment} · RUT {settings.CompanyRut}",
-            $"Fecha OT: {order.FechaOt:dd-MM-yyyy} | Estado: {order.Estado}",
-            order.Detalles.Count,
-            logoPath);
+        AppendWorkOrderBanner(mainPart, body, order, logoPath);
 
         // Datos Proveedor y Solicitante
         Table infoTable = CreateStyledTable();
         infoTable.Append(new TableRow(
-            CreateCell("DATOS DEL PROVEEDOR", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left),
-            CreateCell("DATOS DEL SOLICITANTE", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left)));
+            CreateCellWithWidth("DATOS DEL PROVEEDOR", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left, "2500"),
+            CreateCellWithWidth("DATOS DEL SOLICITANTE", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left, "2500")));
         infoTable.Append(new TableRow(
-            CreateCell($"Señor(es): {order.NombreProveedor}\nDirección: {order.DireccionProveedor}\nCorreo: {order.CorreoProveedor}\nActivo: {order.RutaActivo}", null, TextHex, false, "17", JustificationValues.Left),
-            CreateCell($"Solicitado por: {order.AliasSolicitante}\nCorreo: {order.CorreoSolicitante}\nFono: {order.TelefonoSolicitante}\nPlanta: {settings.CompanyAddress}", null, TextHex, false, "17", JustificationValues.Left)));
+            CreateCellWithWidth(
+                $"Señor(es): {order.NombreProveedor}\nDirección: {order.DireccionProveedor}\nCorreo: {order.CorreoProveedor}",
+                null, TextHex, false, "17", JustificationValues.Left, "2500"),
+            CreateCellWithWidth(
+                $"Solicitado por: {order.SolicitanteDisplayNombre}\nCorreo: {order.CorreoSolicitante}\nTeléfono: {order.TelefonoSolicitante}\nActivo: {order.RutaActivo}",
+                null, TextHex, false, "17", JustificationValues.Left, "2500")));
         body.Append(infoTable);
         body.Append(new Paragraph(new Run(new Text(string.Empty))));
 
-        // Detalle de trabajos
+        // Detalle de trabajos (3 columnas: Ítem, Cant., Detalle)
         Table itemsTable = CreateStyledTable();
         itemsTable.Append(new TableRow(
             new TableRowProperties(new TableHeader()),
-            CreateCell("Ítem", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center),
-            CreateCell("Cant.", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center),
-            CreateCell("Detalle de Pieza en Reparación y Trabajo", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left),
-            CreateCell("Estado", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center)));
+            CreateCellWithWidth("Ítem", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center, "450"),
+            CreateCellWithWidth("Cant.", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center, "550"),
+            CreateCellWithWidth("Detalle de Pieza en Reparación y Trabajo", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left, "4000")));
 
         int idx = 1;
         foreach (WorkOrderDetail d in order.Detalles)
         {
             string? bg = idx % 2 == 0 ? ZebraHex : null;
             itemsTable.Append(new TableRow(
-                CreateCell(idx.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center),
-                CreateCell(d.Cantidad.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center),
-                CreateCell(d.Descripcion, bg, TextHex, false, "17", JustificationValues.Left),
-                CreateCell("Registrado", bg, TextHex, false, "17", JustificationValues.Center)));
+                CreateCellWithWidth(idx.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center, "450"),
+                CreateCellWithWidth(d.Cantidad.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center, "550"),
+                CreateCellWithWidth(d.Descripcion, bg, TextHex, false, "17", JustificationValues.Left, "4000")));
             idx++;
         }
 
         body.Append(itemsTable);
-        body.Append(CreateStyledParagraph(
-            $"VB Supervisor: {order.VbsResumen}   |   VB Jefatura: {order.VbjResumen}",
-            MutedHex, "18", bold: true, spaceBefore: "180"));
 
-        // Firmas
-        Table sigTable = new(new TableProperties(
-            new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct },
-            new TableBorders(
-                new TopBorder { Val = BorderValues.None },
-                new BottomBorder { Val = BorderValues.None },
-                new LeftBorder { Val = BorderValues.None },
-                new RightBorder { Val = BorderValues.None },
-                new InsideHorizontalBorder { Val = BorderValues.None },
-                new InsideVerticalBorder { Val = BorderValues.None })));
-
-        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showSol = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
-                       order.FirmaSolicitantePreviewPng is { Length: > 0 };
-
-        TableCell leftSig = new();
-        string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
-        if (showJr && File.Exists(jrPath))
+        // Firmas dinámicas al pie (se omiten completamente si ninguna está seleccionada)
+        List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);
+        if (slots.Count > 0)
         {
-            leftSig.Append(CreateImageParagraph(mainPart, jrPath, 1_100_000, 650_000, JustificationValues.Center));
-        }
-        leftSig.Append(CreateStyledParagraph("____________________________", TextHex, "17", false, "120", JustificationValues.Center));
-        leftSig.Append(CreateStyledParagraph("Juan Ramos Moyano — Jefatura Mantención", PrimaryDarkHex, "17", true, "20", JustificationValues.Center));
+            Table sigTable = new(new TableProperties(
+                new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct },
+                new TableBorders(
+                    new TopBorder { Val = BorderValues.None },
+                    new BottomBorder { Val = BorderValues.None },
+                    new LeftBorder { Val = BorderValues.None },
+                    new RightBorder { Val = BorderValues.None },
+                    new InsideHorizontalBorder { Val = BorderValues.None },
+                    new InsideVerticalBorder { Val = BorderValues.None })));
 
-        TableCell rightSig = new();
-        string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
-        if (showMs && File.Exists(msPath))
-        {
-            rightSig.Append(CreateImageParagraph(mainPart, msPath, 1_100_000, 650_000, JustificationValues.Center));
-        }
-        rightSig.Append(CreateStyledParagraph("____________________________", TextHex, "17", false, "120", JustificationValues.Center));
-        rightSig.Append(CreateStyledParagraph("Marcelo Silva Morgado — Supervisor Mantención", PrimaryDarkHex, "17", true, "20", JustificationValues.Center));
+            string cellPct = (5000 / slots.Count).ToString(CultureInfo.InvariantCulture);
+            long imgCx = slots.Count == 3 ? 980_000 : 1_120_000;
+            long imgCy = slots.Count == 3 ? 520_000 : 620_000;
+            TableRow sigRow = new();
 
-        sigTable.Append(new TableRow(leftSig, rightSig));
+            foreach (WorkOrderSignatureSlot slot in slots)
+            {
+                TableCell cell = new(new TableCellProperties(
+                    new TableCellWidth { Width = cellPct, Type = TableWidthUnitValues.Pct },
+                    new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Bottom }));
 
-        if (showSol)
-        {
-            TableCell solCell = new(new TableCellProperties(new GridSpan { Val = 2 }));
-            solCell.Append(CreateImageParagraphFromBytes(mainPart, order.FirmaSolicitantePreviewPng!, ImagePartType.Png, "firma_solicitante.png", 1_200_000, 600_000, JustificationValues.Center));
-            solCell.Append(CreateStyledParagraph("____________________________", TextHex, "17", false, "60", JustificationValues.Center));
-            solCell.Append(CreateStyledParagraph($"Solicitado por: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})", PrimaryDarkHex, "17", true, "20", JustificationValues.Center));
-            sigTable.Append(new TableRow(solCell));
+                if (!string.IsNullOrEmpty(slot.AssetImagePath) && File.Exists(slot.AssetImagePath))
+                {
+                    cell.Append(CreateImageParagraph(mainPart, slot.AssetImagePath, imgCx, imgCy, JustificationValues.Center));
+                }
+                else if (slot.ImageBytes is { Length: > 0 })
+                {
+                    cell.Append(CreateImageParagraphFromBytes(mainPart, slot.ImageBytes, ImagePartType.Png, "firma_tecnico.png", imgCx, imgCy, JustificationValues.Center));
+                }
+
+                cell.Append(CreateStyledParagraph("______________________", TextHex, "16", false, "100", JustificationValues.Center));
+                cell.Append(CreateStyledParagraph(slot.SignerName, PrimaryDarkHex, "16", true, "15", JustificationValues.Center));
+                cell.Append(CreateStyledParagraph(slot.RoleTitle, MutedHex, "15", false, "10", JustificationValues.Center));
+                sigRow.Append(cell);
+            }
+
+            sigTable.Append(sigRow);
+            body.Append(new Paragraph());
+            body.Append(sigTable);
         }
-        body.Append(new Paragraph());
-        body.Append(sigTable);
 
         AttachFooterAndSectionProperties(mainPart, body, landscape: false);
         mainPart.Document.Save();
+    }
+
+    private void AppendWorkOrderBanner(MainDocumentPart mainPart, Body body, WorkOrder order, string logoPath)
+    {
+        Table banner = new(new TableProperties(
+            new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct },
+            new TableBorders(
+                new TopBorder { Val = BorderValues.Single, Color = PrimaryDarkHex, Size = 6 },
+                new BottomBorder { Val = BorderValues.Single, Color = GoldHex, Size = 18 },
+                new LeftBorder { Val = BorderValues.Single, Color = PrimaryDarkHex, Size = 6 },
+                new RightBorder { Val = BorderValues.Single, Color = PrimaryDarkHex, Size = 6 },
+                new InsideHorizontalBorder { Val = BorderValues.None },
+                new InsideVerticalBorder { Val = BorderValues.None })));
+
+        TableRow tr = new();
+        bool hasLogo = File.Exists(logoPath);
+        if (hasLogo)
+        {
+            TableCell logoCell = new(new TableCellProperties(
+                new TableCellWidth { Width = "1150", Type = TableWidthUnitValues.Pct },
+                new Shading { Val = ShadingPatternValues.Clear, Fill = PrimaryDarkHex },
+                new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center },
+                new TableCellMargin(
+                    new TopMargin { Width = "90", Type = TableWidthUnitValues.Dxa },
+                    new BottomMargin { Width = "90", Type = TableWidthUnitValues.Dxa },
+                    new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                    new RightMargin { Width = "80", Type = TableWidthUnitValues.Dxa })));
+            logoCell.Append(CreateImageParagraph(mainPart, logoPath, 1_180_000, 600_000, JustificationValues.Left));
+            tr.Append(logoCell);
+        }
+
+        TableCell textCell = new(new TableCellProperties(
+            new TableCellWidth { Width = hasLogo ? "2450" : "3600", Type = TableWidthUnitValues.Pct },
+            new Shading { Val = ShadingPatternValues.Clear, Fill = PrimaryDarkHex },
+            new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center },
+            new TableCellMargin(
+                new TopMargin { Width = "100", Type = TableWidthUnitValues.Dxa },
+                new BottomMargin { Width = "100", Type = TableWidthUnitValues.Dxa },
+                new LeftMargin { Width = "120", Type = TableWidthUnitValues.Dxa },
+                new RightMargin { Width = "120", Type = TableWidthUnitValues.Dxa })));
+
+        textCell.Append(CreateStyledParagraph("ORDEN DE TRABAJO EXTERNA", "FFFFFF", "26", bold: true, spaceBefore: "0"));
+        textCell.Append(CreateStyledParagraph($"{settings.CompanyDepartment} · RUT {settings.CompanyRut}", GoldHex, "17", bold: false, spaceBefore: "35"));
+        textCell.Append(CreateStyledParagraph($"Fecha OT: {order.FechaOt:dd-MM-yyyy}", "D4E3EE", "17", bold: false, spaceBefore: "35"));
+        tr.Append(textCell);
+
+        TableCell badgeCell = new(new TableCellProperties(
+            new TableCellWidth { Width = "1400", Type = TableWidthUnitValues.Pct },
+            new Shading { Val = ShadingPatternValues.Clear, Fill = GoldHex },
+            new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center },
+            new TableCellBorders(
+                new LeftBorder { Val = BorderValues.Single, Color = PrimaryDarkHex, Size = 12 }),
+            new TableCellMargin(
+                new TopMargin { Width = "90", Type = TableWidthUnitValues.Dxa },
+                new BottomMargin { Width = "90", Type = TableWidthUnitValues.Dxa },
+                new LeftMargin { Width = "100", Type = TableWidthUnitValues.Dxa },
+                new RightMargin { Width = "100", Type = TableWidthUnitValues.Dxa })));
+        badgeCell.Append(CreateStyledParagraph("OT EXTERNA N°", PrimaryDarkHex, "16", bold: true, spaceBefore: "0", JustificationValues.Center));
+        badgeCell.Append(CreateStyledParagraph(order.NumeroOt.ToString("D6", CultureInfo.InvariantCulture), PrimaryDarkHex, "44", bold: true, spaceBefore: "20", JustificationValues.Center));
+        tr.Append(badgeCell);
+
+        banner.Append(tr);
+        body.Append(banner);
+        body.Append(new Paragraph(new ParagraphProperties(new SpacingBetweenLines { Before = "60", After = "60" })));
+    }
+
+    private static TableCell CreateCellWithWidth(
+        string text,
+        string? fillHex,
+        string textHex,
+        bool bold,
+        string fontSizeHalfPt,
+        JustificationValues align,
+        string widthPct)
+    {
+        TableCell cell = CreateCell(text, fillHex, textHex, bold, fontSizeHalfPt, align);
+        cell.TableCellProperties!.PrependChild(new TableCellWidth { Width = widthPct, Type = TableWidthUnitValues.Pct });
+        return cell;
     }
 
     private void AppendCorporateBanner(

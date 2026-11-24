@@ -88,6 +88,25 @@ public sealed class WinFormsUiAuditTests
 
             using WorkOrdersForm directWorkOrders = new(temp.Context, admin);
             Assert.Equal("Nueva OT Externa", directWorkOrders.BtnNewExternalOt.Text);
+            Assert.True(directWorkOrders.ChkSigJefatura.Checked);
+            Assert.True(directWorkOrders.ChkSigTecnico.Checked);
+            Assert.True(directWorkOrders.ChkSigSupervisor.Checked);
+            Assert.Equal(SignatureOption.AmbasConSolicitante, directWorkOrders.SelectedSignature);
+
+            // Verificar selector libre de firmas (incluyendo dejar vacío para no imprimir firmas al pie)
+            directWorkOrders.ChkSigSupervisor.Checked = false;
+            Assert.Equal(SignatureOption.JefaturaYTecnico, directWorkOrders.SelectedSignature);
+            directWorkOrders.ChkSigJefatura.Checked = false;
+            directWorkOrders.ChkSigSupervisor.Checked = true;
+            Assert.Equal(SignatureOption.SupervisorYTecnico, directWorkOrders.SelectedSignature);
+            directWorkOrders.ChkSigTecnico.Checked = false;
+            directWorkOrders.ChkSigSupervisor.Checked = false;
+            Assert.Equal(SignatureOption.Ninguna, directWorkOrders.SelectedSignature);
+
+            // Restaurar antes de auditar botones
+            directWorkOrders.ChkSigJefatura.Checked = true;
+            directWorkOrders.ChkSigTecnico.Checked = true;
+            directWorkOrders.ChkSigSupervisor.Checked = true;
             AssertAllButtonsValid(directWorkOrders, "WorkOrdersForm.Direct");
 
             using UsersForm directUsers = new(temp.Context, admin);

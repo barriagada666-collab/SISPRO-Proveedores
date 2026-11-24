@@ -2,6 +2,22 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.2.1] — 2026-11-24
+
+### Mejorado y Rediseñado
+- **Rediseño integral de exportaciones e impresión de OT (`Excel`, `PDF`, `Word`, `Impresión` / `Vista Previa` y `CSV`)**:
+  - **N° OT destacado en parte superior derecha**: bloque dorado institucional Cambiaso (`OT N°` / `OT EXTERNA N°`) con tipografía grande (`19pt`–`22pt` Bold) en los 4 formatos visuales.
+  - **Datos del Solicitante completos y `Activo` reubicado**: `WorkOrderRepository` hidrata `nombre_sol`, `ape_pat_sol`, `ape_mat_sol` (`WorkOrder.SolicitanteDisplayNombre`) mostrando **Nombre Apellido**, correo y teléfono en *Datos del Solicitante*, y moviendo **Activo** desde *Datos del Proveedor* hacia *Datos del Solicitante* con ajuste multi-línea sin truncamientos.
+  - **Limpieza de columnas y líneas obsoletas**: eliminadas al exportar/imprimir la línea `VB Supervisor: ... | VB Jefatura: ...`, `Estado:` en cabecera y las columnas `Guía / Estado`, `Estado` / `"Registrado"` y `Valor / Ref.` de la tabla de trabajos.
+  - **Selector libre de firmas al pie + firma del solicitante como `Técnico`**: convertido `SignatureOption` a `[Flags]` (`SignatureOptionExtensions`), creado compositor compartido `WorkOrderSignatureLayout` y sustituidos los presets cerrados en `WorkOrdersForm` por 3 casillas independientes (`Jefatura`, `Técnico (Solicitante)`, `Supervisor`). Permite cualquier combinación con la firma del solicitante etiquetada como **Técnico** en medio, o desmarcar todas las casillas para dejar el pie vacío sin rayas ni textos residuales.
+  - **Alineación UI de `Generar / Imprimir OT`**: campos alineados en grilla fija (`CreatePrintFieldsGrid`) mostrando todos los campos del solicitante (`Solicitante`, `Nombre`, `Correo`, `Teléfono`, `Activo`) y los 3 checkboxes de firma sin recortes.
+
+### Verificado
+- **Compilación y Pruebas**: `Debug` y `Release` `0` errores, `0` advertencias; `0` vulnerabilidades NuGet; `62 / 62` pruebas `xUnit` aprobadas + inspección visual de `11_generar_imprimir_ot.png`, PDF e Impresión reales.
+- **Instalador `SISPRO_Setup_v4.2.1_win-x64.exe`**: `57.722.069` bytes (`SHA-256`: `6C68EAC97006A10FEBC5CE1167A55BAA6572D86FB689286266723710B14802B5`), validada actualización silenciosa `v4.2.0 → v4.2.1`, preservación de `Data\sispro.db`, arranque vivo de `SISPRO.exe` y desinstalación limpia.
+
+---
+
 ## [4.2.0] — 2026-11-24
 
 ### Agregado

@@ -114,7 +114,8 @@ public sealed class EndToEndWorkflowTests
             using (XLWorkbook wb = new(otExcelPath))
             {
                 IXLWorksheet ws = wb.Worksheet(1);
-                Assert.Contains("005001", ws.Cell(4, 4).GetString());
+                Assert.Contains("005001", ws.Cell(3, 4).GetString());
+                Assert.True(ws.Cell(3, 4).Style.Font.FontSize >= 18);
                 Assert.Equal("TALLER INDUSTRIAL VALPARAISO", ws.Cell(8, 2).GetString());
                 Assert.Equal("Fabricar engranaje helicoidal Z-24", ws.Cell(14, 3).GetString());
             }

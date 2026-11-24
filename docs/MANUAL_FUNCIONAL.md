@@ -1,4 +1,4 @@
-# Manual Funcional de Usuario — SISPRO v4.2.0
+# Manual Funcional de Usuario — SISPRO v4.2.1
 
 ## 1. Acceso al Sistema
 
@@ -56,8 +56,10 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
 
 ### 3.3 Pestaña Generar / Imprimir OT (`tab_0_3`)
 - Cargue una OT existente por su número (o componga ítems manualmente).
-- Seleccione la **Firma Digital** deseada: **Ambas Firmas + Solicitante**, **Firma del Solicitante**, **Ambas Firmas (JR + MS)**, **Juan Ramos Moyano**, **Marcelo Silva Morgado** o **Sin firma digital**, con vista previa en vivo de la firma digital del solicitante adjunta (`PNG`/`JPG`/`PDF`).
-- Utilice **Exportar OT** (`.xlsx`, `.pdf`, `.docx`, `.csv`), **Vista Previa** o **Imprimir** incluyendo las firmas y aprobadores correspondientes.
+- Revise las tarjetas alineadas de **Datos del Proveedor** (`Proveedor`, `Dirección`, `Correo`) y **Datos del Solicitante y Firma Técnico** (`Solicitante`, `Nombre`, `Correo`, `Teléfono`, `Activo` junto con la vista previa de firma digital).
+- Seleccione libremente las **Firmas al pie** mediante casillas independientes (**Jefatura**, **Técnico (Solicitante)**, **Supervisor**) — puede combinar cualquiera o **desmarcar todas** para dejar el pie de página sin firmas.
+- Todas las exportaciones/impresiones individuales de OT (`.xlsx`, `.pdf`, `.docx`, impresión directa y vista previa) destacan el **N° de OT grande en la esquina superior derecha**, muestran **Nombre Apellido**, correo, teléfono y **Activo** en *Datos del Solicitante*, presentan la firma del solicitante como **Técnico**, omiten líneas de `VB` y columnas `Guía / Estado` o `Valor / Ref.`, y solo imprimen las firmas seleccionadas.
+- Utilice **Exportar OT** (`.xlsx`, `.pdf`, `.docx`, `.csv`), **Vista Previa** o **Imprimir**.
 
 ---
 

@@ -1,4 +1,4 @@
-# Reporte de Pruebas y Validación — SISPRO v4.2.0
+# Reporte de Pruebas y Validación — SISPRO v4.2.1
 
 > **Fecha:** 24-11-2026  
 > **Framework:** xUnit + .NET 10 (`Release`, `net10.0-windows10.0.19041.0`)  
@@ -20,7 +20,7 @@
 | **Functional (CRUD Árbol de Activos)** | `Functional/AssetTreeAdministrationTests.cs` | 5 | 5/5 OK | CRUD Administrador, recálculo de niveles al mover subárbol, bloqueo de ciclos/profundidad > 10, RBAC estricto Supervisor con auditoría `ACCESO_NO_AUTORIZADO`, bloqueo eliminación con hijos/OTs, desactivación en cascada, ruta `depth DESC`, normalización real de anomalías y exportación 4 formatos. |
 | **Functional (Exportaciones)** | `Functional/MultiFormatExportTests.cs` | 2 | 2/2 OK | Validación estructural real de archivos generados `.xlsx`, `.pdf` (`%PDF-1.4`, codificación `Windows-1252` + paginación multipágina de OTs extensas), `.docx` (OpenXML + footer) y `.csv` (UTF-8 BOM), además de saneamiento XML de caracteres de control vía `ExportSanitizer`. |
 | **UI STA (Menús Contextuales)** | `UI/ContextMenuHelperTests.cs` | 1 | 1/1 OK | Ejecución diferida post-cierre en `ContextMenuStrip` sin `ObjectDisposedException`, `Dispose` completo tras invocación, normalización de separadores e integridad persistente de íconos cacheados en `IconCatalog`. |
-| **UI STA (Auditoría y Capturas)** | `UI/WinFormsUiAuditTests.cs` + `ScreenshotCaptureTests.cs` | 4 | 4/4 OK | Verificación de íconos Lucide, textos, sin typos heredados, RBAC y ausencia explícita de módulos Facturas/Mantención en todos los formularios y los 11 diálogos + captura visual de 10 pantallas (`00`..`10` vigentes). |
+| **UI STA (Auditoría y Capturas)** | `UI/WinFormsUiAuditTests.cs` + `ScreenshotCaptureTests.cs` | 4 | 4/4 OK | Verificación de íconos Lucide, textos, sin typos heredados, RBAC, selector multi-checkbox de firmas al pie (`Jefatura`, `Técnico`, `Supervisor` y pie vacío `Ninguna`) y ausencia explícita de módulos Facturas/Mantención en todos los formularios y los 11 diálogos + captura visual de 11 pantallas vigentes (`00`..`11`, excluyendo módulos eliminados). |
 | **UI STA (Ordenamiento y Paginación)** | `UI/GridSortingAndPaginationTests.cs` | 3 | 3/3 OK | Ordenamiento cronológico/numérico/texto con `SortableBindingList<T>`, mapeo exacto fila→usuario por `Tag` tras ordenar columnas en `UsersForm` bajo ejecución paralela STA y navegación `GridPagerBar`. |
 | **Regression Testing** | `Regression/LegacyBugRegressionTests.cs` | 3 | 3/3 OK | Comparación cronológica real, actualización y eliminación de OT sin dependencias obsoletas de facturas, no inversión VBS/VBJ. |
 | **Stress Testing** | `Stress/PerformanceStressTests.cs` | 2 | 2/2 OK | Inserción masiva indexada y lecturas concurrentes + exportación sobre BD real. |
@@ -28,10 +28,10 @@
 
 ---
 
-## 2. Validación Real del Instalador Inno Setup (`v4.2.0`) y Upgrade desde `v4.1.0`
+## 2. Validación Real del Instalador Inno Setup (`v4.2.1`) y Upgrade desde `v4.2.0`
 
-- **Compilación Inno Setup `6.7.3`:** Exitosa (`SISPRO_Setup_v4.2.0_win-x64.exe`, `57.695.222` bytes / `55,02 MiB`, SHA-256 `28A697DDB61E263D845DECBC7CD00BA3CD825403231BF43BEAF33CC77C4D2ECE`).
-- **Instalación base `v4.1.0` + archivo centinela:** `V41_EXIT=0`, `FileVersion=4.1.0.0` en `C:\Temp\SISPRO_V42_VERIFY`.
-- **Actualización silenciosa `v4.1.0 → v4.2.0`:** `UPG_EXIT=0`, `SISPRO.exe` actualizado a `FileVersion = 4.2.0.0`, hash de `Data\sispro.db` idéntico (`DB_PRESERVED=True`) y centinela preservado (`SENTINEL=True`).
+- **Compilación Inno Setup `6.7.3`:** Exitosa (`SISPRO_Setup_v4.2.1_win-x64.exe`, `57.722.069` bytes / `55,05 MiB`, SHA-256 `6C68EAC97006A10FEBC5CE1167A55BAA6572D86FB689286266723710B14802B5`).
+- **Instalación base `v4.2.0` + archivo centinela:** `V420_EXIT=0`, `FileVersion=4.2.0.0` en `C:\Temp\SISPRO_V421_VERIFY`.
+- **Actualización silenciosa `v4.2.0 → v4.2.1`:** `UPG_EXIT=0`, `SISPRO.exe` actualizado a `FileVersion = 4.2.1.0`, hash de `Data\sispro.db` idéntico (`DB_PRESERVED=True`) y centinela preservado (`SENTINEL=True`).
 - **Ejecución real post-instalación (`SISPRO.exe`):** `LAUNCH_ALIVE=True`, `RESPONDING=True`.
 - **Desinstalación silenciosa:** `UNINST_EXIT=0` — `SISPRO.exe` eliminado limpiamente (`EXE_REMOVED=True`), `Data\sispro.db` preservada (`DB_AFTER_UNINST=True`, `uninsneveruninstall`).

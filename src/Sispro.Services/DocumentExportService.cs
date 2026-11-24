@@ -292,7 +292,7 @@ public sealed class DocumentExportService(
         ],
         Rows = order.Detalles.Select(d => new object?[]
         {
-            order.NumeroOt, order.FechaOt, order.NombreProveedor, order.AliasSolicitante,
+            order.NumeroOt, order.FechaOt, order.NombreProveedor, order.SolicitanteDisplayNombre,
             d.Cantidad, d.Descripcion, order.RutaActivo
         }).ToList()
     };

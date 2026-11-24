@@ -202,19 +202,23 @@ public sealed class PdfExportService(AppSettings settings)
         string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
 
         PdfImage? logo = TryLoadJpegImage(Path.Combine(assetsDir, "logo_cambiaso.png"), Color.FromArgb(10, 38, 60));
-        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showSol = signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante;
+        List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);
+        List<(WorkOrderSignatureSlot Slot, PdfImage? Image, string? XObjName)> slotImages = new(slots.Count);
+        for (int i = 0; i < slots.Count; i++)
+        {
+            WorkOrderSignatureSlot slot = slots[i];
+            PdfImage? img = null;
+            if (!string.IsNullOrEmpty(slot.AssetImagePath))
+            {
+                img = TryLoadJpegImage(slot.AssetImagePath, Color.White);
+            }
+            else if (slot.ImageBytes is { Length: > 0 })
+            {
+                img = TryLoadJpegFromBytes(slot.ImageBytes, Color.White);
+            }
 
-        PdfImage? sigJr = showJr
-            ? TryLoadJpegImage(Path.Combine(assetsDir, "Firmas", "JR.jpg"), Color.White)
-            : null;
-        PdfImage? sigMs = showMs
-            ? TryLoadJpegImage(Path.Combine(assetsDir, "Firmas", "MS.jpg"), Color.White)
-            : null;
-        PdfImage? sigSol = showSol && order.FirmaSolicitantePreviewPng is { Length: > 0 }
-            ? TryLoadJpegFromBytes(order.FirmaSolicitantePreviewPng, Color.White)
-            : null;
+            slotImages.Add((slot, img, img is not null ? $"ImSig{i}" : null));
+        }
 
         double pageW = 612;
         double pageH = 792;
@@ -223,26 +227,60 @@ public sealed class PdfExportService(AppSettings settings)
         double marginBottom = 36;
         double contentW = pageW - (marginX * 2);
         double halfW = (contentW - 12) / 2;
-        double[] colW = [38, 46, contentW - 174, 90];
-        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo", "Estado"];
+        double[] colW = [38, 48, contentW - 86];
+        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo"];
 
         void DrawOtBanner(StringBuilder pageSb, bool isContinuation)
         {
-            string title = isContinuation
-                ? $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6} (Continuación)"
-                : $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}";
-            DrawCorporateHeader(
-                pageSb,
-                pageW,
-                pageH,
-                marginX,
-                marginTop,
-                72,
-                contentW,
-                title,
-                $"{settings.CompanyDepartment}  |  RUT {settings.CompanyRut}",
-                $"Fecha OT: {order.FechaOt:dd-MM-yyyy}  |  Estado: {order.Estado}",
-                logo is not null);
+            double topY = pageH - marginTop;
+            double bannerH = 78;
+            double bottomY = topY - bannerH;
+
+            pageSb.AppendLine(PrimaryDarkFill);
+            pageSb.AppendLine(Fmt($"{marginX} {bottomY} {contentW} {bannerH} re f"));
+            pageSb.AppendLine(GoldFill);
+            pageSb.AppendLine(Fmt($"{marginX} {bottomY} {contentW} 3 re f"));
+
+            double textLeftX = marginX + 12;
+            if (logo is not null)
+            {
+                double logoH = bannerH - 20;
+                double logoW = logoH * 1.9;
+                pageSb.AppendLine(Fmt($"q {logoW} 0 0 {logoH} {marginX + 10} {bottomY + 11} cm /ImLogo Do Q"));
+                textLeftX = marginX + logoW + 18;
+            }
+
+            // Caja superior derecha resaltada para N° de OT
+            double badgeW = 148;
+            double badgeH = bannerH - 18;
+            double badgeX = marginX + contentW - badgeW - 10;
+            double badgeY = bottomY + 10;
+
+            pageSb.AppendLine(GoldFill);
+            pageSb.AppendLine(Fmt($"{badgeX} {badgeY} {badgeW} {badgeH} re f"));
+            pageSb.AppendLine("1.2 w");
+            pageSb.AppendLine(PrimaryDarkFill.Replace(" rg", " RG"));
+            pageSb.AppendLine(Fmt($"{badgeX} {badgeY} {badgeW} {badgeH} re S"));
+
+            string badgeTitle = isContinuation ? "OT N° (CONT.)" : "OT EXTERNA N°";
+            double bTitleW = EstimateTextWidth(badgeTitle, 8.2);
+            pageSb.AppendLine(PrimaryDarkFill);
+            DrawText(pageSb, "F2", 8.2, badgeX + ((badgeW - bTitleW) / 2), badgeY + badgeH - 16, badgeTitle);
+
+            string otNumText = order.NumeroOt.ToString("D6", CultureInfo.InvariantCulture);
+            double numW = EstimateTextWidth(otNumText, 22);
+            DrawText(pageSb, "F2", 22, badgeX + ((badgeW - numW) / 2), badgeY + 12, otNumText);
+
+            double maxTitleW = badgeX - textLeftX - 12;
+            string mainTitle = isContinuation ? "ORDEN DE TRABAJO EXTERNA (CONT.)" : "ORDEN DE TRABAJO EXTERNA";
+            pageSb.AppendLine(WhiteFill);
+            DrawText(pageSb, "F2", 12.5, textLeftX, topY - 25, TruncateText(mainTitle, maxTitleW, 12.5));
+
+            pageSb.AppendLine(GoldFill);
+            DrawText(pageSb, "F1", 8.8, textLeftX, topY - 41, TruncateText($"{settings.CompanyDepartment}  |  RUT {settings.CompanyRut}", maxTitleW, 8.8));
+
+            pageSb.AppendLine("0.84 0.90 0.95 rg");
+            DrawText(pageSb, "F1", 8.5, textLeftX, topY - 56, TruncateText($"Fecha OT: {order.FechaOt:dd-MM-yyyy}", maxTitleW, 8.5));
         }
 
         double DrawDetailsHeader(StringBuilder pageSb, double topY)
@@ -253,7 +291,7 @@ public sealed class PdfExportService(AppSettings settings)
             double cx = marginX;
             for (int i = 0; i < colH.Length; i++)
             {
-                DrawText(pageSb, "F2", 8.5, cx + 5, topY - 14.5, colH[i]);
+                DrawText(pageSb, "F2", 8.5, cx + 6, topY - 14.5, colH[i]);
                 cx += colW[i];
             }
 
@@ -265,34 +303,37 @@ public sealed class PdfExportService(AppSettings settings)
         pageBuilders.Add(sb);
         DrawOtBanner(sb, isContinuation: false);
 
-        double y = pageH - marginTop - 88;
+        double y = pageH - marginTop - 94;
 
-        // Bloque Proveedor & Solicitante
-        DrawInfoCard(sb, marginX, y, halfW, 92, "DATOS DEL PROVEEDOR",
+        // Bloque Proveedor & Solicitante con ajuste automático de líneas largas y Activo en Solicitante
+        List<string> provLines = WrapInfoCardLines(halfW - 16, 8.2,
         [
             $"Señor(es): {order.NombreProveedor}",
             $"Dirección: {order.DireccionProveedor}",
-            $"Correo: {order.CorreoProveedor}",
-            $"Activo: {order.RutaActivo}"
+            $"Correo: {order.CorreoProveedor}"
         ]);
-        DrawInfoCard(sb, marginX + halfW + 12, y, halfW, 92, "DATOS DEL SOLICITANTE",
+        List<string> solLines = WrapInfoCardLines(halfW - 16, 8.2,
         [
-            $"Solicitado por: {order.AliasSolicitante}",
+            $"Solicitado por: {order.SolicitanteDisplayNombre}",
             $"Correo: {order.CorreoSolicitante}",
             $"Teléfono: {order.TelefonoSolicitante}",
-            $"Planta: {settings.CompanyAddress}"
+            $"Activo: {order.RutaActivo}"
         ]);
+        double cardH = Math.Max(88, 28 + (Math.Max(provLines.Count, solLines.Count) * 13.5));
 
-        y -= 108;
+        DrawWrappedInfoCard(sb, marginX, y, halfW, cardH, "DATOS DEL PROVEEDOR", provLines);
+        DrawWrappedInfoCard(sb, marginX + halfW + 12, y, halfW, cardH, "DATOS DEL SOLICITANTE", solLines);
+
+        y -= cardH + 14;
 
         double tableStart = y;
         y = DrawDetailsHeader(sb, y);
-        double minTableY = marginBottom + 40;
+        double minTableY = marginBottom + 36;
 
         int itemIdx = 1;
         foreach (WorkOrderDetail d in order.Detalles)
         {
-            List<string> lines = WrapText(d.Descripcion, colW[2] - 10, 8.5);
+            List<string> lines = WrapText(d.Descripcion, colW[2] - 12, 8.5);
             double rh = Math.Max(20, (lines.Count * 11.5) + 8);
             if (y - rh < minTableY)
             {
@@ -303,7 +344,7 @@ public sealed class PdfExportService(AppSettings settings)
                 sb = new();
                 pageBuilders.Add(sb);
                 DrawOtBanner(sb, isContinuation: true);
-                y = pageH - marginTop - 88;
+                y = pageH - marginTop - 94;
                 tableStart = y;
                 y = DrawDetailsHeader(sb, y);
             }
@@ -320,16 +361,14 @@ public sealed class PdfExportService(AppSettings settings)
 
             sb.AppendLine(TextPrimaryFill);
             DrawText(sb, "F1", 8.5, marginX + 12, y - 13, itemIdx.ToString(CultureInfo.InvariantCulture));
-            DrawText(sb, "F1", 8.5, marginX + colW[0] + 14, y - 13, d.Cantidad.ToString(CultureInfo.InvariantCulture));
+            DrawText(sb, "F1", 8.5, marginX + colW[0] + 15, y - 13, d.Cantidad.ToString(CultureInfo.InvariantCulture));
 
             double ly = y - 13;
             foreach (string line in lines)
             {
-                DrawText(sb, "F1", 8.5, marginX + colW[0] + colW[1] + 5, ly, line);
+                DrawText(sb, "F1", 8.5, marginX + colW[0] + colW[1] + 6, ly, line);
                 ly -= 11.5;
             }
-
-            DrawText(sb, "F1", 8.5, marginX + colW[0] + colW[1] + colW[2] + 6, y - 13, "Registrado");
 
             y -= rh;
             itemIdx++;
@@ -339,56 +378,50 @@ public sealed class PdfExportService(AppSettings settings)
         sb.AppendLine(BorderStroke);
         sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
 
-        // Si el bloque de Vistos Buenos y Firmas no cabe limpio en la página actual, abrir página final
-        double requiredRoom = sigSol is not null ? 275 : 210;
-        double minSignatureRoomY = marginBottom + requiredRoom;
-        bool sigOnNewPage = y < minSignatureRoomY;
-        if (sigOnNewPage)
+        // Pie dinámico de firmas: se renderizan solo las seleccionadas; si está vacío no se dibuja ninguna
+        if (slotImages.Count > 0)
         {
-            sb = new();
-            pageBuilders.Add(sb);
-            DrawOtBanner(sb, isContinuation: true);
-            y = pageH - marginTop - 88;
-        }
+            double requiredRoom = 135;
+            double minSignatureRoomY = marginBottom + requiredRoom;
+            bool sigOnNewPage = y < minSignatureRoomY;
+            if (sigOnNewPage)
+            {
+                sb = new();
+                pageBuilders.Add(sb);
+                DrawOtBanner(sb, isContinuation: true);
+                y = pageH - marginTop - 94;
+            }
 
-        // Estado Vistos Buenos
-        y -= 24;
-        sb.AppendLine(TextMutedFill);
-        DrawText(sb, "F2", 8.5, marginX, y, $"VB Supervisor: {order.VbsResumen}");
-        y -= 13;
-        DrawText(sb, "F2", 8.5, marginX, y, $"VB Jefatura: {order.VbjResumen}");
+            double sigY = Math.Max(marginBottom + 38, y - 110);
+            double slotW = contentW / slotImages.Count;
+            double imgW = slotImages.Count == 3 ? 105 : 120;
+            double imgH = slotImages.Count == 3 ? 56 : 64;
+            double lineHalfW = Math.Min(78, (slotW * 0.40));
 
-        // Firmas
-        double sigY = sigOnNewPage
-            ? Math.Max(marginBottom + (sigSol is not null ? 132 : 66), y - 115)
-            : Math.Max(marginBottom + (sigSol is not null ? 132 : 66), y - 106);
-        if (sigJr is not null)
-        {
-            sb.AppendLine(Fmt($"q 115 0 0 70 {marginX + 60} {sigY + 18} cm /ImJR Do Q"));
-        }
+            for (int i = 0; i < slotImages.Count; i++)
+            {
+                (WorkOrderSignatureSlot slot, PdfImage? _, string? xObjName) = slotImages[i];
+                double cx = marginX + (slotW * i) + (slotW / 2);
 
-        if (sigMs is not null)
-        {
-            sb.AppendLine(Fmt($"q 115 0 0 70 {marginX + halfW + 72} {sigY + 18} cm /ImMS Do Q"));
-        }
+                if (!string.IsNullOrEmpty(xObjName))
+                {
+                    sb.AppendLine(Fmt($"q {imgW} 0 0 {imgH} {cx - (imgW / 2)} {sigY + 26} cm /{xObjName} Do Q"));
+                }
 
-        sb.AppendLine("0.8 w");
-        sb.AppendLine(PrimaryDarkFill);
-        sb.AppendLine(Fmt($"{marginX + 32} {sigY + 14} m {marginX + halfW - 24} {sigY + 14} l S"));
-        sb.AppendLine(Fmt($"{marginX + halfW + 44} {sigY + 14} m {marginX + contentW - 24} {sigY + 14} l S"));
+                sb.AppendLine("0.8 w");
+                sb.AppendLine(PrimaryDarkFill.Replace(" rg", " RG"));
+                sb.AppendLine(Fmt($"{cx - lineHalfW} {sigY + 22} m {cx + lineHalfW} {sigY + 22} l S"));
 
-        DrawText(sb, "F2", 8.5, marginX + 38, sigY + 2, "Juan Ramos Moyano — Jefatura Mantención");
-        DrawText(sb, "F2", 8.5, marginX + halfW + 46, sigY + 2, "Marcelo Silva Morgado — Supervisor Mantención");
+                string nameText = TruncateText(slot.SignerName, slotW - 14, 8.2);
+                double nameW = EstimateTextWidth(nameText, 8.2);
+                sb.AppendLine(TextPrimaryFill);
+                DrawText(pageSbSafe(sb), "F2", 8.2, cx - (nameW / 2), sigY + 10, nameText);
 
-        if (sigSol is not null)
-        {
-            double solCenter = marginX + (contentW / 2);
-            double solY = Math.Max(marginBottom + 24, sigY - 82);
-            sb.AppendLine(Fmt($"q 125 0 0 54 {solCenter - 62} {solY + 16} cm /ImSol Do Q"));
-            sb.AppendLine("0.8 w");
-            sb.AppendLine(PrimaryDarkFill);
-            sb.AppendLine(Fmt($"{solCenter - 115} {solY + 12} m {solCenter + 115} {solY + 12} l S"));
-            DrawText(sb, "F2", 8.5, solCenter - 95, solY, $"Solicitante: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})");
+                string roleText = TruncateText(slot.RoleTitle, slotW - 14, 7.6);
+                double roleW = EstimateTextWidth(roleText, 7.6);
+                sb.AppendLine(TextMutedFill);
+                DrawText(pageSbSafe(sb), "F1", 7.6, cx - (roleW / 2), sigY - 1, roleText);
+            }
         }
 
         int totalPages = pageBuilders.Count;
@@ -401,11 +434,57 @@ public sealed class PdfExportService(AppSettings settings)
 
         List<(string Name, PdfImage Image)> images = [];
         if (logo is not null) images.Add(("ImLogo", logo));
-        if (sigJr is not null) images.Add(("ImJR", sigJr));
-        if (sigMs is not null) images.Add(("ImMS", sigMs));
-        if (sigSol is not null) images.Add(("ImSol", sigSol));
+        foreach ((WorkOrderSignatureSlot _, PdfImage? img, string? xObjName) in slotImages)
+        {
+            if (img is not null && !string.IsNullOrEmpty(xObjName))
+            {
+                images.Add((xObjName, img));
+            }
+        }
 
         WritePdfDocument(outputPath, pageW, pageH, pages, images);
+
+        static StringBuilder pageSbSafe(StringBuilder target) => target;
+    }
+
+    private static List<string> WrapInfoCardLines(double maxWidth, double fontSize, string[] entries)
+    {
+        List<string> wrapped = [];
+        foreach (string entry in entries)
+        {
+            wrapped.AddRange(WrapText(entry, maxWidth, fontSize));
+        }
+
+        return wrapped;
+    }
+
+    private static void DrawWrappedInfoCard(
+        StringBuilder sb,
+        double x,
+        double topY,
+        double w,
+        double h,
+        string heading,
+        List<string> lines)
+    {
+        sb.AppendLine("0.98 0.99 1 rg");
+        sb.AppendLine(Fmt($"{x} {topY - h} {w} {h} re f"));
+        sb.AppendLine(PrimaryFill);
+        sb.AppendLine(Fmt($"{x} {topY - 18} {w} 18 re f"));
+        sb.AppendLine(WhiteFill);
+        DrawText(sb, "F2", 8.2, x + 8, topY - 12.5, heading);
+
+        sb.AppendLine("0.6 w");
+        sb.AppendLine(BorderStroke);
+        sb.AppendLine(Fmt($"{x} {topY - h} {w} {h} re S"));
+
+        sb.AppendLine(TextPrimaryFill);
+        double ly = topY - 31;
+        foreach (string line in lines)
+        {
+            DrawText(sb, "F1", 8.2, x + 8, ly, line);
+            ly -= 13.5;
+        }
     }
 
     private void DrawCorporateHeader(

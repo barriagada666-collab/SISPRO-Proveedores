@@ -11,7 +11,9 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class PrintService(AppSettings settings)
 {
+    private static readonly Color CambiasoNavy = Color.FromArgb(10, 38, 60);
     private static readonly Color CambiasoGreen = Color.FromArgb(14, 65, 99);
+    private static readonly Color CambiasoGold = Color.FromArgb(200, 169, 119);
     private static readonly Color SubtleFill = Color.FromArgb(235, 244, 250);
 
     public PrintDocument CreateWorkOrderPrintDocument(
@@ -21,7 +23,9 @@ public sealed class PrintService(AppSettings settings)
     {
         string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
         int currentDetailIndex = 0;
+        bool detailsFinished = false;
         int pageNumber = 1;
+        List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);
 
         PrintDocument doc = new()
         {
@@ -31,6 +35,7 @@ public sealed class PrintService(AppSettings settings)
         doc.BeginPrint += (_, _) =>
         {
             currentDetailIndex = 0;
+            detailsFinished = false;
             pageNumber = 1;
         };
 
@@ -46,160 +51,167 @@ public sealed class PrintService(AppSettings settings)
             Rectangle bounds = e.MarginBounds;
             float y = bounds.Top;
 
+            using Font otBigFont = new("Segoe UI", 19, FontStyle.Bold);
             using Font titleFont = new("Segoe UI", 13, FontStyle.Bold);
             using Font subtitleFont = new("Segoe UI", 9.5f, FontStyle.Bold);
             using Font boldFont = new("Segoe UI", 9, FontStyle.Bold);
             using Font regularFont = new("Segoe UI", 9, FontStyle.Regular);
             using Font smallFont = new("Segoe UI", 8, FontStyle.Regular);
-            using Pen olivePen = new(CambiasoGreen, 1.5f);
+            using Font smallBoldFont = new("Segoe UI", 8, FontStyle.Bold);
+            using Pen olivePen = new(CambiasoNavy, 1.5f);
             using Pen gridPen = new(Color.FromArgb(197, 214, 226), 0.75f);
+            using SolidBrush navyBrush = new(CambiasoNavy);
             using SolidBrush oliveBrush = new(CambiasoGreen);
+            using SolidBrush goldBrush = new(CambiasoGold);
             using SolidBrush lightBrush = new(SubtleFill);
 
-            // Header Logo + Box
+            // Header Logo + Caja Superior Derecha Destacada para N° OT
             string logoPath = Path.Combine(assetsDir, "logo_cambiaso.png");
             if (File.Exists(logoPath))
             {
                 using Image logo = Image.FromFile(logoPath);
-                g.DrawImage(logo, new Rectangle(bounds.Left, (int)y, 175, 86));
+                g.DrawImage(logo, new Rectangle(bounds.Left, (int)y, 178, 90));
             }
             else
             {
-                g.DrawString(settings.CompanyName, titleFont, oliveBrush, bounds.Left, y + 14);
+                g.DrawString(settings.CompanyName, titleFont, oliveBrush, bounds.Left, y + 18);
             }
 
-            Rectangle headerBox = new(bounds.Right - 270, (int)y, 270, 88);
+            Rectangle headerBox = new(bounds.Right - 285, (int)y, 285, 96);
             g.DrawRectangle(olivePen, headerBox);
-            using StringFormat center = new() { Alignment = StringAlignment.Center };
-            g.DrawString($"RUT: {settings.CompanyRut}", boldFont, Brushes.Black, new RectangleF(headerBox.X, headerBox.Y + 5, headerBox.Width, 18), center);
-            g.FillRectangle(oliveBrush, headerBox.X + 1, headerBox.Y + 23, headerBox.Width - 2, 20);
-            g.DrawString("ORDEN DE TRABAJO EXTERNA", subtitleFont, Brushes.White, new RectangleF(headerBox.X, headerBox.Y + 25, headerBox.Width, 18), center);
-            g.DrawString(settings.CompanyDepartment, smallFont, Brushes.Black, new RectangleF(headerBox.X, headerBox.Y + 46, headerBox.Width, 16), center);
-            g.DrawString($"N° OT : {order.NumeroOt:D6}", titleFont, Brushes.DarkRed, new RectangleF(headerBox.X, headerBox.Y + 62, headerBox.Width, 24), center);
+            using StringFormat center = new() { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+            g.DrawString($"RUT: {settings.CompanyRut}  ·  {settings.CompanyDepartment}", smallFont, Brushes.Black,
+                new RectangleF(headerBox.X + 2, headerBox.Y + 3, headerBox.Width - 4, 17), center);
+            g.FillRectangle(oliveBrush, headerBox.X + 1, headerBox.Y + 21, headerBox.Width - 2, 20);
+            g.DrawString("ORDEN DE TRABAJO EXTERNA", subtitleFont, Brushes.White,
+                new RectangleF(headerBox.X + 2, headerBox.Y + 21, headerBox.Width - 4, 20), center);
+            g.FillRectangle(goldBrush, headerBox.X + 1, headerBox.Y + 41, headerBox.Width - 2, 35);
+            g.DrawString($"OT N° {order.NumeroOt:D6}", otBigFont, navyBrush,
+                new RectangleF(headerBox.X + 2, headerBox.Y + 41, headerBox.Width - 4, 35), center);
+            g.DrawString($"Fecha OT: {order.FechaOt:dd-MM-yyyy}", boldFont, Brushes.Black,
+                new RectangleF(headerBox.X + 2, headerBox.Y + 77, headerBox.Width - 4, 18), center);
 
-            y += 102;
+            y += 108;
 
-            // Info cards
-            int halfWidth = (bounds.Width - 12) / 2;
-            Rectangle leftCard = new(bounds.Left, (int)y, halfWidth, 92);
-            Rectangle rightCard = new(bounds.Left + halfWidth + 12, (int)y, halfWidth, 92);
-
-            DrawInfoCard(g, leftCard, "PROVEEDOR", oliveBrush, olivePen, boldFont, regularFont,
-            [
-                ("Señor(es):", order.NombreProveedor),
-                ("Dirección:", order.DireccionProveedor),
-                ("Correo:", order.CorreoProveedor),
-                ("Activo:", order.RutaActivo)
-            ]);
-
-            DrawInfoCard(g, rightCard, "SOLICITANTE", oliveBrush, olivePen, boldFont, regularFont,
-            [
-                ("Solicitado por:", order.AliasSolicitante),
-                ("Fecha:", order.FechaOt.ToString("dd-MM-yyyy")),
-                ("Correo / Fono:", $"{order.CorreoSolicitante}  {order.TelefonoSolicitante}".Trim()),
-                ("Dirección:", settings.CompanyAddress)
-            ]);
-
-            y += 106;
-
-            // Table Header
-            int colItem = 42;
-            int colCant = 52;
-            int colVal = 90;
-            int colDesc = bounds.Width - colItem - colCant - colVal;
-
-            Rectangle tblHdr = new(bounds.Left, (int)y, bounds.Width, 24);
-            g.FillRectangle(oliveBrush, tblHdr);
-            g.DrawString("Ítem", boldFont, Brushes.White, bounds.Left + 6, y + 4);
-            g.DrawString("Cant.", boldFont, Brushes.White, bounds.Left + colItem + 6, y + 4);
-            g.DrawString("DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO", boldFont, Brushes.White, bounds.Left + colItem + colCant + 6, y + 4);
-            g.DrawString("Valor / Ref.", boldFont, Brushes.White, bounds.Right - colVal + 6, y + 4);
-            y += 24;
-
-            float signatureReserve = 165;
-            float maxTableBottom = bounds.Bottom - signatureReserve;
-
-            while (currentDetailIndex < order.Detalles.Count)
+            if (!detailsFinished)
             {
-                WorkOrderDetail detail = order.Detalles[currentDetailIndex];
-                SizeF measured = g.MeasureString(detail.Descripcion, regularFont, colDesc - 10);
-                float rowHeight = Math.Max(26, measured.Height + 10);
+                int halfWidth = (bounds.Width - 12) / 2;
+                (string Label, string Value)[] provRows =
+                [
+                    ("Señor(es):", order.NombreProveedor),
+                    ("Dirección:", order.DireccionProveedor),
+                    ("Correo:", order.CorreoProveedor)
+                ];
+                (string Label, string Value)[] solRows =
+                [
+                    ("Solicitado por:", order.SolicitanteDisplayNombre),
+                    ("Correo:", order.CorreoSolicitante),
+                    ("Teléfono:", order.TelefonoSolicitante),
+                    ("Activo:", order.RutaActivo)
+                ];
 
-                if (y + rowHeight > maxTableBottom && currentDetailIndex > 0)
+                int cardHeight = Math.Max(
+                    MeasureInfoCardHeight(g, halfWidth, regularFont, provRows),
+                    MeasureInfoCardHeight(g, halfWidth, regularFont, solRows));
+
+                Rectangle leftCard = new(bounds.Left, (int)y, halfWidth, cardHeight);
+                Rectangle rightCard = new(bounds.Left + halfWidth + 12, (int)y, halfWidth, cardHeight);
+
+                DrawInfoCard(g, leftCard, "DATOS DEL PROVEEDOR", oliveBrush, olivePen, boldFont, regularFont, provRows);
+                DrawInfoCard(g, rightCard, "DATOS DEL SOLICITANTE", oliveBrush, olivePen, boldFont, regularFont, solRows);
+
+                y += cardHeight + 12;
+
+                // Tabla de Detalle (3 columnas: Ítem, Cant., Detalle)
+                int colItem = 44;
+                int colCant = 54;
+                int colDesc = bounds.Width - colItem - colCant;
+
+                Rectangle tblHdr = new(bounds.Left, (int)y, bounds.Width, 24);
+                g.FillRectangle(oliveBrush, tblHdr);
+                g.DrawString("Ítem", boldFont, Brushes.White, bounds.Left + 6, y + 4);
+                g.DrawString("Cant.", boldFont, Brushes.White, bounds.Left + colItem + 6, y + 4);
+                g.DrawString("DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO", boldFont, Brushes.White, bounds.Left + colItem + colCant + 6, y + 4);
+                y += 24;
+
+                float maxTableBottom = bounds.Bottom - 36;
+                while (currentDetailIndex < order.Detalles.Count)
+                {
+                    WorkOrderDetail detail = order.Detalles[currentDetailIndex];
+                    SizeF measured = g.MeasureString(detail.Descripcion, regularFont, colDesc - 12);
+                    float rowHeight = Math.Max(26, measured.Height + 10);
+
+                    if (y + rowHeight > maxTableBottom && currentDetailIndex > 0)
+                    {
+                        DrawFooter(g, bounds, smallFont, pageNumber++);
+                        e.HasMorePages = true;
+                        return;
+                    }
+
+                    RectangleF rowRect = new(bounds.Left, y, bounds.Width, rowHeight);
+                    if (currentDetailIndex % 2 == 1)
+                    {
+                        g.FillRectangle(lightBrush, rowRect);
+                    }
+
+                    g.DrawRectangle(gridPen, rowRect.X, rowRect.Y, rowRect.Width, rowRect.Height);
+                    g.DrawLine(gridPen, bounds.Left + colItem, y, bounds.Left + colItem, y + rowHeight);
+                    g.DrawLine(gridPen, bounds.Left + colItem + colCant, y, bounds.Left + colItem + colCant, y + rowHeight);
+
+                    g.DrawString((currentDetailIndex + 1).ToString(), regularFont, Brushes.Black, bounds.Left + 12, y + 5);
+                    g.DrawString(detail.Cantidad.ToString(), regularFont, Brushes.Black, bounds.Left + colItem + 12, y + 5);
+                    g.DrawString(detail.Descripcion, regularFont, Brushes.Black,
+                        new RectangleF(bounds.Left + colItem + colCant + 6, y + 5, colDesc - 12, rowHeight - 6));
+
+                    y += rowHeight;
+                    currentDetailIndex++;
+                }
+
+                detailsFinished = true;
+            }
+
+            // Pie dinámico de firmas (si está vacío, no se dibuja nada)
+            if (slots.Count > 0)
+            {
+                const float sigBlockHeight = 128f;
+                if (y + 18 + sigBlockHeight > bounds.Bottom - 24)
                 {
                     DrawFooter(g, bounds, smallFont, pageNumber++);
                     e.HasMorePages = true;
                     return;
                 }
 
-                RectangleF rowRect = new(bounds.Left, y, bounds.Width, rowHeight);
-                if (currentDetailIndex % 2 == 1)
+                float sigStartY = Math.Max(y + 18, bounds.Bottom - 148);
+                int slotWidth = bounds.Width / slots.Count;
+                int imgWidth = slots.Count == 3 ? 115 : 130;
+                int imgHeight = slots.Count == 3 ? 62 : 70;
+                int halfLine = Math.Min(96, (slotWidth / 2) - 10);
+
+                for (int i = 0; i < slots.Count; i++)
                 {
-                    g.FillRectangle(lightBrush, rowRect);
-                }
+                    WorkOrderSignatureSlot slot = slots[i];
+                    int centerX = bounds.Left + (slotWidth * i) + (slotWidth / 2);
 
-                g.DrawRectangle(gridPen, rowRect.X, rowRect.Y, rowRect.Width, rowRect.Height);
-                g.DrawLine(gridPen, bounds.Left + colItem, y, bounds.Left + colItem, y + rowHeight);
-                g.DrawLine(gridPen, bounds.Left + colItem + colCant, y, bounds.Left + colItem + colCant, y + rowHeight);
-                g.DrawLine(gridPen, bounds.Right - colVal, y, bounds.Right - colVal, y + rowHeight);
+                    if (!string.IsNullOrEmpty(slot.AssetImagePath) && File.Exists(slot.AssetImagePath))
+                    {
+                        using Image img = Image.FromFile(slot.AssetImagePath);
+                        g.DrawImage(img, new Rectangle(centerX - (imgWidth / 2), (int)sigStartY, imgWidth, imgHeight));
+                    }
+                    else if (slot.ImageBytes is { Length: > 0 })
+                    {
+                        using Bitmap? solBmp = SignatureFileService.CreateBitmapFromBytes(slot.ImageBytes);
+                        if (solBmp is not null)
+                        {
+                            g.DrawImage(solBmp, new Rectangle(centerX - (imgWidth / 2), (int)sigStartY + 6, imgWidth, imgHeight - 8));
+                        }
+                    }
 
-                g.DrawString((currentDetailIndex + 1).ToString(), regularFont, Brushes.Black, bounds.Left + 12, y + 5);
-                g.DrawString(detail.Cantidad.ToString(), regularFont, Brushes.Black, bounds.Left + colItem + 12, y + 5);
-                g.DrawString(detail.Descripcion, regularFont, Brushes.Black,
-                    new RectangleF(bounds.Left + colItem + colCant + 5, y + 5, colDesc - 10, rowHeight - 6));
-
-                y += rowHeight;
-                currentDetailIndex++;
-            }
-
-            // Approvals summary + signatures
-            bool showSolSig = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
-                              order.FirmaSolicitantePreviewPng is { Length: > 0 };
-            y = Math.Max(y + 18, bounds.Bottom - (showSolSig ? 215 : 165));
-            string vbLine = $"VB Supervisor: {order.VbsResumen}   |   VB Jefatura: {order.VbjResumen}";
-            g.DrawString(vbLine, smallFont, Brushes.DimGray, bounds.Left, y);
-            y += 18;
-
-            string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
-            string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
-            bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-            bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-
-            int leftSigCenter = bounds.Left + (bounds.Width / 4);
-            int rightSigCenter = bounds.Left + (3 * bounds.Width / 4);
-
-            if (showJr && File.Exists(jrPath))
-            {
-                using Image jr = Image.FromFile(jrPath);
-                g.DrawImage(jr, new Rectangle(leftSigCenter - 65, (int)y, 130, 75));
-            }
-
-            if (showMs && File.Exists(msPath))
-            {
-                using Image ms = Image.FromFile(msPath);
-                g.DrawImage(ms, new Rectangle(rightSigCenter - 65, (int)y, 130, 75));
-            }
-
-            float sigLineY = y + 78;
-            g.DrawLine(Pens.Black, leftSigCenter - 110, sigLineY, leftSigCenter + 110, sigLineY);
-            g.DrawLine(Pens.Black, rightSigCenter - 110, sigLineY, rightSigCenter + 110, sigLineY);
-            g.DrawString("Juan Ramos Moyano\nJefatura Mantención", smallFont, Brushes.Black,
-                new RectangleF(leftSigCenter - 120, sigLineY + 4, 240, 32), center);
-            g.DrawString("Marcelo Silva Morgado\nSupervisor Mantención", smallFont, Brushes.Black,
-                new RectangleF(rightSigCenter - 120, sigLineY + 4, 240, 32), center);
-
-            if (showSolSig)
-            {
-                using Bitmap? solBmp = SignatureFileService.CreateBitmapFromBytes(order.FirmaSolicitantePreviewPng);
-                if (solBmp is not null)
-                {
-                    int centerSig = bounds.Left + (bounds.Width / 2);
-                    float solImgY = sigLineY + 34;
-                    g.DrawImage(solBmp, new Rectangle(centerSig - 60, (int)solImgY, 120, 46));
-                    float solLineY = solImgY + 48;
-                    g.DrawLine(Pens.Black, centerSig - 110, solLineY, centerSig + 110, solLineY);
-                    g.DrawString($"Solicitante: {order.AliasSolicitante}", smallFont, Brushes.Black,
-                        new RectangleF(centerSig - 130, solLineY + 3, 260, 18), center);
+                    float lineY = sigStartY + imgHeight + 4;
+                    g.DrawLine(Pens.Black, centerX - halfLine, lineY, centerX + halfLine, lineY);
+                    g.DrawString(slot.SignerName, smallBoldFont, Brushes.Black,
+                        new RectangleF(bounds.Left + (slotWidth * i) + 4, lineY + 3, slotWidth - 8, 18), center);
+                    g.DrawString(slot.RoleTitle, smallFont, Brushes.DimGray,
+                        new RectangleF(bounds.Left + (slotWidth * i) + 4, lineY + 19, slotWidth - 8, 16), center);
                 }
             }
 
@@ -284,6 +296,23 @@ public sealed class PrintService(AppSettings settings)
         return doc;
     }
 
+    private static int MeasureInfoCardHeight(
+        Graphics g,
+        int cardWidth,
+        Font regularFont,
+        (string Label, string Value)[] rows)
+    {
+        float valWidth = Math.Max(60, cardWidth - 102);
+        float total = 28f;
+        foreach ((string _, string value) in rows)
+        {
+            SizeF size = g.MeasureString(string.IsNullOrEmpty(value) ? " " : value, regularFont, (int)valWidth);
+            total += Math.Max(16f, size.Height + 2f);
+        }
+
+        return Math.Max(88, (int)Math.Ceiling(total) + 6);
+    }
+
     private static void DrawInfoCard(
         Graphics g,
         Rectangle rect,
@@ -298,12 +327,15 @@ public sealed class PrintService(AppSettings settings)
         g.FillRectangle(headerBrush, rect.X, rect.Y, rect.Width, 20);
         g.DrawString(title, boldFont, Brushes.White, rect.X + 6, rect.Y + 2);
 
+        float valWidth = Math.Max(60, rect.Width - 102);
         float rowY = rect.Y + 24;
         foreach ((string label, string value) in rows)
         {
             g.DrawString(label, boldFont, Brushes.Black, rect.X + 6, rowY);
-            g.DrawString(value, regularFont, Brushes.Black, new RectangleF(rect.X + 94, rowY, rect.Width - 98, 16));
-            rowY += 16;
+            SizeF size = g.MeasureString(string.IsNullOrEmpty(value) ? " " : value, regularFont, (int)valWidth);
+            float h = Math.Max(16f, size.Height + 2f);
+            g.DrawString(value, regularFont, Brushes.Black, new RectangleF(rect.X + 96, rowY, valWidth, h));
+            rowY += h;
         }
     }
 

@@ -200,7 +200,10 @@ public sealed class RequestersSignaturesAndApproversTests
             Assert.Equal("Sí (cmendez)", searchRows[0].VbsDisplay);
             Assert.Equal("Sí (jramos_jef)", searchRows[0].VbjDisplay);
 
-            // 6. Verify WorkOrder exports (Excel, PDF, Word) embed requester signature & approver names cleanly
+            // 6. Verify WorkOrder exports (Excel, PDF, Word, Print) render Nombre Apellido, Activo in Solicitante,
+            //    strip VB/Guía/Estado lines, support Técnico signature between Jefatura & Supervisor, and allow empty footer
+            Assert.Equal("Carlos Méndez Vega", loadedOt.SolicitanteDisplayNombre);
+
             string outDir = Path.Combine(Path.GetTempPath(), $"sispro_sig_exports_{Guid.NewGuid():N}");
             Directory.CreateDirectory(outDir);
             try
@@ -208,34 +211,77 @@ public sealed class RequestersSignaturesAndApproversTests
                 string xlsxPath = Path.Combine(outDir, "ot_sig.xlsx");
                 string pdfPath = Path.Combine(outDir, "ot_sig.pdf");
                 string docxPath = Path.Combine(outDir, "ot_sig.docx");
+                string docxNonePath = Path.Combine(outDir, "ot_none.docx");
+                string xlsxJefTecPath = Path.Combine(outDir, "ot_jef_tec.xlsx");
 
                 ctx.DocumentExportService.ExportWorkOrder(loadedOt, ExportFormat.Excel, xlsxPath, SignatureOption.AmbasConSolicitante);
                 ctx.DocumentExportService.ExportWorkOrder(loadedOt, ExportFormat.Pdf, pdfPath, SignatureOption.Solicitante);
                 ctx.DocumentExportService.ExportWorkOrder(loadedOt, ExportFormat.Word, docxPath, SignatureOption.AmbasConSolicitante);
+                ctx.DocumentExportService.ExportWorkOrder(loadedOt, ExportFormat.Word, docxNonePath, SignatureOption.Ninguna);
+                ctx.DocumentExportService.ExportWorkOrder(loadedOt, ExportFormat.Excel, xlsxJefTecPath, SignatureOption.JefaturaYTecnico);
 
                 using (XLWorkbook wb = new(xlsxPath))
                 {
                     IXLWorksheet ws = wb.Worksheet(1);
                     Assert.True(ws.Pictures.Count >= 1);
+                    Assert.Equal("Carlos Méndez Vega", ws.Cell(8, 5).GetString());
+                    Assert.Equal("ACTIVO:", ws.Cell(11, 4).GetString());
+                    Assert.Contains("PLANTA FIRMAS", ws.Cell(11, 5).GetString());
+                    Assert.Equal(string.Empty, ws.Cell(11, 2).GetString());
+
                     string allText = string.Join(" ", ws.CellsUsed().Select(c => c.GetString()));
-                    Assert.Contains("cmendez", allText);
-                    Assert.Contains("jramos_jef", allText);
+                    Assert.Contains("Juan Ramos Moyano", allText);
+                    Assert.Contains("Marcelo Silva Morgado", allText);
+                    Assert.Contains("Técnico", allText);
+                    Assert.DoesNotContain("VB Supervisor:", allText);
+                    Assert.DoesNotContain("VB Jefatura:", allText);
                 }
 
-                string pdfContent = Encoding.Latin1.GetString(File.ReadAllBytes(pdfPath));
-                Assert.Contains("cmendez", pdfContent);
-                Assert.Contains("jramos_jef", pdfContent);
+                using (XLWorkbook wbJefTec = new(xlsxJefTecPath))
+                {
+                    string allJefTec = string.Join(" ", wbJefTec.Worksheet(1).CellsUsed().Select(c => c.GetString()));
+                    Assert.Contains("Juan Ramos Moyano", allJefTec);
+                    Assert.Contains("Carlos Méndez Vega", allJefTec);
+                    Assert.Contains("Técnico", allJefTec);
+                    Assert.DoesNotContain("Marcelo Silva Morgado", allJefTec);
+                }
+
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                string pdfContent = Encoding.GetEncoding(1252).GetString(File.ReadAllBytes(pdfPath));
+                Assert.Contains("Carlos Méndez Vega", pdfContent);
+                Assert.Contains("Técnico", pdfContent);
+                Assert.DoesNotContain("Juan Ramos Moyano", pdfContent);
+                Assert.DoesNotContain("Marcelo Silva Morgado", pdfContent);
+                Assert.DoesNotContain("VB Supervisor:", pdfContent);
+                Assert.DoesNotContain("VB Jefatura:", pdfContent);
 
                 using (WordprocessingDocument docx = WordprocessingDocument.Open(docxPath, false))
                 {
                     string docText = docx.MainDocumentPart!.Document.InnerText;
-                    Assert.Contains("cmendez", docText);
-                    Assert.Contains("jramos_jef", docText);
+                    Assert.Contains("Carlos Méndez Vega", docText);
+                    Assert.Contains("Juan Ramos Moyano", docText);
+                    Assert.Contains("Marcelo Silva Morgado", docText);
+                    Assert.Contains("Técnico", docText);
+                    Assert.DoesNotContain("VB Supervisor:", docText);
+                    Assert.DoesNotContain("Guía / Estado", docText);
+                    Assert.True(docText.IndexOf("Juan Ramos Moyano", StringComparison.Ordinal) < docText.IndexOf("Carlos Méndez Vega", StringComparison.Ordinal) ||
+                                docText.LastIndexOf("Carlos Méndez Vega", StringComparison.Ordinal) < docText.IndexOf("Marcelo Silva Morgado", StringComparison.Ordinal));
                     Assert.NotEmpty(docx.MainDocumentPart.ImageParts);
+                }
+
+                using (WordprocessingDocument docxNone = WordprocessingDocument.Open(docxNonePath, false))
+                {
+                    string noneText = docxNone.MainDocumentPart!.Document.InnerText;
+                    Assert.DoesNotContain("Juan Ramos Moyano", noneText);
+                    Assert.DoesNotContain("Marcelo Silva Morgado", noneText);
+                    Assert.DoesNotContain("Técnico", noneText);
+                    Assert.DoesNotContain("______", noneText);
                 }
 
                 using PrintDocument pdoc = ctx.PrintService.CreateWorkOrderPrintDocument(loadedOt, SignatureOption.AmbasConSolicitante);
                 Assert.NotNull(pdoc);
+                using PrintDocument pdocNone = ctx.PrintService.CreateWorkOrderPrintDocument(loadedOt, SignatureOption.Ninguna);
+                Assert.NotNull(pdocNone);
             }
             finally
             {

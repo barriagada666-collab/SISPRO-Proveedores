@@ -1,4 +1,4 @@
-# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.2.0
+# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.2.1
 
 ## 1. Requisitos del Entorno de Desarrollo
 
@@ -65,7 +65,7 @@ dotnet publish src\Sispro.UI\Sispro.UI.csproj -c Release -r win-x64 --self-conta
 ```
 
 El instalador resultante se genera en:
-- `installer\Output\SISPRO_Setup_v4.2.0_win-x64.exe`
+- `installer\Output\SISPRO_Setup_v4.2.1_win-x64.exe`
 - `installer\Output\checksums_sha256.txt`
 
 ---

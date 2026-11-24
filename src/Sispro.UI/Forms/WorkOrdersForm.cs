@@ -86,12 +86,15 @@ public sealed class WorkOrdersForm : UserControl
     private readonly TextBox _txtPrintProvDir;
     private readonly TextBox _txtPrintProvMail;
     private readonly ComboBox _cmbRequesterPrint;
+    private readonly TextBox _txtPrintSolNombre;
     private readonly TextBox _txtPrintSolMail;
     private readonly TextBox _txtPrintSolFono;
-    private readonly TextBox _txtPrintSolDir;
+    private readonly TextBox _txtPrintSolActivo;
     private readonly PictureBox _picPrintSolSig;
     private readonly Label _lblPrintSolSigStatus;
-    private readonly ComboBox _cmbSignature;
+    internal CheckBox ChkSigJefatura { get; }
+    internal CheckBox ChkSigTecnico { get; }
+    internal CheckBox ChkSigSupervisor { get; }
     private readonly NumericUpDown _numPrintCantidad;
     private readonly TextBox _txtPrintWork;
     private readonly Button _btnAddPrintItem;
@@ -394,24 +397,42 @@ public sealed class WorkOrdersForm : UserControl
         _txtPrintProvDir = new TextBox { ReadOnly = true, Width = 320, BackColor = CambiasoTheme.Surface };
         _txtPrintProvMail = new TextBox { ReadOnly = true, Width = 220, BackColor = CambiasoTheme.Surface };
 
-        _cmbRequesterPrint = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 180 };
+        _cmbRequesterPrint = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 175 };
         _cmbRequesterPrint.SelectedIndexChanged += (_, _) => SyncPrintRequesterInfo();
-        _txtPrintSolMail = new TextBox { ReadOnly = true, Width = 190, BackColor = CambiasoTheme.Surface };
-        _txtPrintSolFono = new TextBox { ReadOnly = true, Width = 135, BackColor = CambiasoTheme.Surface };
-        _txtPrintSolDir = new TextBox { ReadOnly = true, Width = 240, BackColor = CambiasoTheme.Surface, Text = _ctx.Settings.CompanyAddress };
+        _txtPrintSolNombre = new TextBox { ReadOnly = true, Width = 240, BackColor = CambiasoTheme.Surface };
+        _txtPrintSolMail = new TextBox { ReadOnly = true, Width = 240, BackColor = CambiasoTheme.Surface };
+        _txtPrintSolFono = new TextBox { ReadOnly = true, Width = 150, BackColor = CambiasoTheme.Surface };
+        _txtPrintSolActivo = new TextBox { ReadOnly = true, Width = 240, BackColor = CambiasoTheme.Surface };
         _picPrintSolSig = new PictureBox { Size = new Size(124, 56), SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
         _lblPrintSolSigStatus = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted, Text = "Sin firma" };
 
-        _cmbSignature = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 266 };
-        _cmbSignature.Items.AddRange([
-            "Firmas VB (JR + MS) + Firma Solicitante",
-            "Solo Firma del Solicitante",
-            "Ambas Firmas VB (JR + MS)",
-            "Juan Ramos Moyano (JR)",
-            "Marcelo Silva Morgado (MS)",
-            "Sin firma digital"
-        ]);
-        _cmbSignature.SelectedIndex = 0;
+        ChkSigJefatura = new CheckBox
+        {
+            Text = "Jefatura",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(4, 5, 10, 2)
+        };
+        ChkSigTecnico = new CheckBox
+        {
+            Text = "Técnico (Solicitante)",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(0, 5, 10, 2)
+        };
+        ChkSigSupervisor = new CheckBox
+        {
+            Text = "Supervisor",
+            Checked = true,
+            AutoSize = true,
+            Font = CambiasoTheme.BodyFont,
+            Margin = new Padding(0, 5, 4, 2)
+        };
+        _toolTip.SetToolTip(ChkSigJefatura, "Incluir firma de Jefatura Mantención al pie de la exportación/impresión");
+        _toolTip.SetToolTip(ChkSigTecnico, "Incluir firma del Solicitante como Técnico al pie de la exportación/impresión");
+        _toolTip.SetToolTip(ChkSigSupervisor, "Incluir firma de Supervisor Mantención al pie de la exportación/impresión");
 
         _numPrintCantidad = new NumericUpDown { Minimum = 1, Maximum = 99999, Value = 1, Width = 72 };
         _txtPrintWork = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
@@ -467,6 +488,15 @@ public sealed class WorkOrdersForm : UserControl
         Controls.Add(split);
 
         LoadCatalogs();
+        SyncPrintProviderInfo();
+        SyncPrintRequesterInfo();
+        _assetTree.SelectedAssetChanged += (_, _) =>
+        {
+            if (_printOrder is null)
+            {
+                _txtPrintSolActivo.Text = _assetTree.CurrentBreadcrumb;
+            }
+        };
         RefreshNextOtBadge();
         RefreshApprovalStatusBadges();
         _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
@@ -725,43 +755,47 @@ public sealed class WorkOrdersForm : UserControl
     private void BuildPrintTabLayout()
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 184));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
 
         Panel topPanel = new() { Dock = DockStyle.Fill };
-        FlowLayoutPanel otBar = new() { Dock = DockStyle.Top, Height = 38, Padding = new Padding(2, 2, 2, 2) };
-        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, WrapLabel("Firma Digital:", _cmbSignature)]);
+        FlowLayoutPanel otBar = new() { Dock = DockStyle.Top, Height = 38, Padding = new Padding(2, 2, 2, 2), WrapContents = false };
+        Label lblFirmas = CambiasoTheme.CreateFieldLabel("Firmas al pie:");
+        lblFirmas.Margin = new Padding(10, 7, 4, 2);
+        _toolTip.SetToolTip(lblFirmas, "Elija qué firmas se mostrarán al pie (desmarque todas para omitir firmas)");
+        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, lblFirmas, ChkSigJefatura, ChkSigTecnico, ChkSigSupervisor]);
 
         TableLayoutPanel cards = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
-        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
+        cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 57));
 
-        GroupBox grpProv = CambiasoTheme.CreateGroupBox("Datos Proveedor");
+        GroupBox grpProv = CambiasoTheme.CreateGroupBox("Datos del Proveedor");
         grpProv.Dock = DockStyle.Fill;
-        FlowLayoutPanel provFlow = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        provFlow.Controls.Add(WrapLabel("Proveedor:", _cmbProviderPrint));
-        provFlow.Controls.Add(WrapLabel("Dirección:", _txtPrintProvDir));
-        provFlow.Controls.Add(WrapLabel("Correo:", _txtPrintProvMail));
-        grpProv.Controls.Add(provFlow);
+        TableLayoutPanel provGrid = CreatePrintFieldsGrid(3);
+        AddPrintFieldRow(provGrid, 0, "Proveedor:", _cmbProviderPrint);
+        AddPrintFieldRow(provGrid, 1, "Dirección:", _txtPrintProvDir);
+        AddPrintFieldRow(provGrid, 2, "Correo:", _txtPrintProvMail);
+        grpProv.Controls.Add(provGrid);
 
-        GroupBox grpSol = CambiasoTheme.CreateGroupBox("Datos Solicitante y Firma");
+        GroupBox grpSol = CambiasoTheme.CreateGroupBox("Datos del Solicitante y Firma Técnico");
         grpSol.Dock = DockStyle.Fill;
         TableLayoutPanel solTbl = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
-        solTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 72));
-        solTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+        solTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        solTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
 
-        FlowLayoutPanel solFlow = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        solFlow.Controls.Add(WrapLabel("Solicitante:", _cmbRequesterPrint));
-        solFlow.Controls.Add(WrapLabel("Correo:", _txtPrintSolMail));
-        solFlow.Controls.Add(WrapLabel("Teléfono:", _txtPrintSolFono));
-        solFlow.Controls.Add(WrapLabel("Planta:", _txtPrintSolDir));
+        TableLayoutPanel solGrid = CreatePrintFieldsGrid(5);
+        AddPrintFieldRow(solGrid, 0, "Solicitante:", _cmbRequesterPrint);
+        AddPrintFieldRow(solGrid, 1, "Nombre:", _txtPrintSolNombre);
+        AddPrintFieldRow(solGrid, 2, "Correo:", _txtPrintSolMail);
+        AddPrintFieldRow(solGrid, 3, "Teléfono:", _txtPrintSolFono);
+        AddPrintFieldRow(solGrid, 4, "Activo:", _txtPrintSolActivo);
 
-        FlowLayoutPanel sigBox = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(4, 2, 2, 2) };
+        FlowLayoutPanel sigBox = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(6, 4, 2, 2) };
         sigBox.Controls.AddRange([_picPrintSolSig, _lblPrintSolSigStatus]);
 
-        solTbl.Controls.Add(solFlow, 0, 0);
+        solTbl.Controls.Add(solGrid, 0, 0);
         solTbl.Controls.Add(sigBox, 1, 0);
         grpSol.Controls.Add(solTbl);
 
@@ -1292,6 +1326,8 @@ public sealed class WorkOrdersForm : UserControl
 
         SyncPrintProviderInfo();
         SyncPrintRequesterInfo();
+        _txtPrintSolNombre.Text = order.SolicitanteDisplayNombre;
+        _txtPrintSolActivo.Text = !string.IsNullOrWhiteSpace(order.RutaActivo) ? order.RutaActivo : _assetTree.CurrentBreadcrumb;
         _printDetails.Clear();
         _printDetails.AddRange(order.Detalles);
         RefreshPrintDetailsGrid();
@@ -1311,9 +1347,13 @@ public sealed class WorkOrdersForm : UserControl
     {
         if (_cmbRequesterPrint.SelectedItem is Requester r)
         {
+            _txtPrintSolNombre.Text = string.IsNullOrWhiteSpace(r.NombreCompleto) ? r.Alias : r.NombreCompleto;
             _txtPrintSolMail.Text = r.Correo;
             _txtPrintSolFono.Text = r.Telefono;
-            _txtPrintSolDir.Text = _ctx.Settings.CompanyAddress;
+            if (_printOrder is null)
+            {
+                _txtPrintSolActivo.Text = _assetTree.CurrentBreadcrumb;
+            }
 
             Image? old = _picPrintSolSig.Image;
             if (r.FirmaPreviewPng is { Length: > 0 })
@@ -1427,26 +1467,24 @@ public sealed class WorkOrdersForm : UserControl
             CorreoProveedor = _txtPrintProvMail.Text,
             IdSol = sol?.IdSol,
             AliasSolicitante = sol?.Alias ?? _printOrder?.AliasSolicitante ?? string.Empty,
+            NombreSolicitante = sol is not null
+                ? (string.IsNullOrWhiteSpace(sol.NombreCompleto) ? sol.Alias : sol.NombreCompleto)
+                : (_printOrder?.NombreSolicitante ?? string.Empty),
             CorreoSolicitante = _txtPrintSolMail.Text,
             TelefonoSolicitante = _txtPrintSolFono.Text,
             FirmaSolicitantePreviewPng = sol?.FirmaPreviewPng ?? _printOrder?.FirmaSolicitantePreviewPng,
             FirmaSolicitanteTipo = !string.IsNullOrWhiteSpace(sol?.FirmaTipo) ? sol.FirmaTipo : (_printOrder?.FirmaSolicitanteTipo ?? string.Empty),
             FirmaSolicitanteNombre = !string.IsNullOrWhiteSpace(sol?.FirmaNombre) ? sol.FirmaNombre : (_printOrder?.FirmaSolicitanteNombre ?? string.Empty),
-            RutaActivo = _printOrder?.RutaActivo ?? _assetTree.CurrentBreadcrumb,
+            RutaActivo = !string.IsNullOrWhiteSpace(_txtPrintSolActivo.Text) ? _txtPrintSolActivo.Text : (_printOrder?.RutaActivo ?? _assetTree.CurrentBreadcrumb),
             Detalles = [.. _printDetails],
             VistosBuenos = _printOrder?.VistosBuenos ?? []
         };
     }
 
-    private SignatureOption GetSelectedSignature() => _cmbSignature.SelectedIndex switch
-    {
-        0 => SignatureOption.AmbasConSolicitante,
-        1 => SignatureOption.Solicitante,
-        2 => SignatureOption.Ambas,
-        3 => SignatureOption.JuanRamos,
-        4 => SignatureOption.MarceloSilva,
-        _ => SignatureOption.Ninguna
-    };
+    internal SignatureOption SelectedSignature => GetSelectedSignature();
+
+    private SignatureOption GetSelectedSignature() =>
+        SignatureOptionExtensions.FromFlags(ChkSigJefatura.Checked, ChkSigSupervisor.Checked, ChkSigTecnico.Checked);
 
     private void OpenWorkOrderExportMenu()
     {
@@ -1508,7 +1546,45 @@ public sealed class WorkOrdersForm : UserControl
         _printDetails.Clear();
         _txtPrintWork.Clear();
         _numPrintCantidad.Value = 1;
+        SyncPrintProviderInfo();
+        SyncPrintRequesterInfo();
         RefreshPrintDetailsGrid();
+    }
+
+    private static TableLayoutPanel CreatePrintFieldsGrid(int rows)
+    {
+        TableLayoutPanel grid = new()
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = rows + 1,
+            Padding = new Padding(4, 2, 4, 2)
+        };
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (int r = 0; r < rows; r++)
+        {
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+        }
+
+        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        return grid;
+    }
+
+    private static void AddPrintFieldRow(TableLayoutPanel grid, int row, string labelText, Control control)
+    {
+        Label lbl = CambiasoTheme.CreateFieldLabel(labelText);
+        lbl.AutoSize = false;
+        lbl.Dock = DockStyle.Fill;
+        lbl.TextAlign = ContentAlignment.MiddleLeft;
+        lbl.Margin = new Padding(2, 1, 4, 1);
+
+        control.Dock = DockStyle.None;
+        control.Anchor = AnchorStyles.Left | AnchorStyles.Right;
+        control.Margin = new Padding(0, 2, 4, 2);
+
+        grid.Controls.Add(lbl, 0, row);
+        grid.Controls.Add(control, 1, row);
     }
 
     private static FlowLayoutPanel WrapLabel(string labelText, Control control)

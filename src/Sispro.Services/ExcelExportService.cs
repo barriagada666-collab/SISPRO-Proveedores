@@ -203,12 +203,12 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.PageSetup.Footer.Left.AddText($"SISPRO — {settings.CompanyName} · {settings.CompanyDepartment}");
         ws.PageSetup.Footer.Right.AddText("Página &P de &N");
 
-        ws.Column(1).Width = 10;
+        ws.Column(1).Width = 8;
         ws.Column(2).Width = 10;
-        ws.Column(3).Width = 48;
+        ws.Column(3).Width = 38;
         ws.Column(4).Width = 18;
-        ws.Column(5).Width = 22;
-        ws.Column(6).Width = 16;
+        ws.Column(5).Width = 24;
+        ws.Column(6).Width = 24;
 
         // Corporate Logo
         string logoPath = Path.Combine(assetsDir, "logo_cambiaso.png");
@@ -220,7 +220,7 @@ public sealed class ExcelExportService(AppSettings settings)
         }
         else
         {
-            ws.Range(1, 1, 4, 3).Merge();
+            ws.Range(1, 1, 5, 3).Merge();
             ws.Cell(1, 1).Value = settings.CompanyName;
             ws.Cell(1, 1).Style.Font.Bold = true;
             ws.Cell(1, 1).Style.Font.FontSize = 16;
@@ -228,30 +228,39 @@ public sealed class ExcelExportService(AppSettings settings)
             ws.Cell(1, 1).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         }
 
-        // Right Header Box (mirrors Plantilla OT Externa 2.xls)
+        // Caja superior derecha con N° de OT grande y destacado
         IXLRange headerBox = ws.Range(1, 4, 5, 6);
         headerBox.Style.Border.OutsideBorder = XLBorderStyleValues.Medium;
-        headerBox.Style.Border.OutsideBorderColor = CambiasoOlive;
+        headerBox.Style.Border.OutsideBorderColor = CambiasoNavy;
 
-        ws.Range(1, 4, 1, 6).Merge().Value = $"RUT: {settings.CompanyRut}";
+        ws.Range(1, 4, 1, 6).Merge().Value = ExportSanitizer.SanitizeXmlText($"RUT: {settings.CompanyRut}  ·  {settings.CompanyDepartment}");
         ws.Range(2, 4, 2, 6).Merge().Value = "ORDEN DE TRABAJO EXTERNA";
-        ws.Range(3, 4, 3, 6).Merge().Value = settings.CompanyDepartment;
-        ws.Range(4, 4, 4, 6).Merge().Value = $"N° OT : {order.NumeroOt:D6}";
-        ws.Range(5, 4, 5, 6).Merge().Value = $"FECHA: {order.FechaOt:dd-MM-yyyy}";
+        ws.Range(3, 4, 4, 6).Merge().Value = $"OT N° {order.NumeroOt:D6}";
+        ws.Range(5, 4, 5, 6).Merge().Value = $"FECHA OT: {order.FechaOt:dd-MM-yyyy}";
 
         for (int r = 1; r <= 5; r++)
         {
             ws.Cell(r, 4).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Cell(r, 4).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
             ws.Cell(r, 4).Style.Font.Bold = true;
         }
 
+        ws.Cell(1, 4).Style.Font.FontSize = 9;
         ws.Cell(2, 4).Style.Fill.BackgroundColor = CambiasoOlive;
         ws.Cell(2, 4).Style.Font.FontColor = XLColor.White;
         ws.Cell(2, 4).Style.Font.FontSize = 11;
-        ws.Cell(4, 4).Style.Font.FontSize = 12;
-        ws.Cell(4, 4).Style.Font.FontColor = XLColor.DarkRed;
+        ws.Range(3, 4, 4, 6).Style.Fill.BackgroundColor = CambiasoGold;
+        ws.Range(3, 4, 4, 6).Style.Font.FontColor = CambiasoNavy;
+        ws.Range(3, 4, 4, 6).Style.Font.FontSize = 20;
+        ws.Range(3, 4, 4, 6).Style.Border.TopBorder = XLBorderStyleValues.Thin;
+        ws.Range(3, 4, 4, 6).Style.Border.BottomBorder = XLBorderStyleValues.Thin;
+        ws.Range(3, 4, 4, 6).Style.Border.TopBorderColor = CambiasoNavy;
+        ws.Range(3, 4, 4, 6).Style.Border.BottomBorderColor = CambiasoNavy;
+        ws.Row(3).Height = 22;
+        ws.Row(4).Height = 22;
+        ws.Cell(5, 4).Style.Font.FontSize = 10;
 
-        // Provider & Requester Info Blocks
+        // Bloque Proveedor & Solicitante (Activo ubicado en Datos del Solicitante)
         ws.Range(7, 1, 7, 3).Merge().Value = "DATOS DEL PROVEEDOR";
         ws.Range(7, 4, 7, 6).Merge().Value = "DATOS DEL SOLICITANTE";
         foreach (int col in new[] { 1, 4 })
@@ -267,23 +276,27 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.Range(9, 2, 9, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.DireccionProveedor);
         ws.Cell(10, 1).Value = "CORREO:";
         ws.Range(10, 2, 10, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.CorreoProveedor);
-        ws.Cell(11, 1).Value = "ACTIVO:";
-        ws.Range(11, 2, 11, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.RutaActivo);
+        ws.Range(11, 1, 11, 3).Merge().Value = string.Empty;
 
         ws.Cell(8, 4).Value = "SOLICITADO POR:";
-        ws.Range(8, 5, 8, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.AliasSolicitante);
-        ws.Cell(9, 4).Value = "E-MAIL:";
+        ws.Range(8, 5, 8, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.SolicitanteDisplayNombre);
+        ws.Cell(9, 4).Value = "CORREO:";
         ws.Range(9, 5, 9, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.CorreoSolicitante);
-        ws.Cell(10, 4).Value = "FONO CONTACTO:";
+        ws.Cell(10, 4).Value = "TELÉFONO:";
         ws.Range(10, 5, 10, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.TelefonoSolicitante);
-        ws.Cell(11, 4).Value = "DIRECCIÓN:";
-        ws.Range(11, 5, 11, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(settings.CompanyAddress);
+        ws.Cell(11, 4).Value = "ACTIVO:";
+        ws.Range(11, 5, 11, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.RutaActivo);
 
         for (int r = 8; r <= 11; r++)
         {
             ws.Cell(r, 1).Style.Font.Bold = true;
             ws.Cell(r, 4).Style.Font.Bold = true;
-            ws.Row(r).Height = 20;
+            ws.Range(r, 2, r, 3).Style.Alignment.WrapText = true;
+            ws.Range(r, 5, r, 6).Style.Alignment.WrapText = true;
+            ws.Range(r, 1, r, 6).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            int leftLines = Math.Max(1, (int)Math.Ceiling(ws.Cell(r, 2).GetString().Length / 44.0));
+            int rightLines = Math.Max(1, (int)Math.Ceiling(ws.Cell(r, 5).GetString().Length / 40.0));
+            ws.Row(r).Height = Math.Max(20, Math.Max(leftLines, rightLines) * 16);
         }
 
         IXLRange infoBox = ws.Range(7, 1, 11, 6);
@@ -291,12 +304,11 @@ public sealed class ExcelExportService(AppSettings settings)
         infoBox.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
         infoBox.Style.Border.OutsideBorderColor = CambiasoOlive;
 
-        // Work Items Table Header
+        // Tabla de detalle sin columna Estado / Guía / Valor
         int headerRow = 13;
         ws.Cell(headerRow, 1).Value = "Ítem";
         ws.Cell(headerRow, 2).Value = "Cant.";
-        ws.Range(headerRow, 3, headerRow, 5).Merge().Value = "DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO";
-        ws.Cell(headerRow, 6).Value = "ESTADO";
+        ws.Range(headerRow, 3, headerRow, 6).Merge().Value = "DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO";
 
         IXLRange tblHeader = ws.Range(headerRow, 1, headerRow, 6);
         tblHeader.Style.Fill.BackgroundColor = CambiasoOlive;
@@ -313,13 +325,11 @@ public sealed class ExcelExportService(AppSettings settings)
             ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Cell(row, 2).Value = d.Cantidad;
             ws.Cell(row, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            IXLRange descRange = ws.Range(row, 3, row, 5).Merge();
+            IXLRange descRange = ws.Range(row, 3, row, 6).Merge();
             descRange.Value = ExportSanitizer.SanitizeXmlText(d.Descripcion);
             descRange.Style.Alignment.WrapText = true;
-            ws.Cell(row, 6).Value = "Registrado";
-            ws.Cell(row, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-            int lines = Math.Max(1, (int)Math.Ceiling(d.Descripcion.Length / 74.0));
+            int lines = Math.Max(1, (int)Math.Ceiling(d.Descripcion.Length / 92.0));
             ws.Row(row).Height = Math.Max(22, lines * 16);
 
             if (row % 2 == 1)
@@ -332,7 +342,7 @@ public sealed class ExcelExportService(AppSettings settings)
 
         while (row < headerRow + 10)
         {
-            ws.Range(row, 3, row, 5).Merge();
+            ws.Range(row, 3, row, 6).Merge();
             ws.Row(row).Height = 20;
             row++;
         }
@@ -344,57 +354,46 @@ public sealed class ExcelExportService(AppSettings settings)
         itemsBox.Style.Border.OutsideBorderColor = CambiasoOlive;
         itemsBox.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
-        int vbRow = row + 1;
-        string vbsText = $"VB Supervisor: {order.VbsResumen}";
-        string vbjText = $"VB Jefatura: {order.VbjResumen}";
-        ws.Range(vbRow, 1, vbRow, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(vbsText);
-        ws.Range(vbRow, 4, vbRow, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(vbjText);
-        ws.Range(vbRow, 1, vbRow, 6).Style.Font.Italic = true;
-        ws.Range(vbRow, 1, vbRow, 6).Style.Font.FontColor = XLColor.DimGray;
-
-        int sigStartRow = vbRow + 2;
-        string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
-        string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
-
-        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
-        bool showSol = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
-                       order.FirmaSolicitantePreviewPng is { Length: > 0 };
-
-        if (showJr && File.Exists(jrPath))
+        // Pie dinámico de firmas (si no hay ninguna seleccionada, el pie queda vacío)
+        List<WorkOrderSignatureSlot> slots = WorkOrderSignatureLayout.BuildSlots(order, signatureOption, assetsDir);
+        if (slots.Count > 0)
         {
-            ws.AddPicture(jrPath)
-              .MoveTo(ws.Cell(sigStartRow, 2), 8, 4)
-              .WithSize(130, 85);
-        }
+            int sigStartRow = row + 2;
+            int lineRow = sigStartRow + 5;
+            (int StartCol, int EndCol)[] spans = slots.Count switch
+            {
+                1 => [(2, 5)],
+                2 => [(1, 3), (4, 6)],
+                _ => [(1, 2), (3, 4), (5, 6)]
+            };
 
-        if (showMs && File.Exists(msPath))
-        {
-            ws.AddPicture(msPath)
-              .MoveTo(ws.Cell(sigStartRow, 4), 24, 4)
-              .WithSize(130, 85);
-        }
+            for (int i = 0; i < slots.Count; i++)
+            {
+                WorkOrderSignatureSlot slot = slots[i];
+                (int c1, int c2) = spans[i];
+                int picCol = c1 == 1 && c2 == 3 ? 2 : (c1 == 4 && c2 == 6 ? 5 : c1);
 
-        int lineRow = sigStartRow + 5;
-        ws.Range(lineRow, 1, lineRow, 3).Merge().Value = "______________________________";
-        ws.Range(lineRow + 1, 1, lineRow + 1, 3).Merge().Value = "Juan Ramos Moyano — Jefatura Mantención";
-        ws.Range(lineRow, 4, lineRow, 6).Merge().Value = "______________________________";
-        ws.Range(lineRow + 1, 4, lineRow + 1, 6).Merge().Value = "Marcelo Silva Morgado — Supervisor Mantención";
-        ws.Range(lineRow, 1, lineRow + 1, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-        ws.Range(lineRow + 1, 1, lineRow + 1, 6).Style.Font.Bold = true;
+                if (!string.IsNullOrEmpty(slot.AssetImagePath) && File.Exists(slot.AssetImagePath))
+                {
+                    ws.AddPicture(slot.AssetImagePath)
+                      .MoveTo(ws.Cell(sigStartRow, picCol), 8, 4)
+                      .WithSize(120, 78);
+                }
+                else if (slot.ImageBytes is { Length: > 0 })
+                {
+                    using MemoryStream sigMs = new(slot.ImageBytes);
+                    ws.AddPicture(sigMs)
+                      .MoveTo(ws.Cell(sigStartRow, picCol), 8, 4)
+                      .WithSize(125, 72);
+                }
 
-        if (showSol)
-        {
-            int solRow = lineRow + 3;
-            using MemoryStream sigMs = new(order.FirmaSolicitantePreviewPng!);
-            ws.AddPicture(sigMs)
-              .MoveTo(ws.Cell(solRow, 3), 20, 4)
-              .WithSize(145, 72);
-            int solLine = solRow + 4;
-            ws.Range(solLine, 2, solLine, 5).Merge().Value = "______________________________";
-            ws.Range(solLine + 1, 2, solLine + 1, 5).Merge().Value = ExportSanitizer.SanitizeXmlText($"Solicitado por: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})");
-            ws.Range(solLine, 2, solLine + 1, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Range(solLine + 1, 2, solLine + 1, 5).Style.Font.Bold = true;
+                ws.Range(lineRow, c1, lineRow, c2).Merge().Value = "__________________________";
+                ws.Range(lineRow + 1, c1, lineRow + 1, c2).Merge().Value = ExportSanitizer.SanitizeXmlText(slot.SignerName);
+                ws.Range(lineRow + 2, c1, lineRow + 2, c2).Merge().Value = ExportSanitizer.SanitizeXmlText(slot.RoleTitle);
+                ws.Range(lineRow, c1, lineRow + 2, c2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                ws.Range(lineRow + 1, c1, lineRow + 1, c2).Style.Font.Bold = true;
+                ws.Range(lineRow + 2, c1, lineRow + 2, c2).Style.Font.FontColor = XLColor.DimGray;
+            }
         }
 
         wb.SaveAs(outputPath);

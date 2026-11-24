@@ -169,11 +169,16 @@ public sealed class WorkOrder
     public string CorreoProveedor { get; set; } = string.Empty;
     public int? IdSol { get; set; }
     public string AliasSolicitante { get; set; } = string.Empty;
+    public string NombreSolicitante { get; set; } = string.Empty;
     public string TelefonoSolicitante { get; set; } = string.Empty;
     public string CorreoSolicitante { get; set; } = string.Empty;
     public byte[]? FirmaSolicitantePreviewPng { get; set; }
     public string FirmaSolicitanteTipo { get; set; } = string.Empty;
     public string FirmaSolicitanteNombre { get; set; } = string.Empty;
+
+    public string SolicitanteDisplayNombre => !string.IsNullOrWhiteSpace(NombreSolicitante)
+        ? NombreSolicitante.Trim()
+        : AliasSolicitante;
     public DateTime FechaOt { get; set; } = DateTime.Today;
     public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
     public int IdN1 { get; set; } = 1;

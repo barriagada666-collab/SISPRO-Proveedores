@@ -220,6 +220,7 @@ public sealed class MultiFormatExportTests
                 CorreoProveedor = "contacto@proveedor.cl",
                 RutaActivo = "CAMBIASO\\PLANTA PE\\EXTRUSIÓN",
                 AliasSolicitante = "B. Arriagada",
+                NombreSolicitante = "Boris Arriagada Rojas",
                 CorreoSolicitante = "barriagada@cambiaso.cl",
                 TelefonoSolicitante = "+56 32 2000000",
                 VistosBuenos =
@@ -239,18 +240,39 @@ public sealed class MultiFormatExportTests
             string otPdf = Path.Combine(outDir, "nested_ot", "ot_long.pdf");
             string otXlsx = Path.Combine(outDir, "nested_ot", "ot_long.xlsx");
             string otDocx = Path.Combine(outDir, "nested_ot", "ot_long.docx");
+            string otEmptySigPdf = Path.Combine(outDir, "nested_ot", "ot_empty_sig.pdf");
 
-            pdfSvc.ExportWorkOrderDocument(longOrder, otPdf);
-            excel.ExportWorkOrderDocument(longOrder, otXlsx);
-            word.ExportWorkOrderDocument(longOrder, otDocx);
+            pdfSvc.ExportWorkOrderDocument(longOrder, otPdf, SignatureOption.AmbasConSolicitante);
+            excel.ExportWorkOrderDocument(longOrder, otXlsx, SignatureOption.AmbasConSolicitante);
+            word.ExportWorkOrderDocument(longOrder, otDocx, SignatureOption.AmbasConSolicitante);
+            pdfSvc.ExportWorkOrderDocument(longOrder, otEmptySigPdf, SignatureOption.Ninguna);
 
             using (XLWorkbook otWb = new(otXlsx))
             {
-                Assert.Contains("PROVEEDOR INDUSTRIAL SPA", otWb.Worksheet(1).Cell(8, 2).GetString());
+                IXLWorksheet wsOt = otWb.Worksheet(1);
+                Assert.Contains("PROVEEDOR INDUSTRIAL SPA", wsOt.Cell(8, 2).GetString());
+                Assert.Equal(string.Empty, wsOt.Cell(11, 2).GetString()); // Activo ya no está en Proveedor
+                Assert.Equal("ACTIVO:", wsOt.Cell(11, 4).GetString());
+                Assert.Contains("EXTRUSIÓN", wsOt.Cell(11, 5).GetString());
+                Assert.Contains("Boris Arriagada Rojas", wsOt.Cell(8, 5).GetString());
+                string allOtText = string.Join(" | ", wsOt.CellsUsed().Select(c => c.GetString()));
+                Assert.Contains("987654", allOtText);
+                Assert.Contains("Técnico", allOtText);
+                Assert.DoesNotContain("VB Supervisor:", allOtText);
+                Assert.DoesNotContain("VB Jefatura:", allOtText);
+                Assert.DoesNotContain("Guía / Estado", allOtText);
+                Assert.DoesNotContain("Valor / Ref.", allOtText);
+                Assert.DoesNotContain("Registrado", allOtText);
             }
             using (WordprocessingDocument otDoc = WordprocessingDocument.Open(otDocx, false))
             {
-                Assert.Contains("987654", otDoc.MainDocumentPart!.Document.InnerText);
+                string otDocText = otDoc.MainDocumentPart!.Document.InnerText;
+                Assert.Contains("987654", otDocText);
+                Assert.Contains("Boris Arriagada Rojas", otDocText);
+                Assert.Contains("Técnico", otDocText);
+                Assert.DoesNotContain("VB Supervisor:", otDocText);
+                Assert.DoesNotContain("VB Jefatura:", otDocText);
+                Assert.DoesNotContain("Estado:", otDocText);
             }
 
             string otPdfText = win1252.GetString(File.ReadAllBytes(otPdf));
@@ -258,7 +280,18 @@ public sealed class MultiFormatExportTests
             Assert.DoesNotContain("/Count 1 ", otPdfText);
             Assert.Contains("Página 1 de ", otPdfText);
             Assert.Contains("Página 2 de ", otPdfText);
-            Assert.Contains("VB Supervisor: APROBADO", otPdfText);
+            Assert.Contains("987654", otPdfText);
+            Assert.Contains("Boris Arriagada Rojas", otPdfText);
+            Assert.Contains("Técnico", otPdfText);
+            Assert.DoesNotContain("VB Supervisor:", otPdfText);
+            Assert.DoesNotContain("VB Jefatura:", otPdfText);
+            Assert.DoesNotContain("Estado:", otPdfText);
+            Assert.DoesNotContain("Registrado", otPdfText);
+
+            string emptySigPdfText = win1252.GetString(File.ReadAllBytes(otEmptySigPdf));
+            Assert.DoesNotContain("Juan Ramos Moyano", emptySigPdfText);
+            Assert.DoesNotContain("Marcelo Silva Morgado", emptySigPdfText);
+            Assert.DoesNotContain("Técnico", emptySigPdfText);
         }
         finally
         {
