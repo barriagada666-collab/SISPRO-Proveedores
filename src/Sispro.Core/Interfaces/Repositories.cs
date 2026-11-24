@@ -20,6 +20,7 @@ public interface IUserRepository
     void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions);
     int CountActiveAdmins();
     int CountWithoutGroup();
+    IReadOnlyList<ApproverDirectoryEntry> GetApprovers();
 }
 
 public interface IGroupRepository
@@ -91,20 +92,10 @@ public interface IWorkOrderRepository
     int Create(WorkOrder workOrder);
     void Update(WorkOrder workOrder);
     void Delete(int idOt);
-    bool HasInvoices(int idOt);
     IReadOnlyList<WorkOrderSearchRow> Search(WorkOrderSearchFilter filter);
     void SetApproval(int idOt, string idUsuario, ApprovalType type, bool approved);
     IReadOnlyList<WorkOrderApproval> GetApprovals(int idOt);
-}
-
-public interface IInvoiceRepository
-{
-    Invoice? GetById(int idFactura);
-    Invoice? GetByNumberAndProvider(int numeroDocumento, int idProv);
-    bool IsDetailAlreadyInvoiced(int idDet);
-    int Create(Invoice invoice);
-    void Delete(int idFactura);
-    IReadOnlyList<InvoiceSearchRow> Search(InvoiceSearchFilter filter);
+    DashboardAnalytics GetDashboardAnalytics();
 }
 
 public interface IAuditRepository
@@ -113,26 +104,4 @@ public interface IAuditRepository
     IReadOnlyList<AuditEntry> GetRecent(int limit = 200);
     IReadOnlyList<AuditEntry> Search(AuditSearchFilter filter);
     DashboardMetrics GetDashboardMetrics();
-}
-
-public interface IMaintenanceRepository
-{
-    DashboardAnalytics GetDashboardAnalytics();
-    IReadOnlyList<string> GetTradeNames();
-    IReadOnlyList<string> GetWorkOrderStatuses();
-    IReadOnlyList<int> GetWorkOrderYears();
-    IReadOnlyList<MantWorkOrderRow> SearchInternalWorkOrders(MantWorkOrderFilter filter);
-    PagedResult<MantWorkOrderRow> SearchInternalWorkOrdersPaged(MantWorkOrderFilter filter, int pageIndex, int pageSize);
-    MantWorkOrderDetail? GetInternalWorkOrderDetail(int id);
-    IReadOnlyList<MantPreventivePlanRow> SearchPreventivePlans(string? search = null, string? estado = null);
-    IReadOnlyList<MantPreventiveCycleRow> GetPreventiveCycles(int idMp);
-    IReadOnlyList<MantPreventiveTaskRow> GetPreventiveTasks(int idMp, int? idCiclo = null, int maxRows = 300);
-    IReadOnlyList<MantSupplyRow> SearchSupplies(string? search = null, int maxRows = 500);
-    PagedResult<MantSupplyRow> SearchSuppliesPaged(string? search = null, int pageIndex = 0, int pageSize = 200);
-    IReadOnlyList<MantPersonnelRow> SearchPersonnel(string? search = null, string? oficio = null);
-    IReadOnlyList<MantHrPersonnelRow> GetHrPersonnel(string? search = null);
-    IReadOnlyList<MantExternalOrderRow> GetLegacyExternalOrders();
-    IReadOnlyList<MantCatalogItem> GetFailureMotives();
-    IReadOnlyList<MantCatalogItem> GetTradesCatalog();
-    IReadOnlyList<MantCatalogItem> GetChecklistsSummary();
 }

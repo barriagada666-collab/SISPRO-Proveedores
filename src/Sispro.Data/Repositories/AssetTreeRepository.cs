@@ -24,11 +24,7 @@ public sealed class AssetTreeRepository(SqliteConnectionFactory factory) : IAsse
 
     private static readonly string[] AssetReferenceTables =
     [
-        "OrdenesTrabajo",
-        "Mant_OT",
-        "Mant_MP",
-        "Mant_TareasMP",
-        "Mant_Checklist"
+        "OrdenesTrabajo"
     ];
 
     public AssetNode? GetById(int idActivo)

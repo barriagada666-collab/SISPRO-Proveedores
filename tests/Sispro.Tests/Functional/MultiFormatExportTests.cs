@@ -22,57 +22,61 @@ public sealed class MultiFormatExportTests
 
         try
         {
-            IReadOnlyList<InvoiceSearchRow> invoices =
+            IReadOnlyList<WorkOrderSearchRow> orders =
             [
-                new InvoiceSearchRow
+                new WorkOrderSearchRow
                 {
-                    IdFactura = 2,
-                    NumeroDocumento = 2002,
+                    IdOt = 2,
+                    NumeroOt = 2002,
                     Proveedor = "MAESTRANZA PACÍFICO SPA",
+                    Solicitante = "B. Arriagada",
                     Fecha = new DateTime(2026, 11, 20),
-                    RecibidoPor = "B. Arriagada",
-                    CantidadItems = 2,
-                    TotalNeto = 500_000m,
-                    Iva = 95_000m,
-                    TotalConIva = 595_000m,
-                    Detalle = "Reparación eje principal"
+                    Cantidad = 2,
+                    Detalle = "Reparación eje principal",
+                    RutaActivo = "CAMBIASO\\PLANTA PE\\EXTRUSIÓN",
+                    TieneVbs = true,
+                    VbsUsuario = "M Silva",
+                    TieneVbj = true,
+                    VbjUsuario = "J Ramos"
                 },
-                new InvoiceSearchRow
+                new WorkOrderSearchRow
                 {
-                    IdFactura = 1,
-                    NumeroDocumento = 2001,
+                    IdOt = 1,
+                    NumeroOt = 2001,
                     Proveedor = "ELÉCTRICOS VALPARAÍSO",
+                    Solicitante = "J. Ramos",
                     Fecha = new DateTime(2026, 10, 12),
-                    RecibidoPor = "J. Ramos",
-                    CantidadItems = 1,
-                    TotalNeto = 200_000m,
-                    Iva = 38_000m,
-                    TotalConIva = 238_000m,
-                    Detalle = "Rebobinado motor 15HP"
+                    Cantidad = 1,
+                    Detalle = "Rebobinado motor 15HP",
+                    RutaActivo = "CAMBIASO\\PLANTA TE\\ENVASADO",
+                    TieneVbs = false,
+                    TieneVbj = false
                 }
             ];
 
-            TabularReportData report = DocumentExportService.BuildInvoicesReport(invoices, "Fechas: 01-10-2026 a 30-11-2026");
+            TabularReportData report = DocumentExportService.BuildWorkOrdersReport(orders, "Fechas: 01-10-2026 a 30-11-2026");
 
-            string xlsxPath = Path.Combine(outDir, "facturas.xlsx");
-            string pdfPath = Path.Combine(outDir, "facturas.pdf");
-            string docxPath = Path.Combine(outDir, "facturas.docx");
-            string csvPath = Path.Combine(outDir, "facturas.csv");
+            string xlsxPath = Path.Combine(outDir, "ordenes.xlsx");
+            string pdfPath = Path.Combine(outDir, "ordenes.pdf");
+            string docxPath = Path.Combine(outDir, "ordenes.docx");
+            string csvPath = Path.Combine(outDir, "ordenes.csv");
 
             temp.Context.DocumentExportService.ExportReport(report, ExportFormat.Excel, xlsxPath);
             temp.Context.DocumentExportService.ExportReport(report, ExportFormat.Pdf, pdfPath);
             temp.Context.DocumentExportService.ExportReport(report, ExportFormat.Word, docxPath);
             temp.Context.DocumentExportService.ExportReport(report, ExportFormat.Csv, csvPath);
 
-            // 1. Validate Excel (.xlsx): corporate banner + row order + SUM formula
+            // 1. Validate Excel (.xlsx): corporate banner + row order + SUM formula + approvers
             Assert.True(File.Exists(xlsxPath) && new FileInfo(xlsxPath).Length > 3000);
             using (XLWorkbook wb = new(xlsxPath))
             {
                 IXLWorksheet ws = wb.Worksheets.First();
-                Assert.Contains("FACTURAS", ws.Cell(1, 1).GetString() + ws.Cell(1, 2).GetString(), StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("ORDENES DE TRABAJO", ws.Cell(1, 1).GetString().Replace('Ó', 'O') + ws.Cell(1, 2).GetString().Replace('Ó', 'O'), StringComparison.OrdinalIgnoreCase);
                 Assert.Equal(2002, ws.Cell(6, 1).GetValue<int>()); // First data row (newest)
                 Assert.Equal(2001, ws.Cell(7, 1).GetValue<int>()); // Second data row
-                Assert.True(ws.Cell(8, 6).HasFormula); // SUM formula on Neto column
+                Assert.True(ws.Cell(8, 5).HasFormula); // SUM formula on Cant. column
+                Assert.Contains("M Silva", ws.Cell(6, 8).GetString());
+                Assert.Contains("J Ramos", ws.Cell(6, 9).GetString());
             }
 
             // 2. Validate PDF (.pdf): real PDF 1.4 header, EOF, text content & pagination
@@ -82,6 +86,7 @@ public sealed class MultiFormatExportTests
             Assert.Contains("%%EOF", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("2002", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("MAESTRANZA", pdfAscii, StringComparison.Ordinal);
+            Assert.Contains("M Silva", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("de 1", pdfAscii, StringComparison.Ordinal);
 
             // 3. Validate Word (.docx): real OpenXML package with table rows and footer
@@ -89,8 +94,9 @@ public sealed class MultiFormatExportTests
             using (WordprocessingDocument doc = WordprocessingDocument.Open(docxPath, isEditable: false))
             {
                 string innerText = doc.MainDocumentPart!.Document.InnerText;
-                Assert.Contains("FACTURAS", innerText, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("TRABAJO EXTERNAS", innerText, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("MAESTRANZA", innerText, StringComparison.OrdinalIgnoreCase);
+                Assert.Contains("M Silva", innerText, StringComparison.Ordinal);
                 Assert.True(innerText.IndexOf("2002", StringComparison.Ordinal) < innerText.IndexOf("2001", StringComparison.Ordinal));
                 Assert.NotEmpty(doc.MainDocumentPart.FooterParts);
             }

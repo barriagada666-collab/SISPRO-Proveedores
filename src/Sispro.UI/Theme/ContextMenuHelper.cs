@@ -1,15 +1,17 @@
 using System.Drawing;
+using System.Runtime.CompilerServices;
 
 namespace Sispro.UI.Theme;
 
 /// <summary>
 /// Utilidad centralizada para menús contextuales seguros en WinForms.
-/// Desacopla la ejecución de la acción y la liberación del ContextMenuStrip del evento
-/// síncrono Closed (evitando ObjectDisposedException al abrir diálogos desde un ítem)
-/// y protege los bitmaps cacheados en <see cref="IconCatalog"/> antes de liberar.
+/// Desacopla la ejecución de la acción del evento síncrono Closed y evita liberar
+/// el ContextMenuStrip mientras un mensaje de WinForms o diálogo modal sigue activo.
 /// </summary>
 public static class ContextMenuHelper
 {
+    private static readonly ConditionalWeakTable<Control, ContextMenuStrip> LastMenusByAnchor = new();
+
     public static ToolStripMenuItem Item(
         string text,
         AppIcon icon,
@@ -28,6 +30,31 @@ public static class ContextMenuHelper
 
     internal static ContextMenuStrip Show(Control anchor, Point clientLocation, IEnumerable<ToolStripItem> items)
     {
+        if (LastMenusByAnchor.TryGetValue(anchor, out ContextMenuStrip? prev))
+        {
+            LastMenusByAnchor.Remove(anchor);
+            if (!prev.IsDisposed && !prev.Visible)
+            {
+                ClearImages(prev.Items);
+                prev.Dispose();
+            }
+        }
+        else
+        {
+            anchor.Disposed += (_, _) =>
+            {
+                if (LastMenusByAnchor.TryGetValue(anchor, out ContextMenuStrip? last))
+                {
+                    LastMenusByAnchor.Remove(anchor);
+                    if (!last.IsDisposed)
+                    {
+                        ClearImages(last.Items);
+                        last.Dispose();
+                    }
+                }
+            };
+        }
+
         List<ToolStripItem> filtered = NormalizeSeparators(items);
         ContextMenuStrip menu = new() { Font = CambiasoTheme.BodyFont };
 
@@ -37,23 +64,32 @@ public static class ContextMenuHelper
             return menu;
         }
 
+        bool actionPending = false;
+        void TryDisposeMenu()
+        {
+            if (!menu.IsDisposed && !menu.Visible)
+            {
+                ClearImages(menu.Items);
+                menu.Dispose();
+            }
+        }
+
         foreach (ToolStripItem item in filtered)
         {
-            AttachDeferredClicks(anchor, menu, item);
+            AttachDeferredClicks(anchor, menu, item, () => actionPending = true, TryDisposeMenu);
             menu.Items.Add(item);
         }
 
-        menu.Closed += (_, _) => Defer(anchor, () =>
+        menu.Closed += (_, _) =>
         {
-            if (menu.IsDisposed)
-            {
-                return;
-            }
-
             ClearImages(menu.Items);
-            menu.Dispose();
-        });
+            if (!actionPending)
+            {
+                Defer(anchor, TryDisposeMenu);
+            }
+        };
 
+        LastMenusByAnchor.Add(anchor, menu);
         menu.Show(anchor, clientLocation);
         return menu;
     }
@@ -141,7 +177,12 @@ public static class ContextMenuHelper
         return filtered;
     }
 
-    private static void AttachDeferredClicks(Control anchor, ContextMenuStrip menu, ToolStripItem item)
+    private static void AttachDeferredClicks(
+        Control anchor,
+        ContextMenuStrip menu,
+        ToolStripItem item,
+        Action markActionPending,
+        Action onFinished)
     {
         if (item is ToolStripMenuItem menuItem)
         {
@@ -149,6 +190,7 @@ public static class ContextMenuHelper
             {
                 menuItem.Click += (_, _) =>
                 {
+                    markActionPending();
                     if (menu.Visible)
                     {
                         menu.Close(ToolStripDropDownCloseReason.ItemClicked);
@@ -156,9 +198,16 @@ public static class ContextMenuHelper
 
                     Defer(anchor, () =>
                     {
-                        if (!anchor.IsDisposed)
+                        try
                         {
-                            action();
+                            if (!anchor.IsDisposed)
+                            {
+                                action();
+                            }
+                        }
+                        finally
+                        {
+                            Defer(anchor, onFinished);
                         }
                     });
                 };
@@ -168,7 +217,7 @@ public static class ContextMenuHelper
             {
                 foreach (ToolStripItem child in menuItem.DropDownItems)
                 {
-                    AttachDeferredClicks(anchor, menu, child);
+                    AttachDeferredClicks(anchor, menu, child, markActionPending, onFinished);
                 }
             }
         }

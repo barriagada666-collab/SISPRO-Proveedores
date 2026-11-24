@@ -25,7 +25,8 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
 
         string clause = where.Count > 0 ? $"WHERE {string.Join(" AND ", where)}" : string.Empty;
         cmd.CommandText = $"""
-            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo
+            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo,
+                   firma_bytes, COALESCE(firma_nombre, ''), COALESCE(firma_tipo, ''), firma_preview_png
             FROM Solicitantes
             {clause}
             ORDER BY alias;
@@ -46,7 +47,8 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo
+            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo,
+                   firma_bytes, COALESCE(firma_nombre, ''), COALESCE(firma_tipo, ''), firma_preview_png
             FROM Solicitantes WHERE id_sol = $id LIMIT 1;
             """;
         cmd.Parameters.AddWithValue("$id", idSol);
@@ -59,7 +61,8 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo
+            SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo,
+                   firma_bytes, COALESCE(firma_nombre, ''), COALESCE(firma_tipo, ''), firma_preview_png
             FROM Solicitantes WHERE LOWER(alias) = LOWER($alias) LIMIT 1;
             """;
         cmd.Parameters.AddWithValue("$alias", alias.Trim());
@@ -72,8 +75,13 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO Solicitantes(alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo)
-            VALUES ($alias, $nom, $pat, $mat, $fono, $mail, $act);
+            INSERT INTO Solicitantes(
+                alias, nombre_sol, ape_pat_sol, ape_mat_sol, fono_sol, mail_sol, activo,
+                firma_bytes, firma_nombre, firma_tipo, firma_preview_png
+            ) VALUES (
+                $alias, $nom, $pat, $mat, $fono, $mail, $act,
+                $fbytes, $fnom, $ftipo, $fpng
+            );
             SELECT last_insert_rowid();
             """;
         Bind(cmd, requester);
@@ -89,7 +97,8 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         cmd.CommandText = """
             UPDATE Solicitantes
             SET alias = $alias, nombre_sol = $nom, ape_pat_sol = $pat,
-                ape_mat_sol = $mat, fono_sol = $fono, mail_sol = $mail, activo = $act
+                ape_mat_sol = $mat, fono_sol = $fono, mail_sol = $mail, activo = $act,
+                firma_bytes = $fbytes, firma_nombre = $fnom, firma_tipo = $ftipo, firma_preview_png = $fpng
             WHERE id_sol = $id;
             """;
         cmd.Parameters.AddWithValue("$id", requester.IdSol);
@@ -165,6 +174,10 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         cmd.Parameters.AddWithValue("$fono", r.Telefono.Trim());
         cmd.Parameters.AddWithValue("$mail", r.Correo.Trim());
         cmd.Parameters.AddWithValue("$act", r.Activo ? 1 : 0);
+        cmd.Parameters.Add("$fbytes", SqliteType.Blob).Value = r.FirmaBytes is { Length: > 0 } ? r.FirmaBytes : DBNull.Value;
+        cmd.Parameters.AddWithValue("$fnom", r.FirmaNombre.Trim());
+        cmd.Parameters.AddWithValue("$ftipo", r.FirmaTipo.Trim().ToUpperInvariant());
+        cmd.Parameters.Add("$fpng", SqliteType.Blob).Value = r.FirmaPreviewPng is { Length: > 0 } ? r.FirmaPreviewPng : DBNull.Value;
     }
 
     private static Requester Map(SqliteDataReader rdr) => new()
@@ -176,6 +189,10 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         ApellidoMaterno = rdr.GetString(4),
         Telefono = rdr.GetString(5),
         Correo = rdr.GetString(6),
-        Activo = rdr.GetInt32(7) != 0
+        Activo = rdr.GetInt32(7) != 0,
+        FirmaBytes = rdr.IsDBNull(8) ? null : (byte[])rdr.GetValue(8),
+        FirmaNombre = rdr.IsDBNull(9) ? string.Empty : rdr.GetString(9),
+        FirmaTipo = rdr.IsDBNull(10) ? string.Empty : rdr.GetString(10),
+        FirmaPreviewPng = rdr.IsDBNull(11) ? null : (byte[])rdr.GetValue(11)
     };
 }

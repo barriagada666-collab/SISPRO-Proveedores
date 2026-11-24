@@ -202,11 +202,18 @@ public sealed class PdfExportService(AppSettings settings)
         string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
 
         PdfImage? logo = TryLoadJpegImage(Path.Combine(assetsDir, "logo_cambiaso.png"), Color.FromArgb(10, 38, 60));
-        PdfImage? sigJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas
+        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showSol = signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante;
+
+        PdfImage? sigJr = showJr
             ? TryLoadJpegImage(Path.Combine(assetsDir, "Firmas", "JR.jpg"), Color.White)
             : null;
-        PdfImage? sigMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas
+        PdfImage? sigMs = showMs
             ? TryLoadJpegImage(Path.Combine(assetsDir, "Firmas", "MS.jpg"), Color.White)
+            : null;
+        PdfImage? sigSol = showSol && order.FirmaSolicitantePreviewPng is { Length: > 0 }
+            ? TryLoadJpegFromBytes(order.FirmaSolicitantePreviewPng, Color.White)
             : null;
 
         double pageW = 612;
@@ -216,8 +223,8 @@ public sealed class PdfExportService(AppSettings settings)
         double marginBottom = 36;
         double contentW = pageW - (marginX * 2);
         double halfW = (contentW - 12) / 2;
-        double[] colW = [38, 46, contentW - 184, 100];
-        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo", "Guía / Estado"];
+        double[] colW = [38, 46, contentW - 174, 90];
+        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo", "Estado"];
 
         void DrawOtBanner(StringBuilder pageSb, bool isContinuation)
         {
@@ -322,8 +329,7 @@ public sealed class PdfExportService(AppSettings settings)
                 ly -= 11.5;
             }
 
-            string gd = order.GuiaDespacho > 0 ? $"GD {order.GuiaDespacho}" : (d.AsociadoAFactura ? "Facturado" : "Abierta");
-            DrawText(sb, "F1", 8.5, marginX + colW[0] + colW[1] + colW[2] + 6, y - 13, gd);
+            DrawText(sb, "F1", 8.5, marginX + colW[0] + colW[1] + colW[2] + 6, y - 13, "Registrado");
 
             y -= rh;
             itemIdx++;
@@ -334,7 +340,8 @@ public sealed class PdfExportService(AppSettings settings)
         sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
 
         // Si el bloque de Vistos Buenos y Firmas no cabe limpio en la página actual, abrir página final
-        double minSignatureRoomY = marginBottom + 205;
+        double requiredRoom = sigSol is not null ? 275 : 210;
+        double minSignatureRoomY = marginBottom + requiredRoom;
         bool sigOnNewPage = y < minSignatureRoomY;
         if (sigOnNewPage)
         {
@@ -346,14 +353,15 @@ public sealed class PdfExportService(AppSettings settings)
 
         // Estado Vistos Buenos
         y -= 24;
-        string vbInfo = $"VB Supervisor: {(order.TieneVbs ? "APROBADO" : "Pendiente")}     |     VB Jefatura: {(order.TieneVbj ? "APROBADO" : "Pendiente")}";
         sb.AppendLine(TextMutedFill);
-        DrawText(sb, "F2", 9, marginX, y, vbInfo);
+        DrawText(sb, "F2", 8.5, marginX, y, $"VB Supervisor: {order.VbsResumen}");
+        y -= 13;
+        DrawText(sb, "F2", 8.5, marginX, y, $"VB Jefatura: {order.VbjResumen}");
 
         // Firmas
         double sigY = sigOnNewPage
-            ? Math.Max(marginBottom + 66, y - 115)
-            : Math.Max(marginBottom + 66, Math.Min(y - 106, 190));
+            ? Math.Max(marginBottom + (sigSol is not null ? 132 : 66), y - 115)
+            : Math.Max(marginBottom + (sigSol is not null ? 132 : 66), y - 106);
         if (sigJr is not null)
         {
             sb.AppendLine(Fmt($"q 115 0 0 70 {marginX + 60} {sigY + 18} cm /ImJR Do Q"));
@@ -372,6 +380,17 @@ public sealed class PdfExportService(AppSettings settings)
         DrawText(sb, "F2", 8.5, marginX + 38, sigY + 2, "Juan Ramos Moyano — Jefatura Mantención");
         DrawText(sb, "F2", 8.5, marginX + halfW + 46, sigY + 2, "Marcelo Silva Morgado — Supervisor Mantención");
 
+        if (sigSol is not null)
+        {
+            double solCenter = marginX + (contentW / 2);
+            double solY = Math.Max(marginBottom + 24, sigY - 82);
+            sb.AppendLine(Fmt($"q 125 0 0 54 {solCenter - 62} {solY + 16} cm /ImSol Do Q"));
+            sb.AppendLine("0.8 w");
+            sb.AppendLine(PrimaryDarkFill);
+            sb.AppendLine(Fmt($"{solCenter - 115} {solY + 12} m {solCenter + 115} {solY + 12} l S"));
+            DrawText(sb, "F2", 8.5, solCenter - 95, solY, $"Solicitante: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})");
+        }
+
         int totalPages = pageBuilders.Count;
         List<string> pages = new(totalPages);
         for (int p = 0; p < totalPages; p++)
@@ -384,6 +403,7 @@ public sealed class PdfExportService(AppSettings settings)
         if (logo is not null) images.Add(("ImLogo", logo));
         if (sigJr is not null) images.Add(("ImJR", sigJr));
         if (sigMs is not null) images.Add(("ImMS", sigMs));
+        if (sigSol is not null) images.Add(("ImSol", sigSol));
 
         WritePdfDocument(outputPath, pageW, pageH, pages, images);
     }
@@ -613,7 +633,25 @@ public sealed class PdfExportService(AppSettings settings)
 
         try
         {
-            using Image src = Image.FromFile(path);
+            return TryLoadJpegFromBytes(File.ReadAllBytes(path), backgroundForAlpha);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static PdfImage? TryLoadJpegFromBytes(byte[] rawBytes, Color backgroundForAlpha)
+    {
+        if (rawBytes is null || rawBytes.Length == 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            using MemoryStream srcStream = new(rawBytes);
+            using Image src = Image.FromStream(srcStream);
             int w = Math.Min(src.Width, 640);
             int h = Math.Max(1, (int)Math.Round(src.Height * (w / (double)src.Width)));
             using Bitmap rgb = new(w, h, PixelFormat.Format24bppRgb);

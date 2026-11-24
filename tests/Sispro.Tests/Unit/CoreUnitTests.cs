@@ -53,22 +53,6 @@ public sealed class CoreUnitTests
         Assert.False(PasswordSecurity.VerifyPassword("wrongpass", legacyStored, "L Reyes", out _));
     }
 
-    [Theory]
-    [InlineData(100000, 19000, 119000)]
-    [InlineData(0, 0, 0)]
-    [InlineData(12345, 2346, 14691)]
-    public void TaxCalculator_ComputesChilean19PercentIva(decimal net, decimal expectedIva, decimal expectedTotal)
-    {
-        Assert.Equal(expectedIva, TaxCalculator.CalculateIva(net));
-        Assert.Equal(expectedTotal, TaxCalculator.CalculateTotalWithIva(net));
-    }
-
-    [Fact]
-    public void TaxCalculator_RejectsNegativeAmount()
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => TaxCalculator.CalculateIva(-1));
-    }
-
     [Fact]
     public void PermissionPresets_FollowLeastPrivilegePerRole()
     {
@@ -76,14 +60,12 @@ public sealed class CoreUnitTests
         Assert.True(usr.MenuOrdenesTrabajo);
         Assert.False(usr.VistoBuenoSupervisor);
         Assert.False(usr.VistoBuenoJefatura);
-        Assert.False(usr.MenuFacturas);
         Assert.False(usr.MenuMantenedor);
         Assert.False(usr.MenuUsuarios);
 
         UserPermissions sup = PermissionPresets.CreateForRole(UserRoleLevel.Supervisor);
         Assert.True(sup.VistoBuenoSupervisor);
         Assert.False(sup.VistoBuenoJefatura);
-        Assert.True(sup.MenuFacturas);
         Assert.False(sup.MenuUsuarios);
 
         UserPermissions jef = PermissionPresets.CreateForRole(UserRoleLevel.Jefatura);
@@ -93,7 +75,7 @@ public sealed class CoreUnitTests
         Assert.False(jef.MenuUsuarios);
 
         UserPermissions adm = PermissionPresets.CreateForRole(UserRoleLevel.Administrador);
-        Assert.True(adm.MenuOrdenesTrabajo && adm.MenuFacturas && adm.MenuMantenedor && adm.MenuUsuarios);
+        Assert.True(adm.MenuOrdenesTrabajo && adm.MenuMantenedor && adm.MenuUsuarios);
         Assert.True(adm.IngresoUsuarios && adm.ListadoUsuarios);
     }
 
@@ -105,8 +87,6 @@ public sealed class CoreUnitTests
             MenuOrdenesTrabajo = false,
             IngresoOt = true,
             VistoBuenoJefatura = true,
-            MenuFacturas = false,
-            IngresoFacturas = true,
             MenuUsuarios = false,
             IngresoUsuarios = true
         };
@@ -115,7 +95,6 @@ public sealed class CoreUnitTests
 
         Assert.False(p.IngresoOt);
         Assert.False(p.VistoBuenoJefatura);
-        Assert.False(p.IngresoFacturas);
         Assert.False(p.IngresoUsuarios);
     }
 

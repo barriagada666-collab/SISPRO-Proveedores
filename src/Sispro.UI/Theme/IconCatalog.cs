@@ -69,44 +69,42 @@ public enum AppIcon
 /// </summary>
 public static class IconCatalog
 {
-    private static readonly ConcurrentDictionary<(AppIcon Icon, int Size, int ColorArgb), Bitmap> Cache = new();
-    private static Icon? _appIcon;
-    private static Image? _companyLogo;
+    // Aísla bitmaps/iconos GDI+ por hilo para que controles WinForms concurrentes (p. ej. hilos STA paralelos)
+    // nunca compartan el mismo handle GDI+ ni disparen "Object is currently in use elsewhere".
+    private static readonly ConcurrentDictionary<(int ThreadId, AppIcon Icon, int Size, int ColorArgb), Bitmap> Cache = new();
+    private static readonly ConcurrentDictionary<int, Icon> AppIconCache = new();
+    private static readonly ConcurrentDictionary<int, Image?> CompanyLogoCache = new();
 
     public static Icon GetAppIcon()
     {
-        if (_appIcon is not null)
+        return AppIconCache.GetOrAdd(Environment.CurrentManagedThreadId, _ =>
         {
-            return _appIcon;
-        }
-
-        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "sispro.ico");
-        _appIcon = File.Exists(path) ? new Icon(path) : SystemIcons.Application;
-        return _appIcon;
+            string path = Path.Combine(AppContext.BaseDirectory, "Assets", "sispro.ico");
+            return File.Exists(path) ? new Icon(path) : (Icon)SystemIcons.Application.Clone();
+        });
     }
 
     public static Image? GetCompanyLogo()
     {
-        if (_companyLogo is not null)
+        return CompanyLogoCache.GetOrAdd(Environment.CurrentManagedThreadId, _ =>
         {
-            return _companyLogo;
-        }
+            string pngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo_cambiaso.png");
+            if (!File.Exists(pngPath))
+            {
+                return null;
+            }
 
-        string pngPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo_cambiaso.png");
-        if (File.Exists(pngPath))
-        {
             using FileStream fs = File.OpenRead(pngPath);
             using Image loaded = Image.FromStream(fs);
-            _companyLogo = new Bitmap(loaded);
-            return _companyLogo;
-        }
-
-        return null;
+            return new Bitmap(loaded);
+        });
     }
 
     public static Bitmap Get(AppIcon icon, Color color, int size = 16)
     {
-        return Cache.GetOrAdd((icon, size, color.ToArgb()), key => RenderLucideIcon(key.Icon, Color.FromArgb(key.ColorArgb), key.Size));
+        return Cache.GetOrAdd(
+            (Environment.CurrentManagedThreadId, icon, size, color.ToArgb()),
+            key => RenderLucideIcon(key.Icon, Color.FromArgb(key.ColorArgb), key.Size));
     }
 
     private static Bitmap RenderLucideIcon(AppIcon icon, Color color, int size)

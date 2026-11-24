@@ -103,10 +103,9 @@ public static class InitialAdminProvisioner
             permCmd.CommandText = """
                 INSERT INTO Permisos(
                     id_usuario, m1_ot, tab_0_1_ingreso_ot, tab_0_vbj, tab_0_vbs,
-                    tab_0_2_busqueda_ot, tab_0_3_impresion_ot, m2_facturas,
-                    tab_1_0_ingreso_fac, tab_1_1_busqueda_fac, m3_mantenedor,
+                    tab_0_2_busqueda_ot, tab_0_3_impresion_ot, m3_mantenedor,
                     m4_usuarios, tab_2_0_ingreso_us, tab_2_1_listado_us
-                ) VALUES ($id, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+                ) VALUES ($id, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
                 """;
             permCmd.Parameters.AddWithValue("$id", userId);
             permCmd.ExecuteNonQuery();

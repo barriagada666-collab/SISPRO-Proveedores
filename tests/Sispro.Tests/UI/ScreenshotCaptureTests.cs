@@ -65,21 +65,17 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
-            main.ShowInvoices();
-            Application.DoEvents();
-            SaveFormBitmap(main, Path.Combine(outDir, "04_facturas_guias.png"));
-
             main.ShowMaintainers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "05_mantenedores.png"));
 
-            main.ShowMaintenanceHub();
-            Application.DoEvents();
-            SaveFormBitmap(main, Path.Combine(outDir, "07_mantencion_industrial.png"));
-
             main.ShowUsers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "06_usuarios_rbac.png"));
+
+            main.ShowUsers(openRequestersTab: true);
+            Application.DoEvents();
+            SaveFormBitmap(main, Path.Combine(outDir, "07_solicitantes_firmas.png"));
 
             main.ShowTreeEditor();
             Application.DoEvents();

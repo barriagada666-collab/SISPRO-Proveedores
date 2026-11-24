@@ -153,36 +153,55 @@ public sealed class PrintService(AppSettings settings)
             }
 
             // Approvals summary + signatures
-            y = Math.Max(y + 18, bounds.Bottom - signatureReserve + 10);
-            string vbLine = $"VB Supervisor: {(order.TieneVbs ? "APROBADO" : "Pendiente")}   |   VB Jefatura: {(order.TieneVbj ? "APROBADO" : "Pendiente")}";
+            bool showSolSig = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
+                              order.FirmaSolicitantePreviewPng is { Length: > 0 };
+            y = Math.Max(y + 18, bounds.Bottom - (showSolSig ? 215 : 165));
+            string vbLine = $"VB Supervisor: {order.VbsResumen}   |   VB Jefatura: {order.VbjResumen}";
             g.DrawString(vbLine, smallFont, Brushes.DimGray, bounds.Left, y);
             y += 18;
 
             string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
             string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
+            bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+            bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
 
             int leftSigCenter = bounds.Left + (bounds.Width / 4);
             int rightSigCenter = bounds.Left + (3 * bounds.Width / 4);
 
-            if (signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas && File.Exists(jrPath))
+            if (showJr && File.Exists(jrPath))
             {
                 using Image jr = Image.FromFile(jrPath);
                 g.DrawImage(jr, new Rectangle(leftSigCenter - 65, (int)y, 130, 75));
             }
 
-            if (signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas && File.Exists(msPath))
+            if (showMs && File.Exists(msPath))
             {
                 using Image ms = Image.FromFile(msPath);
                 g.DrawImage(ms, new Rectangle(rightSigCenter - 65, (int)y, 130, 75));
             }
 
-            float sigLineY = y + 82;
+            float sigLineY = y + 78;
             g.DrawLine(Pens.Black, leftSigCenter - 110, sigLineY, leftSigCenter + 110, sigLineY);
             g.DrawLine(Pens.Black, rightSigCenter - 110, sigLineY, rightSigCenter + 110, sigLineY);
             g.DrawString("Juan Ramos Moyano\nJefatura Mantención", smallFont, Brushes.Black,
                 new RectangleF(leftSigCenter - 120, sigLineY + 4, 240, 32), center);
             g.DrawString("Marcelo Silva Morgado\nSupervisor Mantención", smallFont, Brushes.Black,
                 new RectangleF(rightSigCenter - 120, sigLineY + 4, 240, 32), center);
+
+            if (showSolSig)
+            {
+                using Bitmap? solBmp = SignatureFileService.CreateBitmapFromBytes(order.FirmaSolicitantePreviewPng);
+                if (solBmp is not null)
+                {
+                    int centerSig = bounds.Left + (bounds.Width / 2);
+                    float solImgY = sigLineY + 34;
+                    g.DrawImage(solBmp, new Rectangle(centerSig - 60, (int)solImgY, 120, 46));
+                    float solLineY = solImgY + 48;
+                    g.DrawLine(Pens.Black, centerSig - 110, solLineY, centerSig + 110, solLineY);
+                    g.DrawString($"Solicitante: {order.AliasSolicitante}", smallFont, Brushes.Black,
+                        new RectangleF(centerSig - 130, solLineY + 3, 260, 18), center);
+                }
+            }
 
             DrawFooter(g, bounds, smallFont, pageNumber);
             e.HasMorePages = false;
@@ -291,7 +310,7 @@ public sealed class PrintService(AppSettings settings)
     private void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
     {
         g.DrawLine(Pens.LightGray, bounds.Left, bounds.Bottom - 20, bounds.Right, bounds.Bottom - 20);
-        g.DrawString($"SISPRO v4.1 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
+        g.DrawString($"SISPRO v4.2 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
         using StringFormat right = new() { Alignment = StringAlignment.Far };
         g.DrawString($"Página {pageNumber}", smallFont, Brushes.Gray, new RectangleF(bounds.Left, bounds.Bottom - 16, bounds.Width, 16), right);
     }

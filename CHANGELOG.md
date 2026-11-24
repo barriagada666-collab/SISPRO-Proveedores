@@ -2,6 +2,32 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.2.0] — 2026-11-24
+
+### Agregado
+- **Gestión integral de "Solicitado Por" y Firma Digital (`PNG`, `JPG`, `PDF`)**:
+  - Subpestaña dedicada `Solicitados Por y Firmas Digitales` en **Usuarios y Solicitantes** (`UsersForm`) y pestaña compartida `Solicitantes y Firmas` en **Mantenedores** (`MaintainersForm`) mediante el control unificado `RequesterManagerControl`.
+  - Adjunto y vista previa de firma digital al crear/editar un usuario marcado con `Solicitante OT` en `UsersForm`, con sincronización automática sobre la tabla `Solicitantes`.
+  - Nuevo servicio `SignatureFileService` (`net10.0-windows10.0.19041.0`) para validar `PNG`/`JPG`/`PDF` (máx. 10 MB) y rasterizar automáticamente la página 1 de PDFs a miniatura PNG mediante `Windows.Data.Pdf.PdfDocument` sin dependencias NuGet vulnerables.
+  - Migración idempotente de esquema en `SchemaInitializer` (`firma_bytes`, `firma_nombre`, `firma_tipo`, `firma_preview_png`) preservando todos los solicitantes históricos (`11` totales / `9` activos).
+  - Nuevas opciones de exportación e impresión en `WorkOrdersForm` (`Ambas Firmas + Solicitante` y `Firma del Solicitante`) con renderizado de la firma en `.xlsx`, `.pdf`, `.docx` e impresión directa.
+- **Identificación visible de aprobadores `VB Supervisor` y `VB Jefatura`**:
+  - Franja superior `APROBADORES OT VIGENTES` y columnas `VBS` / `VBJ` / `Solicitante / Firma` en `UsersForm`.
+  - Resumen de aprobadores autorizados en Dashboard (`MainForm`), etiquetas detalladas con usuario y fecha/hora (`✓ Aprobado por <Usuario> (<fecha>)` o lista de autorizados si está `Pendiente`) en `WorkOrdersForm`, y columnas `VBS`/`VBJ` enriquecidas en grillas y exportaciones.
+- **Dashboard centrado en Trabajos Externos**:
+  - Nuevo banner Hero con el botón dorado principal **Nueva OT Externa** (`BtnHeroNewExternalOt`) y 5 KPIs clicables (`OTs Externas`, `Proveedores`, `Activos Reales`, `Pendientes VB`, `Solicitantes / Firmas`).
+
+### Eliminado
+- Eliminación integral de **Facturas y Guías** (`InvoicesForm`, `InvoiceService`, `InvoiceRepository`, `TaxCalculator`, tablas/DTOs/permisos/filtros asociados) y **Mantención Industrial** (`MaintenanceHubForm`, `MaintenanceService`, `MaintenanceRepository`, `MaintenanceDtos`, botón `"Explorar BD Mantención"` y KPIs internos), conservando intactos todos los datos de OTs externas (`7.284`), proveedores (`214`), activos (`1.824` / `1.823` activos), usuarios, grupos y solicitantes.
+
+### Corregido y Verificado
+- **Aislamiento GDI+ por hilo en `IconCatalog`**: caché de íconos Lucide, ícono de aplicación y logotipo indexada por `ManagedThreadId` para eliminar condiciones de carrera `InvalidOperationException: Object is currently in use elsewhere` en formularios e hilos STA concurrentes.
+- **Validación en `Build-Release.ps1`**: verificación explícita de `$LASTEXITCODE` por etapa y restauración explícita `-r win-x64`.
+- **Compilación y Pruebas**: Debug/Release `0` errores, `0` advertencias; `0` vulnerabilidades NuGet; `62 / 62` pruebas `xUnit` aprobadas.
+- **Instalador `SISPRO_Setup_v4.2.0_win-x64.exe`**: `57.695.222` bytes (`SHA-256`: `28A697DDB61E263D845DECBC7CD00BA3CD825403231BF43BEAF33CC77C4D2ECE`), validada actualización silenciosa `v4.1.0 → v4.2.0`, preservación de `Data\sispro.db`, arranque vivo de `SISPRO.exe` y desinstalación limpia.
+
+---
+
 ## [4.1.0] — 2026-11-23
 
 ### Correcciones Críticas, Menús Contextuales de Clic Derecho, CRUD del Árbol (Solo Administrador) y Botón Visible de OT Externa

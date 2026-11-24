@@ -101,18 +101,18 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
             SELECT
                 (SELECT COUNT(*) FROM OrdenesTrabajo),
                 (SELECT COUNT(*) FROM OrdenesTrabajo o
+                 WHERE NOT EXISTS(SELECT 1 FROM VistoBueno vb WHERE vb.id_ot = o.id_ot AND vb.tipo_vb = 'VBS')
+                    OR NOT EXISTS(SELECT 1 FROM VistoBueno vb WHERE vb.id_ot = o.id_ot AND vb.tipo_vb = 'VBJ')),
+                (SELECT COUNT(*) FROM OrdenesTrabajo o
+                 WHERE NOT EXISTS(SELECT 1 FROM VistoBueno vb WHERE vb.id_ot = o.id_ot AND vb.tipo_vb = 'VBS')),
+                (SELECT COUNT(*) FROM OrdenesTrabajo o
                  WHERE NOT EXISTS(SELECT 1 FROM VistoBueno vb WHERE vb.id_ot = o.id_ot AND vb.tipo_vb = 'VBJ')),
                 (SELECT COUNT(*) FROM Proveedores WHERE activo = 1),
                 (SELECT COUNT(*) FROM Solicitantes WHERE activo = 1),
-                (SELECT COUNT(*) FROM Facturas),
+                (SELECT COUNT(*) FROM Solicitantes WHERE activo = 1 AND (firma_bytes IS NOT NULL OR firma_preview_png IS NOT NULL)),
                 (SELECT COUNT(*) FROM Usuarios WHERE activo = 1),
                 (SELECT COUNT(*) FROM Grupos WHERE activo = 1),
-                (SELECT COUNT(*) FROM Activos WHERE activo = 1),
-                (SELECT COUNT(*) FROM Mant_OT),
-                (SELECT COUNT(*) FROM Mant_MP),
-                (SELECT COUNT(*) FROM Mant_TareasMP),
-                (SELECT COUNT(*) FROM Mant_Insumos),
-                (SELECT COUNT(*) FROM Mant_Personal);
+                (SELECT COUNT(*) FROM Activos WHERE activo = 1);
             """;
         using SqliteDataReader rdr = cmd.ExecuteReader();
         if (!rdr.Read())
@@ -124,17 +124,14 @@ public sealed class AuditRepository(SqliteConnectionFactory factory) : IAuditRep
         {
             TotalOrdenesTrabajo = rdr.GetInt32(0),
             OrdenesSinVistoBueno = rdr.GetInt32(1),
-            TotalProveedoresActivos = rdr.GetInt32(2),
-            TotalSolicitantesActivos = rdr.GetInt32(3),
-            TotalFacturas = rdr.GetInt32(4),
-            TotalUsuariosActivos = rdr.GetInt32(5),
-            TotalGruposActivos = rdr.GetInt32(6),
-            TotalNodosActivos = rdr.GetInt32(7),
-            TotalMantOts = rdr.GetInt32(8),
-            TotalPlanesMp = rdr.GetInt32(9),
-            TotalTareasMp = rdr.GetInt32(10),
-            TotalInsumos = rdr.GetInt32(11),
-            TotalPersonalTecnico = rdr.GetInt32(12)
+            OrdenesSinVbs = rdr.GetInt32(2),
+            OrdenesSinVbj = rdr.GetInt32(3),
+            TotalProveedoresActivos = rdr.GetInt32(4),
+            TotalSolicitantesActivos = rdr.GetInt32(5),
+            TotalSolicitantesConFirma = rdr.GetInt32(6),
+            TotalUsuariosActivos = rdr.GetInt32(7),
+            TotalGruposActivos = rdr.GetInt32(8),
+            TotalNodosActivos = rdr.GetInt32(9)
         };
     }
 }

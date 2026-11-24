@@ -10,9 +10,9 @@ using Sispro.UI.Theme;
 namespace Sispro.UI.Forms;
 
 /// <summary>
-/// Ventana principal corporativa de SISPRO v4.1 (.NET 10).
+/// Ventana principal corporativa de SISPRO v4.2 (.NET 10).
 /// Provee barra lateral con control estricto RBAC, Panel de Control con gráficas vectoriales
-/// analíticas en vivo e integración total con BD Mantención Industrial.
+/// analíticas en vivo de Trabajos Externos, botón principal + Nueva OT Externa y gestión integral.
 /// </summary>
 public sealed class MainForm : Form
 {
@@ -32,29 +32,27 @@ public sealed class MainForm : Form
     // Navigation buttons (exposed internally for automated RBAC/UI testing)
     internal Button NavDashboard { get; }
     internal Button NavWorkOrders { get; }
-    internal Button NavInvoices { get; }
     internal Button NavMaintainers { get; }
     internal Button NavTreeEditor { get; }
-    internal Button NavMaintenance { get; }
     internal Button NavUsers { get; }
     internal Button NavAudit { get; }
     internal Button BtnTopNewExternalOt { get; }
+    internal Button? BtnHeroNewExternalOt { get; private set; }
 
     // Cached module views for instant tab-switching without slow reloads
     private Panel? _dashboardView;
     private WorkOrdersForm? _workOrdersView;
-    private InvoicesForm? _invoicesView;
     private MaintainersForm? _maintainersView;
     private AssetTreeEditorView? _treeEditorView;
-    private MaintenanceHubForm? _maintenanceHubView;
     private UsersForm? _usersView;
 
     // Dashboard KPI labels & modern vector charts
     private Label? _kpiTotalOts;
     private Label? _kpiProviders;
     private Label? _kpiAssets;
-    private Label? _kpiMantOts;
-    private Label? _kpiMpSupplies;
+    private Label? _kpiPendingVb;
+    private Label? _kpiRequesters;
+    private Label? _lblApproversSummary;
     private VerticalBarChartCard? _chartYearlyOts;
     private DonutChartCard? _chartByPlant;
     private HorizontalRankChartCard? _chartTopProviders;
@@ -69,7 +67,7 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v4.1 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Text = $"SISPRO v4.2 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -143,11 +141,7 @@ public sealed class MainForm : Form
 
         BtnTopNewExternalOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Crear inmediatamente una nueva Orden de Trabajo externa", width: 156, height: 32);
         BtnTopNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
-        BtnTopNewExternalOt.Click += (_, _) =>
-        {
-            ShowWorkOrders();
-            _workOrdersView?.StartNewExternalOrder();
-        };
+        BtnTopNewExternalOt.Click += (_, _) => StartNewExternalOrderFlow();
 
         topActions.Controls.AddRange([btnLogout, btnChangePwd, btnSettings, BtnTopNewExternalOt]);
         topBar.Controls.Add(_lblModuleTitle);
@@ -190,18 +184,14 @@ public sealed class MainForm : Form
             WrapContents = false
         };
 
-        NavDashboard = CreateNavButton("Inicio / Analítica", AppIcon.Dashboard, "Resumen operativo, KPIs y gráficas en vivo");
+        NavDashboard = CreateNavButton("Inicio / Analítica", AppIcon.Dashboard, "Resumen operativo, KPIs y gráficas de Órdenes Externas");
         NavDashboard.Click += (_, _) => ShowDashboard();
 
-        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Ingreso, búsqueda e impresión de Órdenes de Trabajo (M1)");
+        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Ingreso, aprobación VB, búsqueda e impresión de Órdenes de Trabajo (M1)");
         NavWorkOrders.Enabled = _session.Permisos.MenuOrdenesTrabajo;
         NavWorkOrders.Click += (_, _) => ShowWorkOrders();
 
-        NavInvoices = CreateNavButton("Facturas y Guías", AppIcon.Invoice, "Guías de despacho, localización y búsqueda de facturas (M2)");
-        NavInvoices.Enabled = _session.Permisos.MenuFacturas;
-        NavInvoices.Click += (_, _) => ShowInvoices();
-
-        NavMaintainers = CreateNavButton("Mantenedores", AppIcon.Provider, "Proveedores, solicitantes y árbol de activos con ficha técnica (M3)");
+        NavMaintainers = CreateNavButton("Mantenedores", AppIcon.Provider, "Proveedores, solicitantes con firmas y árbol de activos (M2)");
         NavMaintainers.Enabled = _session.Permisos.MenuMantenedor;
         NavMaintainers.Click += (_, _) => ShowMaintainers();
 
@@ -209,11 +199,7 @@ public sealed class MainForm : Form
         NavTreeEditor.Enabled = isAdmin;
         NavTreeEditor.Click += (_, _) => ShowTreeEditor();
 
-        NavMaintenance = CreateNavButton("Mantención Industrial", AppIcon.Wrench, "OTs internas, planes preventivos MP, insumos SAP y personal técnico");
-        NavMaintenance.Enabled = _session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor;
-        NavMaintenance.Click += (_, _) => ShowMaintenanceHub();
-
-        NavUsers = CreateNavButton("Usuarios y Grupos", AppIcon.Users, "Gestión de usuarios, grupos y operaciones masivas (exclusivo Administrador)");
+        NavUsers = CreateNavButton("Usuarios y Solicitantes", AppIcon.Users, "Gestión de usuarios, solicitados por con firma PNG/JPG/PDF, aprobadores VB y grupos (exclusivo Administrador)");
         NavUsers.Enabled = isAdmin;
         NavUsers.Click += (_, _) => ShowUsers();
 
@@ -225,7 +211,7 @@ public sealed class MainForm : Form
             dlg.ShowDialog(this);
         };
 
-        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavTreeEditor, NavMaintenance, NavUsers, NavAudit]);
+        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavMaintainers, NavTreeEditor, NavUsers, NavAudit]);
         navContainer.Controls.Add(navFlow);
 
         Button btnExit = CreateNavButton("Salir del Sistema", AppIcon.Exit, "Cerrar completamente SISPRO");
@@ -313,10 +299,16 @@ public sealed class MainForm : Form
 
     private void HighlightNav(Button active)
     {
-        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavInvoices, NavMaintainers, NavTreeEditor, NavMaintenance, NavUsers, NavAudit })
+        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavMaintainers, NavTreeEditor, NavUsers, NavAudit })
         {
             b.BackColor = b == active ? CambiasoTheme.Accent : CambiasoTheme.PrimaryDark;
         }
+    }
+
+    private void StartNewExternalOrderFlow()
+    {
+        ShowWorkOrders();
+        _workOrdersView?.StartNewExternalOrder();
     }
 
     public void ShowDashboard()
@@ -358,20 +350,6 @@ public sealed class MainForm : Form
         _workOrdersView?.ShowPrintForOrder(numeroOt);
     }
 
-    public void ShowInvoices()
-    {
-        if (!_session.Permisos.MenuFacturas)
-        {
-            CambiasoTheme.ShowWarning(this, "No tiene permisos para acceder al módulo de Facturas y Guías.");
-            return;
-        }
-
-        HighlightNav(NavInvoices);
-        _lblModuleTitle.Text = "Guías de Despacho y Facturas";
-        _invoicesView ??= new InvoicesForm(_ctx, _session);
-        HostControl(_invoicesView);
-    }
-
     public void ShowMaintainers()
     {
         if (!_session.Permisos.MenuMantenedor)
@@ -406,21 +384,7 @@ public sealed class MainForm : Form
         HostControl(_treeEditorView);
     }
 
-    public void ShowMaintenanceHub()
-    {
-        if (!(_session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor))
-        {
-            CambiasoTheme.ShowWarning(this, "No tiene permisos para acceder al módulo de Mantención Industrial.");
-            return;
-        }
-
-        HighlightNav(NavMaintenance);
-        _lblModuleTitle.Text = "Mantención Industrial — BD Mantención, MP, Insumos y Personal";
-        _maintenanceHubView ??= new MaintenanceHubForm(_ctx, _session);
-        HostControl(_maintenanceHubView);
-    }
-
-    public void ShowUsers()
+    public void ShowUsers(bool openRequestersTab = false)
     {
         try
         {
@@ -433,9 +397,14 @@ public sealed class MainForm : Form
         }
 
         HighlightNav(NavUsers);
-        _lblModuleTitle.Text = "GESTIÓN DE USUARIOS Y GRUPOS";
+        _lblModuleTitle.Text = "GESTIÓN DE USUARIOS, SOLICITANTES Y GRUPOS";
         _usersView ??= new UsersForm(_ctx, _session);
         _usersView.RefreshData();
+        if (openRequestersTab)
+        {
+            _usersView.ShowRequestersTab();
+        }
+
         HostControl(_usersView);
     }
 
@@ -444,25 +413,135 @@ public sealed class MainForm : Form
         Panel panel = new() { Dock = DockStyle.Fill, BackColor = CambiasoTheme.Surface, Padding = new Padding(6) };
 
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 210));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        // 1. KPI Cards Row (5 modern Lucide-badged cards)
+        // 1. HERO ACTION BANNER (+ Nueva OT Externa como acción principal)
+        Panel heroCard = new()
+        {
+            Dock = DockStyle.Fill,
+            BackColor = CambiasoTheme.PrimaryDark,
+            Padding = new Padding(16, 8, 16, 10),
+            Margin = new Padding(0, 0, 0, 8)
+        };
+        CambiasoTheme.EnableDoubleBuffering(heroCard);
+        heroCard.Paint += (_, e) =>
+        {
+            using System.Drawing.Drawing2D.LinearGradientBrush grad = new(
+                heroCard.ClientRectangle,
+                CambiasoTheme.PrimaryDark,
+                CambiasoTheme.Primary,
+                System.Drawing.Drawing2D.LinearGradientMode.Horizontal);
+            e.Graphics.FillRectangle(grad, heroCard.ClientRectangle);
+            using SolidBrush goldBar = new(CambiasoTheme.GoldAccent);
+            e.Graphics.FillRectangle(goldBar, 0, heroCard.Height - 3, heroCard.Width, 3);
+        };
+
+        FlowLayoutPanel heroLeft = new()
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            Padding = new Padding(0, 2, 0, 0)
+        };
+        Label heroTitle = new()
+        {
+            Text = "Trabajos Externos — Crear y Gestionar Órdenes de Trabajo",
+            Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+            ForeColor = Color.White,
+            AutoSize = true
+        };
+        _lblApproversSummary = new Label
+        {
+            Text = "Cargando aprobadores VB Supervisor y VB Jefatura...",
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = Color.FromArgb(215, 232, 245),
+            AutoSize = false,
+            Width = 590,
+            Height = 20,
+            AutoEllipsis = true,
+            Margin = new Padding(0, 4, 0, 0)
+        };
+        heroLeft.Controls.AddRange([heroTitle, _lblApproversSummary]);
+
+        FlowLayoutPanel heroActions = new()
+        {
+            Dock = DockStyle.Right,
+            AutoSize = true,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Padding = new Padding(0, 3, 0, 0)
+        };
+
+        BtnHeroNewExternalOt = CambiasoTheme.CreateButton(
+            "Nueva OT Externa",
+            AppIcon.Add,
+            ButtonTone.Gold,
+            _toolTip,
+            "Acción principal: crear inmediatamente una nueva Orden de Trabajo externa",
+            width: 248,
+            height: 44);
+        BtnHeroNewExternalOt.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
+        BtnHeroNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
+        BtnHeroNewExternalOt.Click += (_, _) => StartNewExternalOrderFlow();
+
+        Button btnSearchOts = CambiasoTheme.CreateButton("Buscar OTs", AppIcon.Search, ButtonTone.Accent, _toolTip, "Abrir buscador y aprobaciones de OTs externas", width: 132, height: 36);
+        btnSearchOts.Margin = new Padding(8, 6, 4, 2);
+        btnSearchOts.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.BusquedaOt;
+        btnSearchOts.Click += (_, _) =>
+        {
+            ShowWorkOrders();
+            _workOrdersView?.OpenSearchTab();
+        };
+
+        Button btnRefresh = CambiasoTheme.CreateButton("Actualizar Panel", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar KPIs, gráficas y últimas OTs", width: 152, height: 36);
+        btnRefresh.Margin = new Padding(8, 6, 4, 2);
+        btnRefresh.Click += (_, _) => RefreshDashboard();
+
+        heroActions.Controls.AddRange([BtnHeroNewExternalOt, btnSearchOts, btnRefresh]);
+        heroCard.Controls.Add(heroLeft);
+        heroCard.Controls.Add(heroActions);
+
+        // 2. KPI Cards Row (5 modern External-OT Lucide-badged cards)
         TableLayoutPanel kpis = new() { Dock = DockStyle.Fill, ColumnCount = 5, RowCount = 1 };
         for (int i = 0; i < 5; i++)
         {
             kpis.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
         }
 
-        Panel c1 = CambiasoTheme.CreateMetricCard("OTs Proveedores", out _kpiTotalOts, CambiasoTheme.Primary, AppIcon.WorkOrder, "Histórico trabajos externos");
+        Panel c1 = CambiasoTheme.CreateMetricCard("OTs Externas", out _kpiTotalOts, CambiasoTheme.Primary, AppIcon.WorkOrder, "Histórico trabajos externos");
         Panel c2 = CambiasoTheme.CreateMetricCard("Proveedores", out _kpiProviders, CambiasoTheme.Accent, AppIcon.Provider, "Catálogo activo");
         Panel c3 = CambiasoTheme.CreateMetricCard("Activos Reales", out _kpiAssets, CambiasoTheme.GoldAccent, AppIcon.Factory, "Árbol industrial 10 niveles");
-        Panel c4 = CambiasoTheme.CreateMetricCard("OTs Mantención", out _kpiMantOts, CambiasoTheme.Success, AppIcon.Wrench, "BD Mantención interna");
-        Panel c5 = CambiasoTheme.CreateMetricCard("Planes MP / Insumos", out _kpiMpSupplies, CambiasoTheme.Warning, AppIcon.Package, "Preventivos · Repuestos SAP");
+        Panel c4 = CambiasoTheme.CreateMetricCard("Pendientes VB", out _kpiPendingVb, CambiasoTheme.Warning, AppIcon.ClipboardCheck, "Sin VBS o sin VBJ");
+        Panel c5 = CambiasoTheme.CreateMetricCard("Solicitantes / Firmas", out _kpiRequesters, CambiasoTheme.Success, AppIcon.Users, "Con firma PNG/JPG/PDF");
         c1.Dock = c2.Dock = c3.Dock = c4.Dock = c5.Dock = DockStyle.Fill;
         c5.Margin = new Padding(0, 0, 0, 8);
+
+        MakeCardClickable(c1, () =>
+        {
+            if (_session.Permisos.MenuOrdenesTrabajo)
+            {
+                ShowWorkOrders();
+                _workOrdersView?.OpenSearchTab();
+            }
+        });
+        MakeCardClickable(c2, () => { if (_session.Permisos.MenuMantenedor) ShowMaintainers(); });
+        MakeCardClickable(c3, () => { if (_ctx.AssetTreeService.IsAdministrator(_session)) ShowTreeEditor(); });
+        MakeCardClickable(c4, () =>
+        {
+            if (_session.Permisos.MenuOrdenesTrabajo && _session.Permisos.BusquedaOt)
+            {
+                ShowWorkOrders();
+                _workOrdersView?.OpenSearchPendingVb();
+            }
+        });
+        MakeCardClickable(c5, () =>
+        {
+            if (_ctx.AssetTreeService.IsAdministrator(_session)) ShowUsers(openRequestersTab: true);
+            else if (_session.Permisos.MenuMantenedor) ShowMaintainers();
+        });
 
         kpis.Controls.Add(c1, 0, 0);
         kpis.Controls.Add(c2, 1, 0);
@@ -470,8 +549,8 @@ public sealed class MainForm : Form
         kpis.Controls.Add(c4, 3, 0);
         kpis.Controls.Add(c5, 4, 0);
 
-        // 2. Live Modern Vector Charts Row
-        TableLayoutPanel chartsRow = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 2, 0, 2) };
+        // 3. Live Modern Vector Charts Row
+        TableLayoutPanel chartsRow = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 2, 0, 6) };
         chartsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
         chartsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
         chartsRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30));
@@ -488,27 +567,8 @@ public sealed class MainForm : Form
         chartsRow.Controls.Add(_chartByPlant, 1, 0);
         chartsRow.Controls.Add(_chartTopProviders, 2, 0);
 
-        // 3. Quick Action Bar
-        FlowLayoutPanel quickBar = new() { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 4) };
-        Button btnNewOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Crear inmediatamente una nueva Orden de Trabajo externa", width: 156, height: 32);
-        btnNewOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
-        btnNewOt.Click += (_, _) =>
-        {
-            ShowWorkOrders();
-            _workOrdersView?.StartNewExternalOrder();
-        };
-
-        Button btnMaint = CambiasoTheme.CreateButton("Explorar BD Mantención", AppIcon.Wrench, ButtonTone.Accent, _toolTip, "Abrir OTs internas, Planes MP, Insumos SAP y Personal Técnico", width: 196, height: 32);
-        btnMaint.Enabled = _session.Permisos.MenuOrdenesTrabajo || _session.Permisos.MenuMantenedor;
-        btnMaint.Click += (_, _) => ShowMaintenanceHub();
-
-        Button btnRefresh = CambiasoTheme.CreateButton("Actualizar Panel", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Recargar KPIs, gráficas y últimas OTs", width: 150, height: 32);
-        btnRefresh.Click += (_, _) => RefreshDashboard();
-
-        quickBar.Controls.AddRange([btnNewOt, btnMaint, btnRefresh]);
-
         // 4. Recent Work Orders Grid
-        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para abrir)");
+        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para abrir · indica aprobador VB)");
         grpRecent.Dock = DockStyle.Fill;
         _gridRecentOts = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridRecentOts);
@@ -518,6 +578,21 @@ public sealed class MainForm : Form
             if (row is not null && _session.Permisos.MenuOrdenesTrabajo)
             {
                 ShowWorkOrders(row.NumeroOt);
+            }
+        };
+        _gridRecentOts.CellFormatting += (_, e) =>
+        {
+            WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridRecentOts, e.RowIndex);
+            if (row is null || e.CellStyle is null) return;
+            if (e.ColumnIndex == 7)
+            {
+                e.CellStyle.Font = CambiasoTheme.LabelFont;
+                e.CellStyle.ForeColor = row.TieneVbs ? CambiasoTheme.Success : CambiasoTheme.Warning;
+            }
+            else if (e.ColumnIndex == 8)
+            {
+                e.CellStyle.Font = CambiasoTheme.LabelFont;
+                e.CellStyle.ForeColor = row.TieneVbj ? CambiasoTheme.Success : CambiasoTheme.Warning;
             }
         };
         ContextMenuHelper.AttachToGrid(_gridRecentOts, rowIndex =>
@@ -532,29 +607,55 @@ public sealed class MainForm : Form
             return
             [
                 ContextMenuHelper.Item("Abrir OT", AppIcon.Edit, CambiasoTheme.Primary, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt)
+                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt),
+                ContextMenuHelper.Separator(),
+                ContextMenuHelper.Item("Actualizar listado", AppIcon.Refresh, CambiasoTheme.Primary, RefreshDashboard)
             ];
         });
         grpRecent.Controls.Add(_gridRecentOts);
 
-        layout.Controls.Add(kpis, 0, 0);
-        layout.Controls.Add(chartsRow, 0, 1);
-        layout.Controls.Add(quickBar, 0, 2);
+        layout.Controls.Add(heroCard, 0, 0);
+        layout.Controls.Add(kpis, 0, 1);
+        layout.Controls.Add(chartsRow, 0, 2);
         layout.Controls.Add(grpRecent, 0, 3);
         panel.Controls.Add(layout);
         return panel;
     }
 
+    private static void MakeCardClickable(Control root, Action onClick)
+    {
+        root.Cursor = Cursors.Hand;
+        root.Click += (_, _) => onClick();
+        foreach (Control child in root.Controls)
+        {
+            child.Cursor = Cursors.Hand;
+            child.Click += (_, _) => onClick();
+        }
+    }
+
     private void RefreshDashboard()
     {
-        DashboardAnalytics analytics = _ctx.MaintenanceService.GetDashboardAnalytics();
+        DashboardAnalytics analytics = _ctx.WorkOrderService.GetDashboardAnalytics();
         DashboardMetrics m = analytics.Metrics;
+        IReadOnlyList<ApproverDirectoryEntry> approvers = _ctx.WorkOrderService.GetApproverDirectory();
+        int nextOt = _ctx.WorkOrderService.GetNextWorkOrderNumber();
 
         if (_kpiTotalOts is not null) _kpiTotalOts.Text = m.TotalOrdenesTrabajo.ToString("N0");
         if (_kpiProviders is not null) _kpiProviders.Text = m.TotalProveedoresActivos.ToString("N0");
         if (_kpiAssets is not null) _kpiAssets.Text = m.TotalNodosActivos.ToString("N0");
-        if (_kpiMantOts is not null) _kpiMantOts.Text = m.TotalMantOts.ToString("N0");
-        if (_kpiMpSupplies is not null) _kpiMpSupplies.Text = $"{m.TotalPlanesMp:N0} / {m.TotalInsumos:N0}";
+        if (_kpiPendingVb is not null) _kpiPendingVb.Text = m.OrdenesSinVistoBueno.ToString("N0");
+        if (_kpiRequesters is not null) _kpiRequesters.Text = $"{m.TotalSolicitantesActivos:N0} ({m.TotalSolicitantesConFirma:N0})";
+
+        if (_lblApproversSummary is not null)
+        {
+            List<string> vbsAll = approvers.Where(a => a.Vbs).Select(a => a.AliasUsuario).ToList();
+            List<string> vbjAll = approvers.Where(a => a.Vbj).Select(a => a.AliasUsuario).ToList();
+            string vbsSummary = vbsAll.Count == 0 ? "Sin asignar" : (vbsAll.Count <= 3 ? string.Join(", ", vbsAll) : $"{string.Join(", ", vbsAll.Take(2))} +{vbsAll.Count - 2}");
+            string vbjSummary = vbjAll.Count == 0 ? "Sin asignar" : (vbjAll.Count <= 3 ? string.Join(", ", vbjAll) : $"{string.Join(", ", vbjAll.Take(2))} +{vbjAll.Count - 2}");
+            _lblApproversSummary.Text = $"Próxima OT: #{nextOt}   |   VB Supervisor: {vbsSummary}   |   VB Jefatura: {vbjSummary}";
+            _toolTip.SetToolTip(_lblApproversSummary,
+                $"VB Supervisor: {string.Join(", ", vbsAll)}\nVB Jefatura: {string.Join(", ", vbjAll)}");
+        }
 
         _chartYearlyOts?.SetData(analytics.WorkOrdersByYear);
         _chartByPlant?.SetData(analytics.WorkOrdersByPlant);
@@ -568,15 +669,15 @@ public sealed class MainForm : Form
 
             if (_gridRecentOts.Columns.Count >= 9)
             {
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 7);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 9, "dd-MM-yyyy");
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, null, 16);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, null, 10);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 4, "Cant.", 6);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, null, 24);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, null, 18);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, null, 5);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, null, 5);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 6);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 8, "dd-MM-yyyy");
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, null, 15);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, null, 9);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 4, "Cant.", 5);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, null, 21);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, null, 16);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, "VB Sup.", 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, "VB Jef.", 10);
             }
         }
     }
@@ -594,8 +695,8 @@ public sealed class MainForm : Form
         public string Activo => Source.RutaActivo.StartsWith("CAMBIASO HNOS S.A.C. \\ ", StringComparison.OrdinalIgnoreCase)
             ? Source.RutaActivo["CAMBIASO HNOS S.A.C. \\ ".Length..]
             : Source.RutaActivo;
-        public string VBS => Source.TieneVbs ? "Sí" : "No";
-        public string VBJ => Source.TieneVbj ? "Sí" : "No";
+        public string VBS => Source.VbsDisplay;
+        public string VBJ => Source.VbjDisplay;
     }
 
     private void HostControl(Control view)
@@ -640,10 +741,8 @@ public sealed class MainForm : Form
             _toolTip.Dispose();
             _dashboardView?.Dispose();
             _workOrdersView?.Dispose();
-            _invoicesView?.Dispose();
             _maintainersView?.Dispose();
             _treeEditorView?.Dispose();
-            _maintenanceHubView?.Dispose();
             _usersView?.Dispose();
         }
 

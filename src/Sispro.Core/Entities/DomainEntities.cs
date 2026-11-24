@@ -61,15 +61,10 @@ public sealed class UserPermissions
     public bool BusquedaOt { get; set; }
     public bool ImpresionOt { get; set; }
 
-    // M2: Módulo Facturas y Guías de Despacho
-    public bool MenuFacturas { get; set; }
-    public bool IngresoFacturas { get; set; }
-    public bool BusquedaFacturas { get; set; }
-
-    // M3: Módulo Mantenedores (Proveedores, Solicitantes, Árbol de Activos)
+    // M2: Módulo Mantenedores (Proveedores, Solicitantes, Árbol de Activos)
     public bool MenuMantenedor { get; set; }
 
-    // M4: Módulo Usuarios y Permisos
+    // M3: Módulo Usuarios, Solicitantes y Grupos
     public bool MenuUsuarios { get; set; }
     public bool IngresoUsuarios { get; set; }
     public bool ListadoUsuarios { get; set; }
@@ -83,12 +78,6 @@ public sealed class UserPermissions
             VistoBuenoSupervisor = false;
             BusquedaOt = false;
             ImpresionOt = false;
-        }
-
-        if (!MenuFacturas)
-        {
-            IngresoFacturas = false;
-            BusquedaFacturas = false;
         }
 
         if (!MenuUsuarios)
@@ -125,6 +114,16 @@ public sealed class Requester
     public string Telefono { get; set; } = string.Empty;
     public string Correo { get; set; } = string.Empty;
     public bool Activo { get; set; } = true;
+    public byte[]? FirmaBytes { get; set; }
+    public string FirmaNombre { get; set; } = string.Empty;
+    public string FirmaTipo { get; set; } = string.Empty;
+    public byte[]? FirmaPreviewPng { get; set; }
+
+    public bool TieneFirma => (FirmaBytes is { Length: > 0 }) || (FirmaPreviewPng is { Length: > 0 });
+
+    public string FirmaBadge => !TieneFirma
+        ? "Sin firma"
+        : string.IsNullOrWhiteSpace(FirmaTipo) ? "Adjunta" : FirmaTipo.ToUpperInvariant();
 
     public string NombreCompleto =>
         string.Join(" ", new[] { Nombre, ApellidoPaterno, ApellidoMaterno }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -141,7 +140,7 @@ public sealed class AssetNode
     public bool Activo { get; set; } = true;
     public bool TieneHijos { get; set; }
 
-    // Ficha técnica enriquecida (importada de BD MANTENCION.ACTIVO)
+    // Ficha técnica del equipo industrial
     public string CodSap { get; set; } = string.Empty;
     public string Fabricante { get; set; } = string.Empty;
     public string Serie { get; set; } = string.Empty;
@@ -172,9 +171,11 @@ public sealed class WorkOrder
     public string AliasSolicitante { get; set; } = string.Empty;
     public string TelefonoSolicitante { get; set; } = string.Empty;
     public string CorreoSolicitante { get; set; } = string.Empty;
+    public byte[]? FirmaSolicitantePreviewPng { get; set; }
+    public string FirmaSolicitanteTipo { get; set; } = string.Empty;
+    public string FirmaSolicitanteNombre { get; set; } = string.Empty;
     public DateTime FechaOt { get; set; } = DateTime.Today;
     public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
-    public int GuiaDespacho { get; set; }
     public int IdN1 { get; set; } = 1;
     public int IdN2 { get; set; }
     public int IdN3 { get; set; }
@@ -192,6 +193,21 @@ public sealed class WorkOrder
 
     public bool TieneVbs => VistosBuenos.Any(v => v.Tipo == ApprovalType.Supervisor);
     public bool TieneVbj => VistosBuenos.Any(v => v.Tipo == ApprovalType.Jefatura);
+
+    public WorkOrderApproval? VbsApproval => VistosBuenos.FirstOrDefault(v => v.Tipo == ApprovalType.Supervisor);
+    public WorkOrderApproval? VbjApproval => VistosBuenos.FirstOrDefault(v => v.Tipo == ApprovalType.Jefatura);
+
+    public string VbsResumen => VbsApproval is null
+        ? "Pendiente"
+        : string.IsNullOrWhiteSpace(VbsApproval.AprobadorDisplay)
+            ? $"APROBADO ({VbsApproval.Fecha:dd-MM-yyyy HH:mm})"
+            : $"APROBADO por {VbsApproval.AprobadorDisplay} ({VbsApproval.Fecha:dd-MM-yyyy HH:mm})";
+
+    public string VbjResumen => VbjApproval is null
+        ? "Pendiente"
+        : string.IsNullOrWhiteSpace(VbjApproval.AprobadorDisplay)
+            ? $"APROBADO ({VbjApproval.Fecha:dd-MM-yyyy HH:mm})"
+            : $"APROBADO por {VbjApproval.AprobadorDisplay} ({VbjApproval.Fecha:dd-MM-yyyy HH:mm})";
 
     public int[] GetLevelArray() => [IdN1, IdN2, IdN3, IdN4, IdN5, IdN6, IdN7, IdN8, IdN9, IdN10];
 
@@ -217,7 +233,6 @@ public sealed class WorkOrderDetail
     public int IdOt { get; set; }
     public int Cantidad { get; set; } = 1;
     public string Descripcion { get; set; } = string.Empty;
-    public bool AsociadoAFactura { get; set; }
 }
 
 public sealed class WorkOrderApproval
@@ -226,39 +241,14 @@ public sealed class WorkOrderApproval
     public int IdOt { get; set; }
     public string IdUsuario { get; set; } = string.Empty;
     public string AliasUsuario { get; set; } = string.Empty;
+    public string NombreUsuario { get; set; } = string.Empty;
     public ApprovalType Tipo { get; set; }
     public DateTime Fecha { get; set; } = DateTime.Now;
-}
 
-public sealed class Invoice
-{
-    public int IdFactura { get; set; }
-    public int NumeroDocumento { get; set; }
-    public int IdProv { get; set; }
-    public string NombreProveedor { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; } = DateTime.Today;
-    public string RecibidoPor { get; set; } = string.Empty;
-    public decimal TotalNeto { get; set; }
-    public decimal Iva { get; set; }
-    public decimal TotalConIva { get; set; }
-    public string Detalle { get; set; } = string.Empty;
-    public string UsuarioRegistro { get; set; } = string.Empty;
-    public DateTime FechaRegistro { get; set; } = DateTime.Now;
-    public List<InvoiceDetail> Items { get; set; } = [];
-}
-
-public sealed class InvoiceDetail
-{
-    public int IdFacDet { get; set; }
-    public int IdFactura { get; set; }
-    public int IdOt { get; set; }
-    public int NumeroOt { get; set; }
-    public int? IdDet { get; set; }
-    public string DescripcionTrabajo { get; set; } = string.Empty;
-    public DateTime FechaOt { get; set; }
-    public decimal ValorTrabajo { get; set; }
-    public DateTime FechaAsociacion { get; set; } = DateTime.Now;
-    public string UsuarioSesion { get; set; } = string.Empty;
+    public string AprobadorDisplay =>
+        string.IsNullOrWhiteSpace(NombreUsuario) || string.Equals(NombreUsuario, AliasUsuario, StringComparison.OrdinalIgnoreCase)
+            ? AliasUsuario
+            : $"{NombreUsuario} ({AliasUsuario})";
 }
 
 public sealed class AuditEntry

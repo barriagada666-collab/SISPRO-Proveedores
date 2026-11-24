@@ -141,7 +141,7 @@ public sealed class WordExportService(AppSettings settings)
             body,
             $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}",
             $"{settings.CompanyDepartment} · RUT {settings.CompanyRut}",
-            $"Fecha OT: {order.FechaOt:dd-MM-yyyy} | Estado: {order.Estado} | Guía: {(order.GuiaDespacho > 0 ? order.GuiaDespacho.ToString(CultureInfo.InvariantCulture) : "Pendiente")}",
+            $"Fecha OT: {order.FechaOt:dd-MM-yyyy} | Estado: {order.Estado}",
             order.Detalles.Count,
             logoPath);
 
@@ -163,24 +163,23 @@ public sealed class WordExportService(AppSettings settings)
             CreateCell("Ítem", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center),
             CreateCell("Cant.", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center),
             CreateCell("Detalle de Pieza en Reparación y Trabajo", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Left),
-            CreateCell("Estado / GD", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center)));
+            CreateCell("Estado", PrimaryHex, "FFFFFF", true, "17", JustificationValues.Center)));
 
         int idx = 1;
         foreach (WorkOrderDetail d in order.Detalles)
         {
             string? bg = idx % 2 == 0 ? ZebraHex : null;
-            string estado = order.GuiaDespacho > 0 ? $"GD {order.GuiaDespacho}" : (d.AsociadoAFactura ? "Facturado" : "Abierta");
             itemsTable.Append(new TableRow(
                 CreateCell(idx.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center),
                 CreateCell(d.Cantidad.ToString(CultureInfo.InvariantCulture), bg, TextHex, false, "17", JustificationValues.Center),
                 CreateCell(d.Descripcion, bg, TextHex, false, "17", JustificationValues.Left),
-                CreateCell(estado, bg, TextHex, false, "17", JustificationValues.Center)));
+                CreateCell("Registrado", bg, TextHex, false, "17", JustificationValues.Center)));
             idx++;
         }
 
         body.Append(itemsTable);
         body.Append(CreateStyledParagraph(
-            $"VB Supervisor: {(order.TieneVbs ? "APROBADO" : "Pendiente")}   |   VB Jefatura: {(order.TieneVbj ? "APROBADO" : "Pendiente")}",
+            $"VB Supervisor: {order.VbsResumen}   |   VB Jefatura: {order.VbjResumen}",
             MutedHex, "18", bold: true, spaceBefore: "180"));
 
         // Firmas
@@ -194,9 +193,14 @@ public sealed class WordExportService(AppSettings settings)
                 new InsideHorizontalBorder { Val = BorderValues.None },
                 new InsideVerticalBorder { Val = BorderValues.None })));
 
+        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showSol = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
+                       order.FirmaSolicitantePreviewPng is { Length: > 0 };
+
         TableCell leftSig = new();
         string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
-        if (signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas && File.Exists(jrPath))
+        if (showJr && File.Exists(jrPath))
         {
             leftSig.Append(CreateImageParagraph(mainPart, jrPath, 1_100_000, 650_000, JustificationValues.Center));
         }
@@ -205,7 +209,7 @@ public sealed class WordExportService(AppSettings settings)
 
         TableCell rightSig = new();
         string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
-        if (signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas && File.Exists(msPath))
+        if (showMs && File.Exists(msPath))
         {
             rightSig.Append(CreateImageParagraph(mainPart, msPath, 1_100_000, 650_000, JustificationValues.Center));
         }
@@ -213,6 +217,15 @@ public sealed class WordExportService(AppSettings settings)
         rightSig.Append(CreateStyledParagraph("Marcelo Silva Morgado — Supervisor Mantención", PrimaryDarkHex, "17", true, "20", JustificationValues.Center));
 
         sigTable.Append(new TableRow(leftSig, rightSig));
+
+        if (showSol)
+        {
+            TableCell solCell = new(new TableCellProperties(new GridSpan { Val = 2 }));
+            solCell.Append(CreateImageParagraphFromBytes(mainPart, order.FirmaSolicitantePreviewPng!, ImagePartType.Png, "firma_solicitante.png", 1_200_000, 600_000, JustificationValues.Center));
+            solCell.Append(CreateStyledParagraph("____________________________", TextHex, "17", false, "60", JustificationValues.Center));
+            solCell.Append(CreateStyledParagraph($"Solicitado por: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})", PrimaryDarkHex, "17", true, "20", JustificationValues.Center));
+            sigTable.Append(new TableRow(solCell));
+        }
         body.Append(new Paragraph());
         body.Append(sigTable);
 
@@ -395,10 +408,29 @@ public sealed class WordExportService(AppSettings settings)
         PartTypeInfo partType = imagePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
             ? ImagePartType.Png
             : ImagePartType.Jpeg;
+        return CreateImageParagraphFromBytes(
+            mainPart,
+            File.ReadAllBytes(imagePath),
+            partType,
+            Path.GetFileName(imagePath),
+            cx,
+            cy,
+            align);
+    }
+
+    private static Paragraph CreateImageParagraphFromBytes(
+        MainDocumentPart mainPart,
+        byte[] imageBytes,
+        PartTypeInfo partType,
+        string imageName,
+        long cx,
+        long cy,
+        JustificationValues align)
+    {
         ImagePart imagePart = mainPart.AddImagePart(partType);
-        using (FileStream fs = File.OpenRead(imagePath))
+        using (MemoryStream ms = new(imageBytes))
         {
-            imagePart.FeedData(fs);
+            imagePart.FeedData(ms);
         }
 
         string relId = mainPart.GetIdOfPart(imagePart);
@@ -414,7 +446,7 @@ public sealed class WordExportService(AppSettings settings)
                     new A.GraphicData(
                         new PIC.Picture(
                             new PIC.NonVisualPictureProperties(
-                                new PIC.NonVisualDrawingProperties { Id = imgId, Name = Path.GetFileName(imagePath) },
+                                new PIC.NonVisualDrawingProperties { Id = imgId, Name = imageName },
                                 new PIC.NonVisualPictureDrawingProperties()),
                             new PIC.BlipFill(
                                 new A.Blip { Embed = relId },

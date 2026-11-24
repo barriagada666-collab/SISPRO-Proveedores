@@ -81,49 +81,51 @@ public sealed class WorkOrderSearchRow
     public string Detalle { get; set; } = string.Empty;
     public string RutaActivo { get; set; } = string.Empty;
     public bool TieneVbs { get; set; }
+    public string VbsUsuario { get; set; } = string.Empty;
+    public DateTime? VbsFecha { get; set; }
     public bool TieneVbj { get; set; }
-    public bool AsociadoAFactura { get; set; }
+    public string VbjUsuario { get; set; } = string.Empty;
+    public DateTime? VbjFecha { get; set; }
     public int IdDet { get; set; }
+
+    public string VbsDisplay => TieneVbs
+        ? (string.IsNullOrWhiteSpace(VbsUsuario) ? "Sí" : $"Sí ({VbsUsuario})")
+        : "Pendiente";
+
+    public string VbjDisplay => TieneVbj
+        ? (string.IsNullOrWhiteSpace(VbjUsuario) ? "Sí" : $"Sí ({VbjUsuario})")
+        : "Pendiente";
 }
 
-public sealed class InvoiceSearchFilter
-{
-    public int? IdProv { get; set; }
-    public int? NumeroDocumento { get; set; }
-    public int? NumeroOt { get; set; }
-    public DateTime? FechaInicio { get; set; }
-    public DateTime? FechaFin { get; set; }
-}
+public sealed record ChartDataPoint(string Label, double Value);
 
-public sealed class InvoiceSearchRow
-{
-    public int IdFactura { get; set; }
-    public int NumeroDocumento { get; set; }
-    public string Proveedor { get; set; } = string.Empty;
-    public DateTime Fecha { get; set; }
-    public string RecibidoPor { get; set; } = string.Empty;
-    public decimal TotalNeto { get; set; }
-    public decimal Iva { get; set; }
-    public decimal TotalConIva { get; set; }
-    public int CantidadItems { get; set; }
-    public string Detalle { get; set; } = string.Empty;
-}
+public sealed record ApproverDirectoryEntry(
+    string IdUsuario,
+    string AliasUsuario,
+    string NombreCompleto,
+    bool Vbs,
+    bool Vbj);
 
 public sealed class DashboardMetrics
 {
     public int TotalOrdenesTrabajo { get; set; }
     public int OrdenesSinVistoBueno { get; set; }
+    public int OrdenesSinVbs { get; set; }
+    public int OrdenesSinVbj { get; set; }
     public int TotalProveedoresActivos { get; set; }
     public int TotalSolicitantesActivos { get; set; }
-    public int TotalFacturas { get; set; }
+    public int TotalSolicitantesConFirma { get; set; }
     public int TotalUsuariosActivos { get; set; }
     public int TotalGruposActivos { get; set; }
     public int TotalNodosActivos { get; set; }
-    public int TotalMantOts { get; set; }
-    public int TotalPlanesMp { get; set; }
-    public int TotalTareasMp { get; set; }
-    public int TotalInsumos { get; set; }
-    public int TotalPersonalTecnico { get; set; }
+}
+
+public sealed class DashboardAnalytics
+{
+    public DashboardMetrics Metrics { get; init; } = new();
+    public IReadOnlyList<ChartDataPoint> WorkOrdersByYear { get; init; } = [];
+    public IReadOnlyList<ChartDataPoint> WorkOrdersByPlant { get; init; } = [];
+    public IReadOnlyList<ChartDataPoint> TopProviders { get; init; } = [];
 }
 
 public sealed class AuditSearchFilter

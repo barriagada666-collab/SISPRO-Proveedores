@@ -88,13 +88,16 @@ public sealed class MaintainerService(
         syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, accion);
     }
 
-    // --- SOLICITANTES ---
+    // --- SOLICITANTES Y FIRMAS DIGITALES ---
     public IReadOnlyList<Requester> GetRequesters(bool includeInactive = false, string? search = null) =>
         requesters.GetAll(includeInactive, search);
 
+    public Requester? GetRequesterByAlias(string alias) =>
+        string.IsNullOrWhiteSpace(alias) ? null : requesters.GetByAlias(alias);
+
     public int SaveRequester(UserSession session, Requester requester)
     {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Administrar solicitantes");
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor || p.MenuUsuarios, "Administrar solicitantes");
         if (string.IsNullOrWhiteSpace(requester.Alias))
         {
             throw new ArgumentException("El alias del solicitante es obligatorio.");
@@ -116,23 +119,38 @@ public sealed class MaintainerService(
             throw new InvalidOperationException($"Ya existe un solicitante con el alias '{requester.Alias}'.");
         }
 
+        if (requester.FirmaBytes is { Length: > 0 } && (requester.FirmaPreviewPng is null || requester.FirmaPreviewPng.Length == 0))
+        {
+            ProcessedSignature processed = SignatureFileService.ProcessBytes(
+                string.IsNullOrWhiteSpace(requester.FirmaNombre) ? "firma.png" : requester.FirmaNombre,
+                requester.FirmaBytes);
+            requester.FirmaBytes = processed.RawBytes;
+            requester.FirmaNombre = processed.FileName;
+            requester.FirmaTipo = processed.FileType;
+            requester.FirmaPreviewPng = processed.PreviewPngBytes;
+        }
+
+        string sigNote = requester.TieneFirma
+            ? $" (Firma {requester.FirmaTipo}: {requester.FirmaNombre})"
+            : " (Sin firma digital)";
+
         if (requester.IdSol == 0)
         {
             int id = requesters.Create(requester);
-            audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_SOLICITANTE", $"Solicitante '{requester.Alias}' creado.");
+            audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "CREAR_SOLICITANTE", $"Solicitante '{requester.Alias}' creado{sigNote}.");
             syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "CREAR_SOLICITANTE");
             return id;
         }
 
         requesters.Update(requester);
-        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_SOLICITANTE", $"Solicitante '{requester.Alias}' actualizado.");
+        audit.Log(session.Usuario.AliasUsuario, "Mantenedores", "MODIFICAR_SOLICITANTE", $"Solicitante '{requester.Alias}' actualizado{sigNote}.");
         syncHub?.Publish(Sispro.Core.Enums.DataChangeKind.Catalogs | Sispro.Core.Enums.DataChangeKind.Audit, "MODIFICAR_SOLICITANTE");
         return requester.IdSol;
     }
 
     public void DeleteRequester(UserSession session, int idSol)
     {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Eliminar solicitantes");
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor || p.MenuUsuarios, "Eliminar solicitantes");
         Requester existing = requesters.GetById(idSol)
             ?? throw new InvalidOperationException("El solicitante seleccionado no existe.");
 
@@ -153,7 +171,7 @@ public sealed class MaintainerService(
 
     public void SetRequesterActive(UserSession session, int idSol, bool active)
     {
-        AuthService.EnsurePermission(session, p => p.MenuMantenedor, active ? "Activar solicitante" : "Desactivar solicitante");
+        AuthService.EnsurePermission(session, p => p.MenuMantenedor || p.MenuUsuarios, active ? "Activar solicitante" : "Desactivar solicitante");
         Requester existing = requesters.GetById(idSol)
             ?? throw new InvalidOperationException("El solicitante seleccionado no existe.");
 

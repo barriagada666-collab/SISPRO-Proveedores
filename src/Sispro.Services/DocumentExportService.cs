@@ -76,39 +76,37 @@ public sealed class DocumentExportService(
             new("Cant.", ExportColumnKind.Integer, 0.55, SumInFooter: true),
             new("Detalle del Trabajo", ExportColumnKind.Text, 2.8),
             new("Ruta de Activo", ExportColumnKind.Text, 1.7),
-            new("VB Sup.", ExportColumnKind.Text, 0.6),
-            new("VB Jef.", ExportColumnKind.Text, 0.6),
-            new("Fact.", ExportColumnKind.Text, 0.6)
+            new("VB Supervisor", ExportColumnKind.Text, 0.9),
+            new("VB Jefatura", ExportColumnKind.Text, 0.9)
         ],
         Rows = rows.Select(r => new object?[]
         {
             r.NumeroOt, r.Fecha, r.Proveedor, r.Solicitante, r.Cantidad,
-            r.Detalle, r.RutaActivo, r.TieneVbs ? "Sí" : "No", r.TieneVbj ? "Sí" : "No", r.AsociadoAFactura ? "Sí" : "No"
+            r.Detalle, r.RutaActivo, r.VbsDisplay, r.VbjDisplay
         }).ToList()
     };
 
-    public static TabularReportData BuildInvoicesReport(IReadOnlyList<InvoiceSearchRow> rows, string? filterSummary = null) => new()
+    public static TabularReportData BuildRequestersReport(IReadOnlyList<Requester> requesters, string? filterSummary = null) => new()
     {
-        Title = "REPORTE DE FACTURAS Y GUÍAS DE DESPACHO",
-        SheetName = "Facturas y Guías",
-        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Orden cronológico descendente (más recientes primero)" : filterSummary,
+        Title = "CATÁLOGO DE SOLICITANTES Y FIRMAS DIGITALES",
+        SheetName = "Solicitantes",
+        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Catálogo institucional de solicitantes OT" : filterSummary,
         Landscape = true,
         Columns =
         [
-            new("N° Documento", ExportColumnKind.Integer, 0.9),
-            new("Fecha", ExportColumnKind.Date, 0.9),
-            new("Proveedor", ExportColumnKind.Text, 2.0),
-            new("Recibido Por", ExportColumnKind.Text, 1.2),
-            new("Ítems", ExportColumnKind.Integer, 0.6, SumInFooter: true),
-            new("Neto ($)", ExportColumnKind.Currency, 1.0, SumInFooter: true),
-            new("IVA 19% ($)", ExportColumnKind.Currency, 0.95, SumInFooter: true),
-            new("Total c/IVA ($)", ExportColumnKind.Currency, 1.05, SumInFooter: true),
-            new("Detalle", ExportColumnKind.Text, 2.0)
+            new("ID", ExportColumnKind.Integer, 0.5),
+            new("Alias", ExportColumnKind.Text, 1.1),
+            new("Nombre Completo", ExportColumnKind.Text, 1.8),
+            new("Teléfono", ExportColumnKind.Text, 1.0),
+            new("Correo", ExportColumnKind.Text, 1.6),
+            new("Firma Digital", ExportColumnKind.Text, 0.9),
+            new("Archivo Firma", ExportColumnKind.Text, 1.4),
+            new("Estado", ExportColumnKind.Text, 0.7)
         ],
-        Rows = rows.Select(r => new object?[]
+        Rows = requesters.Select(r => new object?[]
         {
-            r.NumeroDocumento, r.Fecha, r.Proveedor, r.RecibidoPor, r.CantidadItems,
-            r.TotalNeto, r.Iva, r.TotalConIva, r.Detalle
+            r.IdSol, r.Alias, r.NombreCompleto, r.Telefono, r.Correo,
+            r.FirmaBadge, r.FirmaNombre, r.Activo ? "Activo" : "Inactivo"
         }).ToList()
     };
 
@@ -252,53 +250,6 @@ public sealed class DocumentExportService(
                 n.Modelo,
                 n.Activo ? "Activo" : "Inactivo"
             };
-        }).ToList()
-    };
-
-    public static TabularReportData BuildMaintenanceOrdersReport(IReadOnlyList<MantWorkOrderRow> rows, string? filterSummary = null) => new()
-    {
-        Title = "REPORTE DE OTs DE MANTENCIÓN INTERNA (BD MANTENCION)",
-        SheetName = "OTs Mantención",
-        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Orden cronológico descendente (más recientes primero)" : filterSummary,
-        Landscape = true,
-        Columns =
-        [
-            new("N° OT", ExportColumnKind.Text, 0.8),
-            new("Inicio", ExportColumnKind.Text, 0.9),
-            new("Término", ExportColumnKind.Text, 0.9),
-            new("Oficio", ExportColumnKind.Text, 1.0),
-            new("Planta", ExportColumnKind.Text, 1.2),
-            new("Equipo", ExportColumnKind.Text, 1.4),
-            new("Estado", ExportColumnKind.Text, 0.9),
-            new("Solicitada Por", ExportColumnKind.Text, 1.1),
-            new("Descripción", ExportColumnKind.Text, 2.4)
-        ],
-        Rows = rows.Select(o => new object?[]
-        {
-            o.NumeroOt, o.FechaInicio, o.FechaFin, o.Oficio, o.Planta, o.Equipo, o.Estado, o.SolicitadaPor, o.DescripcionBreve
-        }).ToList()
-    };
-
-    public static TabularReportData BuildSuppliesReport(IReadOnlyList<MantSupplyRow> rows, string? filterSummary = null) => new()
-    {
-        Title = "CATÁLOGO DE INSUMOS Y REPUESTOS SAP",
-        SheetName = "Insumos SAP",
-        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Catálogo de repuestos e insumos" : filterSummary,
-        Landscape = true,
-        Columns =
-        [
-            new("ID", ExportColumnKind.Integer, 0.6),
-            new("Código SAP", ExportColumnKind.Text, 1.1),
-            new("Cód. Proveedor", ExportColumnKind.Text, 1.1),
-            new("Descripción", ExportColumnKind.Text, 3.0),
-            new("Stock", ExportColumnKind.Decimal, 0.8, SumInFooter: true),
-            new("Días Ent.", ExportColumnKind.Integer, 0.7),
-            new("Prioridad", ExportColumnKind.Integer, 0.7),
-            new("Usos Hist.", ExportColumnKind.Integer, 0.8, SumInFooter: true)
-        ],
-        Rows = rows.Select(s => new object?[]
-        {
-            s.IdItem, s.CodSap, s.CodProveedor, s.Descripcion, s.StockUnidad, s.DiasEntrega, s.Prioridad, s.UsosHistoricos
         }).ToList()
     };
 

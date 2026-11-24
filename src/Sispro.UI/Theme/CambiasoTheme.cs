@@ -14,7 +14,7 @@ public enum ButtonTone
 }
 
 /// <summary>
-/// Paleta corporativa oficial División Mantención Industrial — Cambiaso Hnos S.A.C. (2026):
+/// Paleta corporativa oficial Cambiaso Hnos S.A.C. (2026):
 /// Azul Petrol Profundo (#0A263C), Azul Industrial (#0E4163), Cyan Corporativo (#0089B6) y Dorado Cambiaso (#C8A977).
 /// </summary>
 public static class CambiasoTheme

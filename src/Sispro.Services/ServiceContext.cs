@@ -103,18 +103,14 @@ public sealed class SisproApplicationContext : IDisposable
     public IRequesterRepository Requesters { get; private set; }
     public IAssetTreeRepository AssetTree { get; private set; }
     public IWorkOrderRepository WorkOrders { get; private set; }
-    public IInvoiceRepository Invoices { get; private set; }
     public IAuditRepository Audit { get; private set; }
-    public IMaintenanceRepository Maintenance { get; private set; }
 
     public AuthService AuthService { get; private set; }
     public WorkOrderService WorkOrderService { get; private set; }
-    public InvoiceService InvoiceService { get; private set; }
     public MaintainerService MaintainerService { get; private set; }
     public AssetTreeService AssetTreeService { get; private set; }
     public UserManagementService UserManagementService { get; private set; }
     public GroupManagementService GroupManagementService { get; private set; }
-    public MaintenanceService MaintenanceService { get; private set; }
     public ExcelExportService ExcelExportService { get; private set; }
     public PdfExportService PdfExportService { get; private set; }
     public WordExportService WordExportService { get; private set; }
@@ -137,18 +133,14 @@ public sealed class SisproApplicationContext : IDisposable
         Requesters = new RequesterRepository(ConnectionFactory);
         AssetTree = new AssetTreeRepository(ConnectionFactory);
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
-        Invoices = new InvoiceRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
-        Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
-        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
-        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
+        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
         AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
-        MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(settings);
         PdfExportService = new PdfExportService(settings);
         WordExportService = new WordExportService(settings);
@@ -172,18 +164,14 @@ public sealed class SisproApplicationContext : IDisposable
         Requesters = new RequesterRepository(ConnectionFactory);
         AssetTree = new AssetTreeRepository(ConnectionFactory);
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
-        Invoices = new InvoiceRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
-        Maintenance = new MaintenanceRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
-        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub);
-        InvoiceService = new InvoiceService(Invoices, WorkOrders, Providers, Audit, SyncHub);
+        WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub);
         AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub);
         UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
-        MaintenanceService = new MaintenanceService(Maintenance);
         ExcelExportService = new ExcelExportService(Settings);
         PdfExportService = new PdfExportService(Settings);
         WordExportService = new WordExportService(Settings);

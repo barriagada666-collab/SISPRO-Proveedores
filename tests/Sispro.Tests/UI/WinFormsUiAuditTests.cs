@@ -50,9 +50,7 @@ public sealed class WinFormsUiAuditTests
         {
             using MainForm main = new(temp.Context, admin);
             Assert.True(main.NavWorkOrders.Enabled);
-            Assert.True(main.NavInvoices.Enabled);
             Assert.True(main.NavMaintainers.Enabled);
-            Assert.True(main.NavMaintenance.Enabled);
             Assert.True(main.NavUsers.Enabled);
             Assert.True(main.NavAudit.Enabled);
 
@@ -60,14 +58,19 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.Dashboard");
             Assert.True(main.NavTreeEditor.Enabled);
             Assert.True(main.BtnTopNewExternalOt.Enabled);
+            Assert.NotNull(main.BtnHeroNewExternalOt);
+            Assert.True(main.BtnHeroNewExternalOt.Enabled);
+            Assert.Equal("Nueva OT Externa", main.BtnHeroNewExternalOt.Text);
+
+            // Confirm Facturas y Guías & Explorar BD Mantención & Mantención Industrial are completely absent
+            List<Button> dashButtons = CollectControls<Button>(main);
+            Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Factura", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Explorar BD Mant", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Mantención Industrial", StringComparison.OrdinalIgnoreCase));
 
             main.ShowWorkOrders(14752);
             AssertAllButtonsValid(main, "MainForm.WorkOrders");
             AssertNoForbiddenTypos(main, "MainForm.WorkOrders");
-
-            main.ShowInvoices();
-            AssertAllButtonsValid(main, "MainForm.Invoices");
-            AssertNoForbiddenTypos(main, "MainForm.Invoices");
 
             main.ShowMaintainers();
             AssertAllButtonsValid(main, "MainForm.Maintainers");
@@ -77,13 +80,11 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.TreeEditor");
             AssertNoForbiddenTypos(main, "MainForm.TreeEditor");
 
-            main.ShowMaintenanceHub();
-            AssertAllButtonsValid(main, "MainForm.MaintenanceHub");
-            AssertNoForbiddenTypos(main, "MainForm.MaintenanceHub");
-
             main.ShowUsers();
             AssertAllButtonsValid(main, "MainForm.Users");
             AssertNoForbiddenTypos(main, "MainForm.Users");
+            main.ShowUsers(openRequestersTab: true);
+            AssertAllButtonsValid(main, "MainForm.Users.RequestersTab");
 
             using WorkOrdersForm directWorkOrders = new(temp.Context, admin);
             Assert.Equal("Nueva OT Externa", directWorkOrders.BtnNewExternalOt.Text);
@@ -105,7 +106,10 @@ public sealed class WinFormsUiAuditTests
             Assert.Equal("Desactivar", directUsers.BtnDesactivar.Text);
             Assert.Equal("Mover", directUsers.BtnMover.Text);
             Assert.Equal("Exportar", directUsers.BtnExportar.Text);
-            Assert.Equal(11, directUsers.GridUsers.Columns.Count);
+            Assert.Equal(14, directUsers.GridUsers.Columns.Count);
+            Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "VBS");
+            Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "VBJ");
+            Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "Solicitante / Firma");
             Assert.True(directUsers.GridUsers.Rows.Count >= 3);
             Assert.True(directUsers.ListGroups.Items.Count >= 7); // Todos + Sin grupo + 5 grupos base
 
@@ -125,11 +129,13 @@ public sealed class WinFormsUiAuditTests
 
             using UserPermissionsDialog permsDlg = new(UserRoleLevel.Supervisor, PermissionPresets.CreateForRole(UserRoleLevel.Supervisor), readOnly: false);
             AssertAllButtonsValid(permsDlg, "UserPermissionsDialog");
+            List<CheckBox> permBoxes = CollectControls<CheckBox>(permsDlg);
+            Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("Factura", StringComparison.OrdinalIgnoreCase));
 
             using AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");
             List<ComboBox> auditCombos = CollectControls<ComboBox>(auditDlg);
-            Assert.Contains(auditCombos, c => c.Items.Contains("Árbol de Activos") && c.Items.Contains("Configuración"));
+            Assert.Contains(auditCombos, c => c.Items.Contains("Árbol de Activos") && c.Items.Contains("Configuración") && !c.Items.Contains("Facturas y Guías"));
 
             using GroupEditorDialog groupEditDlg = new(temp.Context.GroupManagementService, temp.Context.UserManagementService, admin);
             AssertAllButtonsValid(groupEditDlg, "GroupEditorDialog");
@@ -178,7 +184,6 @@ public sealed class WinFormsUiAuditTests
             using MainForm main = new(temp.Context, opSession);
             Assert.True(main.NavDashboard.Enabled);
             Assert.True(main.NavWorkOrders.Enabled);
-            Assert.False(main.NavInvoices.Enabled);
             Assert.False(main.NavMaintainers.Enabled);
             Assert.False(main.NavTreeEditor.Enabled);
             Assert.False(main.NavUsers.Enabled);

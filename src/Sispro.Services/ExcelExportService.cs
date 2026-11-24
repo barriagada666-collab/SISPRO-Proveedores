@@ -295,9 +295,8 @@ public sealed class ExcelExportService(AppSettings settings)
         int headerRow = 13;
         ws.Cell(headerRow, 1).Value = "Ítem";
         ws.Cell(headerRow, 2).Value = "Cant.";
-        ws.Range(headerRow, 3, headerRow, 4).Merge().Value = "DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO";
-        ws.Cell(headerRow, 5).Value = "FACTURA / GD";
-        ws.Cell(headerRow, 6).Value = "VALOR";
+        ws.Range(headerRow, 3, headerRow, 5).Merge().Value = "DETALLE DE PIEZA EN REPARACIÓN Y TRABAJO";
+        ws.Cell(headerRow, 6).Value = "ESTADO";
 
         IXLRange tblHeader = ws.Range(headerRow, 1, headerRow, 6);
         tblHeader.Style.Fill.BackgroundColor = CambiasoOlive;
@@ -314,14 +313,13 @@ public sealed class ExcelExportService(AppSettings settings)
             ws.Cell(row, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             ws.Cell(row, 2).Value = d.Cantidad;
             ws.Cell(row, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            IXLRange descRange = ws.Range(row, 3, row, 4).Merge();
+            IXLRange descRange = ws.Range(row, 3, row, 5).Merge();
             descRange.Value = ExportSanitizer.SanitizeXmlText(d.Descripcion);
             descRange.Style.Alignment.WrapText = true;
-            ws.Cell(row, 5).Value = order.GuiaDespacho > 0 ? order.GuiaDespacho.ToString(CultureInfo.InvariantCulture) : string.Empty;
-            ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-            ws.Cell(row, 6).Value = string.Empty;
+            ws.Cell(row, 6).Value = "Registrado";
+            ws.Cell(row, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
 
-            int lines = Math.Max(1, (int)Math.Ceiling(d.Descripcion.Length / 62.0));
+            int lines = Math.Max(1, (int)Math.Ceiling(d.Descripcion.Length / 74.0));
             ws.Row(row).Height = Math.Max(22, lines * 16);
 
             if (row % 2 == 1)
@@ -334,7 +332,7 @@ public sealed class ExcelExportService(AppSettings settings)
 
         while (row < headerRow + 10)
         {
-            ws.Range(row, 3, row, 4).Merge();
+            ws.Range(row, 3, row, 5).Merge();
             ws.Row(row).Height = 20;
             row++;
         }
@@ -347,10 +345,10 @@ public sealed class ExcelExportService(AppSettings settings)
         itemsBox.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
         int vbRow = row + 1;
-        string vbsText = order.TieneVbs ? "VB Supervisor: APROBADO" : "VB Supervisor: Pendiente";
-        string vbjText = order.TieneVbj ? "VB Jefatura: APROBADO" : "VB Jefatura: Pendiente";
-        ws.Range(vbRow, 1, vbRow, 3).Merge().Value = vbsText;
-        ws.Range(vbRow, 4, vbRow, 6).Merge().Value = vbjText;
+        string vbsText = $"VB Supervisor: {order.VbsResumen}";
+        string vbjText = $"VB Jefatura: {order.VbjResumen}";
+        ws.Range(vbRow, 1, vbRow, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(vbsText);
+        ws.Range(vbRow, 4, vbRow, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(vbjText);
         ws.Range(vbRow, 1, vbRow, 6).Style.Font.Italic = true;
         ws.Range(vbRow, 1, vbRow, 6).Style.Font.FontColor = XLColor.DimGray;
 
@@ -358,14 +356,19 @@ public sealed class ExcelExportService(AppSettings settings)
         string jrPath = Path.Combine(assetsDir, "Firmas", "JR.jpg");
         string msPath = Path.Combine(assetsDir, "Firmas", "MS.jpg");
 
-        if (signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas && File.Exists(jrPath))
+        bool showJr = signatureOption is SignatureOption.JuanRamos or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showMs = signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas or SignatureOption.AmbasConSolicitante;
+        bool showSol = (signatureOption is SignatureOption.Solicitante or SignatureOption.AmbasConSolicitante) &&
+                       order.FirmaSolicitantePreviewPng is { Length: > 0 };
+
+        if (showJr && File.Exists(jrPath))
         {
             ws.AddPicture(jrPath)
               .MoveTo(ws.Cell(sigStartRow, 2), 8, 4)
               .WithSize(130, 85);
         }
 
-        if (signatureOption is SignatureOption.MarceloSilva or SignatureOption.Ambas && File.Exists(msPath))
+        if (showMs && File.Exists(msPath))
         {
             ws.AddPicture(msPath)
               .MoveTo(ws.Cell(sigStartRow, 4), 24, 4)
@@ -379,6 +382,20 @@ public sealed class ExcelExportService(AppSettings settings)
         ws.Range(lineRow + 1, 4, lineRow + 1, 6).Merge().Value = "Marcelo Silva Morgado — Supervisor Mantención";
         ws.Range(lineRow, 1, lineRow + 1, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
         ws.Range(lineRow + 1, 1, lineRow + 1, 6).Style.Font.Bold = true;
+
+        if (showSol)
+        {
+            int solRow = lineRow + 3;
+            using MemoryStream sigMs = new(order.FirmaSolicitantePreviewPng!);
+            ws.AddPicture(sigMs)
+              .MoveTo(ws.Cell(solRow, 3), 20, 4)
+              .WithSize(145, 72);
+            int solLine = solRow + 4;
+            ws.Range(solLine, 2, solLine, 5).Merge().Value = "______________________________";
+            ws.Range(solLine + 1, 2, solLine + 1, 5).Merge().Value = ExportSanitizer.SanitizeXmlText($"Solicitado por: {order.AliasSolicitante} ({order.FirmaSolicitanteTipo})");
+            ws.Range(solLine, 2, solLine + 1, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+            ws.Range(solLine + 1, 2, solLine + 1, 5).Style.Font.Bold = true;
+        }
 
         wb.SaveAs(outputPath);
     }

@@ -1,6 +1,6 @@
 #define MyAppName "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"
 #define MyAppShortName "SISPRO"
-#define MyAppVersion "4.1.0"
+#define MyAppVersion "4.2.0"
 #define MyAppPublisher "Cambiaso Hnos S.A.C."
 #define MyAppExeName "SISPRO.exe"
 #define MyAppURL "https://github.com/barriagada666-collab/SISPRO-Proveedores"
@@ -14,8 +14,8 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
-AppCopyright=Copyright © 2026 {#MyAppPublisher} — División Mantención Industrial
-AppComments=Sistema de Gestión de Proveedores, Órdenes de Trabajo, Usuarios, Grupos y Mantención Industrial (.NET 10)
+AppCopyright=Copyright © 2026 {#MyAppPublisher} — Departamento Mantención
+AppComments=Sistema de Gestión de Proveedores, Órdenes de Trabajo Externas, Solicitantes con Firmas Digitales, Usuarios y Grupos (.NET 10)
 DefaultDirName=C:\Temp
 DisableDirPage=no
 DirExistsWarning=no
@@ -51,7 +51,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
 WelcomeLabel1=Bienvenido al Asistente de Instalación de [name]
-WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye base de datos SQLite migrada, gestión dinámica de usuarios y grupos, y exportaciones corporativas.
+WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye base de datos SQLite migrada, gestión de solicitantes con firma digital, aprobadores VB, usuarios/grupos y exportaciones corporativas.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

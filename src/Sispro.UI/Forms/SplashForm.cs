@@ -59,7 +59,7 @@ public sealed class SplashForm : Form
 
         Label lblDivision = new()
         {
-            Text = "DIVISIÓN MANTENCIÓN INDUSTRIAL\nPlacilla, Valparaíso",
+            Text = "ÓRDENES DE TRABAJO EXTERNAS\nPlacilla, Valparaíso",
             Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
             ForeColor = Color.FromArgb(205, 226, 240),
             TextAlign = ContentAlignment.MiddleCenter,
@@ -140,7 +140,7 @@ public sealed class SplashForm : Form
 
         Label lblVersion = new()
         {
-            Text = "Versión 4.1 LTS (.NET 10)",
+            Text = "Versión 4.2 LTS (.NET 10)",
             Font = CambiasoTheme.LabelFont,
             ForeColor = CambiasoTheme.Accent,
             TextAlign = ContentAlignment.MiddleRight,

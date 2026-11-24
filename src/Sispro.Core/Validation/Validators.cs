@@ -108,26 +108,6 @@ public static class RutValidator
     }
 }
 
-public static class TaxCalculator
-{
-    public const decimal IvaRate = 0.19m;
-
-    public static decimal CalculateIva(decimal netAmount)
-    {
-        if (netAmount < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(netAmount), "El monto neto no puede ser negativo.");
-        }
-
-        return Math.Round(netAmount * IvaRate, 0, MidpointRounding.AwayFromZero);
-    }
-
-    public static decimal CalculateTotalWithIva(decimal netAmount)
-    {
-        return Math.Round(netAmount, 0, MidpointRounding.AwayFromZero) + CalculateIva(netAmount);
-    }
-}
-
 public static partial class DomainValidator
 {
     [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

@@ -46,7 +46,6 @@ public sealed class UserManagementModuleTests
         Assert.StartsWith("PBKDF2$100000$", created.PassHash);
         Assert.DoesNotContain(initialSecret, created.PassHash, StringComparison.Ordinal);
         Assert.True(created.Permisos.MenuOrdenesTrabajo);
-        Assert.True(created.Permisos.MenuFacturas);
         Assert.True(created.Permisos.MenuMantenedor);
         Assert.True(created.Permisos.MenuUsuarios);
         Assert.True(created.Permisos.IngresoUsuarios);
@@ -103,9 +102,6 @@ public sealed class UserManagementModuleTests
         Assert.True(barriagada.Permisos.VistoBuenoJefatura);
         Assert.True(barriagada.Permisos.BusquedaOt);
         Assert.True(barriagada.Permisos.ImpresionOt);
-        Assert.True(barriagada.Permisos.MenuFacturas);
-        Assert.True(barriagada.Permisos.IngresoFacturas);
-        Assert.True(barriagada.Permisos.BusquedaFacturas);
         Assert.True(barriagada.Permisos.MenuMantenedor);
         Assert.True(barriagada.Permisos.MenuUsuarios);
         Assert.True(barriagada.Permisos.IngresoUsuarios);

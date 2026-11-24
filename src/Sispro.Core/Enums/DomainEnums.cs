@@ -3,8 +3,8 @@ namespace Sispro.Core.Enums;
 public enum WorkOrderStatus
 {
     Abierta = 0,
-    ConGuiaParcial = 1,
-    Facturada = 2,
+    EnProceso = 1,
+    Completada = 2,
     Anulada = 3
 }
 
@@ -27,7 +27,9 @@ public enum SignatureOption
     Ninguna = 0,
     JuanRamos = 1,
     MarceloSilva = 2,
-    Ambas = 3
+    Ambas = 3,
+    Solicitante = 4,
+    AmbasConSolicitante = 5
 }
 
 [Flags]
@@ -37,10 +39,9 @@ public enum DataChangeKind
     Users = 1,
     Groups = 2,
     WorkOrders = 4,
-    Invoices = 8,
-    Catalogs = 16,
-    Audit = 32,
-    All = Users | Groups | WorkOrders | Invoices | Catalogs | Audit
+    Catalogs = 8,
+    Audit = 16,
+    All = Users | Groups | WorkOrders | Catalogs | Audit
 }
 
 public enum DateRangePreset

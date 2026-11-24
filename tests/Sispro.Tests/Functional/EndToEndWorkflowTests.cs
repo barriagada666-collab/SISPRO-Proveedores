@@ -10,7 +10,7 @@ namespace Sispro.Tests.Functional;
 public sealed class EndToEndWorkflowTests
 {
     [Fact]
-    public async Task CompleteBusinessFlow_OtApprovalsInvoicesExcelAndSecurity()
+    public async Task CompleteBusinessFlow_OtApprovalsExcelAndSecurity()
     {
         using TempTestDatabase temp = new();
         var ctx = temp.Context;
@@ -28,7 +28,6 @@ public sealed class EndToEndWorkflowTests
             Telefono = "32-2201122",
             Correo = "contacto@tallervalpo.cl"
         });
-        int provB = ctx.MaintainerService.SaveProvider(admin, new Provider { Nombre = "OTRO PROVEEDOR" });
 
         int solId = ctx.MaintainerService.SaveRequester(admin, new Requester
         {
@@ -99,43 +98,12 @@ public sealed class EndToEndWorkflowTests
         WorkOrder loaded = ctx.WorkOrderService.GetByNumber(5001)!;
         Assert.True(loaded.TieneVbs);
         Assert.True(loaded.TieneVbj);
+        Assert.Equal("sup_test", loaded.VbsApproval?.AliasUsuario);
+        Assert.Equal("jef_test", loaded.VbjApproval?.AliasUsuario);
         Assert.Equal(2, loaded.Detalles.Count);
         Assert.Contains("PLANTA TÉ", loaded.RutaActivo);
 
-        // 6. Invoice / Guía de Despacho Registration + Validation
-        // Mismatched provider must fail
-        Assert.Throws<InvalidOperationException>(() => ctx.InvoiceService.Register(supervisor, new Invoice
-        {
-            NumeroDocumento = 9001,
-            IdProv = provB,
-            Fecha = DateTime.Today,
-            Items = [new InvoiceDetail { IdOt = otId, IdDet = loaded.Detalles[0].IdDet, ValorTrabajo = 150000 }]
-        }));
-
-        // Valid invoice with both detail items
-        int invId = ctx.InvoiceService.Register(supervisor, new Invoice
-        {
-            NumeroDocumento = 9001,
-            IdProv = provA,
-            Fecha = new DateTime(2026, 11, 22),
-            RecibidoPor = "Bodega Mantención",
-            Detalle = "Recepción conforme trabajos OT 5001",
-            Items =
-            [
-                new InvoiceDetail { IdOt = otId, IdDet = loaded.Detalles[0].IdDet, ValorTrabajo = 150000 },
-                new InvoiceDetail { IdOt = otId, IdDet = loaded.Detalles[1].IdDet, ValorTrabajo = 100000 }
-            ]
-        });
-
-        Invoice savedInv = ctx.InvoiceService.GetById(invId)!;
-        Assert.Equal(250000m, savedInv.TotalNeto);
-        Assert.Equal(47500m, savedInv.Iva);
-        Assert.Equal(297500m, savedInv.TotalConIva);
-
-        // Cannot delete OT while invoiced
-        Assert.Throws<InvalidOperationException>(() => ctx.WorkOrderService.Delete(admin, otId));
-
-        // 7. Export Excel OT Document + Search Results and verify actual .xlsx contents
+        // 6. Export Excel OT Document + Search Results and verify actual .xlsx contents & approvers
         string otExcelPath = Path.Combine(Path.GetTempPath(), $"sispro_ot_{Guid.NewGuid():N}.xlsx");
         string gridExcelPath = Path.Combine(Path.GetTempPath(), $"sispro_grid_{Guid.NewGuid():N}.xlsx");
         try
@@ -158,6 +126,8 @@ public sealed class EndToEndWorkflowTests
                 TextoBusqueda = "engranaje"
             });
             Assert.Single(found);
+            Assert.Equal("sup_test", found[0].VbsUsuario);
+            Assert.Equal("jef_test", found[0].VbjUsuario);
 
             List<int> progressValues = [];
             await ctx.ExcelExportService.ExportWorkOrdersGridAsync(found, gridExcelPath, new Progress<int>(p => progressValues.Add(p)));
@@ -174,9 +144,7 @@ public sealed class EndToEndWorkflowTests
             if (File.Exists(gridExcelPath)) File.Delete(gridExcelPath);
         }
 
-        // 8. Delete invoice restores detail status and allows OT deletion
-        ctx.InvoiceService.Delete(supervisor, invId);
-        Assert.False(ctx.InvoiceService.IsDetailAlreadyInvoiced(loaded.Detalles[0].IdDet));
+        // 7. Delete OT cleanly
         ctx.WorkOrderService.Delete(admin, otId);
         Assert.Null(ctx.WorkOrderService.GetByNumber(5001));
     }

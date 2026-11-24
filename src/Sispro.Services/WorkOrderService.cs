@@ -11,13 +11,19 @@ public sealed class WorkOrderService(
     IRequesterRepository requesters,
     IAssetTreeRepository assetTree,
     IAuditRepository audit,
-    SisproSyncHub? syncHub = null)
+    SisproSyncHub? syncHub = null,
+    IUserRepository? users = null)
 {
     public int GetNextWorkOrderNumber() => workOrders.GetNextWorkOrderNumber();
 
     public WorkOrder? GetByNumber(int numeroOt) => workOrders.GetByNumber(numeroOt);
 
     public WorkOrder? GetById(int idOt) => workOrders.GetById(idOt);
+
+    public DashboardAnalytics GetDashboardAnalytics() => workOrders.GetDashboardAnalytics();
+
+    public IReadOnlyList<ApproverDirectoryEntry> GetApproverDirectory() =>
+        users?.GetApprovers() ?? [];
 
     public IReadOnlyList<WorkOrderSearchRow> Search(UserSession session, WorkOrderSearchFilter filter)
     {
@@ -72,11 +78,6 @@ public sealed class WorkOrderService(
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && p.IngresoOt, "Eliminar órdenes de trabajo");
         WorkOrder existing = workOrders.GetById(idOt)
             ?? throw new InvalidOperationException("La orden de trabajo seleccionada no existe.");
-
-        if (workOrders.HasInvoices(idOt))
-        {
-            throw new InvalidOperationException("No se puede eliminar la OT porque tiene guías de despacho o facturas asociadas.");
-        }
 
         workOrders.Delete(idOt);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "ELIMINAR_OT",

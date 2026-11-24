@@ -81,11 +81,11 @@ public sealed class LegacyBugRegressionTests
     }
 
     [Fact]
-    public void Regression_DuplicateInvoiceItemAssociation_IsBlocked()
+    public void Regression_WorkOrderUpdateAndDelete_DoNotDependOnObsoleteInvoices()
     {
         using TempTestDatabase temp = new();
         UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
-        int prov = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV DUP" });
+        int prov = temp.Context.MaintainerService.SaveProvider(admin, new Provider { Nombre = "PROV REG" });
         int planta = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA B");
 
         WorkOrder ot = new()
@@ -97,24 +97,12 @@ public sealed class LegacyBugRegressionTests
         };
         ot.SetLevels([1, planta]);
         int otId = temp.Context.WorkOrderService.Create(admin, ot);
-        int detId = temp.Context.WorkOrders.GetById(otId)!.Detalles[0].IdDet;
+        WorkOrder loaded = temp.Context.WorkOrders.GetById(otId)!;
+        loaded.Detalles.Add(new WorkOrderDetail { Cantidad = 2, Descripcion = "Segundo ítem agregado" });
+        temp.Context.WorkOrderService.Update(admin, loaded);
 
-        // First invoice succeeds
-        temp.Context.InvoiceService.Register(admin, new Invoice
-        {
-            NumeroDocumento = 1001,
-            IdProv = prov,
-            Fecha = DateTime.Today,
-            Items = [new InvoiceDetail { IdOt = otId, IdDet = detId, ValorTrabajo = 50000 }]
-        });
-
-        // Second invoice trying to reuse the same OT detail item MUST fail
-        Assert.Throws<InvalidOperationException>(() => temp.Context.InvoiceService.Register(admin, new Invoice
-        {
-            NumeroDocumento = 1002,
-            IdProv = prov,
-            Fecha = DateTime.Today,
-            Items = [new InvoiceDetail { IdOt = otId, IdDet = detId, ValorTrabajo = 50000 }]
-        }));
+        Assert.Equal(2, temp.Context.WorkOrders.GetById(otId)!.Detalles.Count);
+        temp.Context.WorkOrderService.Delete(admin, otId);
+        Assert.Null(temp.Context.WorkOrders.GetById(otId));
     }
 }

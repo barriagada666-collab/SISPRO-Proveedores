@@ -38,18 +38,8 @@ public sealed class MaintainersForm : UserControl
     private IReadOnlyList<Provider> _providers = [];
     private int _selectedProvId;
 
-    // Solicitantes controls
-    private readonly TextBox _txtSolSearch;
-    private readonly TextBox _txtSolAlias;
-    private readonly TextBox _txtSolNombre;
-    private readonly TextBox _txtSolPat;
-    private readonly TextBox _txtSolMat;
-    private readonly TextBox _txtSolFono;
-    private readonly TextBox _txtSolMail;
-    private readonly CheckBox _chkSolActivo;
-    private readonly DataGridView _gridRequesters;
-    private IReadOnlyList<Requester> _requesters = [];
-    private int _selectedSolId;
+    // Solicitantes control unificado
+    private readonly RequesterManagerControl _requestersControl;
 
     // Asset Tree controls
     private readonly AssetTreePanel _assetTree;
@@ -115,38 +105,10 @@ public sealed class MaintainersForm : UserControl
         BuildProvidersTab(tabProv);
 
         // --- TAB SOLICITANTES ---
-        TabPage tabSol = new("Solicitantes") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
-        _txtSolSearch = new TextBox { Width = 240, PlaceholderText = "Filtrar solicitante..." };
-        _txtSolSearch.TextChanged += (_, _) => LoadRequesters();
-        _txtSolAlias = new TextBox { Width = 180 };
-        _txtSolNombre = new TextBox { Width = 180 };
-        _txtSolPat = new TextBox { Width = 180 };
-        _txtSolMat = new TextBox { Width = 180 };
-        _txtSolFono = new TextBox { Width = 150 };
-        _txtSolMail = new TextBox { Width = 240 };
-        _chkSolActivo = new CheckBox { Text = "Solicitante activo", Checked = true, AutoSize = true };
-        _gridRequesters = new DataGridView { Dock = DockStyle.Fill };
-        CambiasoTheme.StyleGrid(_gridRequesters);
-        _gridRequesters.CellClick += (_, _) => SelectRequesterFromGrid();
-        ContextMenuHelper.AttachToGrid(_gridRequesters, idx =>
-        {
-            Requester? req = GridBindingHelper.GetRowSource<Requester>(_gridRequesters, idx);
-            if (req is null)
-            {
-                return [];
-            }
-
-            return
-            [
-                ContextMenuHelper.Item("Editar", AppIcon.Edit, CambiasoTheme.Primary, () => { SelectRequesterFromGrid(idx); _txtSolAlias.Focus(); }),
-                ContextMenuHelper.Item("Activar", AppIcon.Power, CambiasoTheme.Success, () => SetRequesterActive(req, true), enabled: !req.Activo),
-                ContextMenuHelper.Item("Desactivar", AppIcon.Ban, CambiasoTheme.Warning, () => SetRequesterActive(req, false), enabled: req.Activo),
-                ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Eliminar", AppIcon.Delete, CambiasoTheme.Danger, () => { SelectRequesterFromGrid(idx); DeleteRequester(); }),
-                ContextMenuHelper.Item("Nuevo", AppIcon.Add, CambiasoTheme.Accent, () => { ClearRequesterForm(); _txtSolAlias.Focus(); })
-            ];
-        });
-        BuildRequestersTab(tabSol);
+        TabPage tabSol = new("Solicitantes y Firmas") { BackColor = CambiasoTheme.Surface, Padding = new Padding(6) };
+        _requestersControl = new RequesterManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
+        _requestersControl.RequestersChanged += (_, _) => CatalogsChanged?.Invoke(this, EventArgs.Empty);
+        tabSol.Controls.Add(_requestersControl);
 
         // --- TAB ÁRBOL DE ACTIVOS ---
         TabPage tabAssets = new("Árbol de Activos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(10) };
@@ -185,7 +147,6 @@ public sealed class MaintainersForm : UserControl
         Controls.Add(tabs);
 
         LoadProviders();
-        LoadRequesters();
         BindSelectedAsset(_assetTree.SelectedAsset);
 
         _ctx.SyncHub.DataChanged += OnSyncChanged;
@@ -258,42 +219,6 @@ public sealed class MaintainersForm : UserControl
         page.Controls.Add(layout);
     }
 
-    private void BuildRequestersTab(TabPage page)
-    {
-        TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 126));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-        GroupBox grpForm = CambiasoTheme.CreateGroupBox("Ficha de Solicitante");
-        grpForm.Dock = DockStyle.Fill;
-        FlowLayoutPanel f = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-        FlowLayoutPanel r1 = new() { AutoSize = true, WrapContents = false };
-        r1.Controls.AddRange([Wrap("Alias:", _txtSolAlias), Wrap("Nombres:", _txtSolNombre), Wrap("Ap. Paterno:", _txtSolPat), Wrap("Ap. Materno:", _txtSolMat)]);
-        FlowLayoutPanel r2 = new() { AutoSize = true, WrapContents = false };
-        r2.Controls.AddRange([Wrap("Teléfono:", _txtSolFono), Wrap("Correo:", _txtSolMail), _chkSolActivo]);
-        f.Controls.AddRange([r1, r2]);
-        grpForm.Controls.Add(f);
-
-        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, Padding = new Padding(0, 6, 0, 4) };
-        Button btnSave = CambiasoTheme.CreateButton("Guardar", AppIcon.Save, ButtonTone.Primary, _toolTip, "Guardar solicitante", width: 120);
-        btnSave.Click += (_, _) => SaveRequester();
-        Button btnDel = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar o desactivar solicitante", width: 118);
-        btnDel.Click += (_, _) => DeleteRequester();
-        Button btnClear = CambiasoTheme.CreateButton("Nuevo / Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar ficha para nuevo solicitante", width: 144);
-        btnClear.Click += (_, _) => ClearRequesterForm();
-        bar.Controls.AddRange([btnSave, btnDel, btnClear, Wrap("Buscar:", _txtSolSearch)]);
-
-        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Listado de Solicitantes");
-        grpGrid.Dock = DockStyle.Fill;
-        grpGrid.Controls.Add(_gridRequesters);
-
-        layout.Controls.Add(grpForm, 0, 0);
-        layout.Controls.Add(bar, 0, 1);
-        layout.Controls.Add(grpGrid, 0, 2);
-        page.Controls.Add(layout);
-    }
-
     private void BuildAssetsTab(TabPage page)
     {
         bool canEdit = _assetTree.CanEdit;
@@ -302,7 +227,7 @@ public sealed class MaintainersForm : UserControl
 
         Panel right = new() { Dock = DockStyle.Fill, Padding = new Padding(12), BackColor = CambiasoTheme.Surface };
 
-        GroupBox grpEdit = CambiasoTheme.CreateGroupBox("Ficha Técnica del Activo Seleccionado (BD Mantención)");
+        GroupBox grpEdit = CambiasoTheme.CreateGroupBox("Ficha Técnica del Activo Seleccionado");
         grpEdit.Dock = DockStyle.Top;
         grpEdit.Height = 338;
 
@@ -517,126 +442,6 @@ public sealed class MaintainersForm : UserControl
         _chkProvActivo.Checked = true;
     }
 
-    private void LoadRequesters()
-    {
-        _requesters = _ctx.MaintainerService.GetRequesters(includeInactive: true, search: _txtSolSearch.Text);
-        _gridRequesters.DataSource = new SortableBindingList<RequesterGridRow>(
-            _requesters.Select(r => new RequesterGridRow(r)));
-
-        if (_gridRequesters.Columns.Count >= 6)
-        {
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 0, "ID", 7);
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 1, "Alias", 14);
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 2, "Nombre", 28);
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 3, "Teléfono", 15);
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 4, "Correo", 26);
-            GridBindingHelper.ConfigureColumn(_gridRequesters, 5, "Estado", 10);
-        }
-    }
-
-    private void SelectRequesterFromGrid(int? rowIndex = null)
-    {
-        Requester? r = GridBindingHelper.GetRowSource<Requester>(_gridRequesters, rowIndex);
-        if (r is null)
-        {
-            return;
-        }
-
-        _selectedSolId = r.IdSol;
-        _txtSolAlias.Text = r.Alias;
-        _txtSolNombre.Text = r.Nombre;
-        _txtSolPat.Text = r.ApellidoPaterno;
-        _txtSolMat.Text = r.ApellidoMaterno;
-        _txtSolFono.Text = r.Telefono;
-        _txtSolMail.Text = r.Correo;
-        _chkSolActivo.Checked = r.Activo;
-    }
-
-    private void SaveRequester()
-    {
-        try
-        {
-            Requester r = new()
-            {
-                IdSol = _selectedSolId,
-                Alias = _txtSolAlias.Text,
-                Nombre = _txtSolNombre.Text,
-                ApellidoPaterno = _txtSolPat.Text,
-                ApellidoMaterno = _txtSolMat.Text,
-                Telefono = _txtSolFono.Text,
-                Correo = _txtSolMail.Text,
-                Activo = _chkSolActivo.Checked
-            };
-
-            _ctx.MaintainerService.SaveRequester(_session, r);
-            CambiasoTheme.ShowInfo(this, $"Solicitante '{r.Alias}' guardado correctamente.");
-            ClearRequesterForm();
-            LoadRequesters();
-            CatalogsChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowWarning(this, ex.Message);
-        }
-    }
-
-    private void DeleteRequester()
-    {
-        if (_selectedSolId <= 0)
-        {
-            CambiasoTheme.ShowWarning(this, "Seleccione un solicitante.");
-            return;
-        }
-
-        if (!CambiasoTheme.Confirm(this, $"¿Eliminar o desactivar el solicitante '{_txtSolAlias.Text}'?"))
-        {
-            return;
-        }
-
-        try
-        {
-            _ctx.MaintainerService.DeleteRequester(_session, _selectedSolId);
-            CambiasoTheme.ShowInfo(this, "Solicitante actualizado correctamente.");
-            ClearRequesterForm();
-            LoadRequesters();
-            CatalogsChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowError(this, ex.Message);
-        }
-    }
-
-    private void SetRequesterActive(Requester r, bool active)
-    {
-        try
-        {
-            _ctx.MaintainerService.SetRequesterActive(_session, r.IdSol, active);
-            LoadRequesters();
-            if (_selectedSolId == r.IdSol)
-            {
-                _chkSolActivo.Checked = active;
-            }
-            CatalogsChanged?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            CambiasoTheme.ShowWarning(this, ex.Message);
-        }
-    }
-
-    private void ClearRequesterForm()
-    {
-        _selectedSolId = 0;
-        _txtSolAlias.Clear();
-        _txtSolNombre.Clear();
-        _txtSolPat.Clear();
-        _txtSolMat.Clear();
-        _txtSolFono.Clear();
-        _txtSolMail.Clear();
-        _chkSolActivo.Checked = true;
-    }
-
     private void BindSelectedAsset(AssetNode? node)
     {
         if (node is null)
@@ -805,18 +610,6 @@ public sealed class MaintainersForm : UserControl
         public string Telefono => Source.Telefono;
         public string Correo => Source.Correo;
         public string Contacto => Source.Contacto;
-        public string Estado => Source.Activo ? "Activo" : "Inactivo";
-    }
-
-    private sealed class RequesterGridRow(Requester source) : IGridRowSource<Requester>
-    {
-        [Browsable(false)]
-        public Requester Source { get; } = source;
-        public int IdSol => Source.IdSol;
-        public string Alias => Source.Alias;
-        public string Nombre => Source.NombreCompleto;
-        public string Telefono => Source.Telefono;
-        public string Correo => Source.Correo;
         public string Estado => Source.Activo ? "Activo" : "Inactivo";
     }
 }

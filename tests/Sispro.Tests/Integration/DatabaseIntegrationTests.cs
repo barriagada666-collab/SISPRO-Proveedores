@@ -18,13 +18,8 @@ public sealed class DatabaseIntegrationTests
         Assert.Equal(9, metrics.TotalSolicitantesActivos);
         Assert.Equal(4, metrics.TotalUsuariosActivos);
         Assert.Equal(1823, metrics.TotalNodosActivos);
-        Assert.Equal(43989, metrics.TotalMantOts);
-        Assert.Equal(780, metrics.TotalPlanesMp);
-        Assert.Equal(208121, metrics.TotalTareasMp);
-        Assert.Equal(2462, metrics.TotalInsumos);
-        Assert.Equal(134, metrics.TotalPersonalTecnico);
 
-        // Historical OT 2514 had id_sol = 0 (invisible in VB6 INNER JOIN) and now displays real Cambiaso asset path from BD MANTENCION!
+        // Historical OT 2514 had id_sol = 0 (invisible in VB6 INNER JOIN) and now displays real Cambiaso asset path
         WorkOrder? ot2514 = temp.Context.WorkOrders.GetByNumber(2514);
         Assert.NotNull(ot2514);
         Assert.Null(ot2514.IdSol);
@@ -32,12 +27,11 @@ public sealed class DatabaseIntegrationTests
         Assert.Contains("PLANTA PE", ot2514.RutaActivo);
         Assert.Contains("Molino Rapid 400", ot2514.RutaActivo);
 
-        // Verify BD MANTENCION analytics and exploration queries
-        DashboardAnalytics analytics = temp.Context.MaintenanceService.GetDashboardAnalytics();
+        // Verify External OT analytics
+        DashboardAnalytics analytics = temp.Context.WorkOrderService.GetDashboardAnalytics();
         Assert.NotEmpty(analytics.WorkOrdersByYear);
         Assert.NotEmpty(analytics.WorkOrdersByPlant);
         Assert.NotEmpty(analytics.TopProviders);
-        Assert.NotEmpty(analytics.MaintenanceByTrade);
 
         // Legacy user L Reyes authenticates and transparently upgrades password to PBKDF2
         AuthResult auth = temp.Context.AuthService.Login("L Reyes", "wanderes");
@@ -45,15 +39,9 @@ public sealed class DatabaseIntegrationTests
         Assert.True(auth.PasswordUpgraded);
         Assert.NotNull(auth.Session);
 
-        // Verify Maintenance Hub queries across all imported tables
-        Assert.NotEmpty(temp.Context.MaintenanceService.SearchInternalWorkOrders(auth.Session, new MantWorkOrderFilter { MaxRows = 25 }));
-        Assert.NotEmpty(temp.Context.MaintenanceService.SearchPreventivePlans(auth.Session));
-        Assert.NotEmpty(temp.Context.MaintenanceService.SearchSupplies(auth.Session, maxRows: 25));
-        Assert.NotEmpty(temp.Context.MaintenanceService.SearchPersonnel(auth.Session));
-        Assert.Equal(43, temp.Context.MaintenanceService.GetHrPersonnel(auth.Session).Count);
-        Assert.Equal(56, temp.Context.MaintenanceService.GetLegacyExternalOrders(auth.Session).Count);
-        Assert.Equal(41, temp.Context.MaintenanceService.GetFailureMotives(auth.Session).Count);
-        Assert.Equal(33, temp.Context.MaintenanceService.GetTradesCatalog(auth.Session).Count);
+        // Verify approver directory contains active VBS/VBJ approvers
+        IReadOnlyList<ApproverDirectoryEntry> approvers = temp.Context.WorkOrderService.GetApproverDirectory();
+        Assert.NotEmpty(approvers);
 
         // Verify BORIS migrated from OT_PROV.mdb uses PBKDF2 + forced password change on first login
         User? boris = temp.Context.Users.GetByAlias("BORIS");
@@ -115,56 +103,11 @@ public sealed class DatabaseIntegrationTests
     }
 
     [Fact]
-    public void MaintenanceService_PagedQueries_NavigateAllWorkOrdersAndSupplies()
+    public void SchemaMigration_LegacyDatabaseWithoutSignatureColumns_UpgradesCleanlyPreservingRequesters()
     {
         using TempTestDatabase temp = new(copyMigratedRealDb: true);
-        UserSession admin = temp.Context.AuthService.Login("L Reyes", "wanderes").Session!;
-
-        PagedResult<MantWorkOrderRow> otPage0 = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
-            admin,
-            new MantWorkOrderFilter(),
-            pageIndex: 0,
-            pageSize: 100);
-        Assert.Equal(43989, otPage0.TotalCount);
-        Assert.Equal(100, otPage0.Items.Count);
-        Assert.Equal(0, otPage0.PageIndex);
-
-        PagedResult<MantWorkOrderRow> otPage1 = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
-            admin,
-            new MantWorkOrderFilter(),
-            pageIndex: 1,
-            pageSize: 100);
-        Assert.Equal(100, otPage1.Items.Count);
-        Assert.Empty(otPage0.Items.Select(x => x.Id).Intersect(otPage1.Items.Select(x => x.Id)));
-
-        // Página fuera de rango se ajusta a la última página válida
-        PagedResult<MantWorkOrderRow> otLast = temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(
-            admin,
-            new MantWorkOrderFilter(),
-            pageIndex: 99999,
-            pageSize: 100);
-        Assert.Equal((43989 - 1) / 100, otLast.PageIndex);
-        Assert.Equal(89, otLast.Items.Count);
-
-        PagedResult<MantSupplyRow> supPage0 = temp.Context.MaintenanceService.SearchSuppliesPaged(admin, null, 0, 200);
-        PagedResult<MantSupplyRow> supPage1 = temp.Context.MaintenanceService.SearchSuppliesPaged(admin, null, 1, 200);
-        Assert.Equal(2462, supPage0.TotalCount);
-        Assert.Equal(200, supPage0.Items.Count);
-        Assert.Empty(supPage0.Items.Select(x => x.IdItem).Intersect(supPage1.Items.Select(x => x.IdItem)));
-
-        // RBAC: usuario sin permiso de Mantención/OT no puede consultar
-        UserSession limited = new()
-        {
-            Usuario = new User
-            {
-                IdUsuario = "NO-PERM",
-                AliasUsuario = "noperm",
-                Nivel = UserRoleLevel.Usuario,
-                Activo = true,
-                Permisos = new UserPermissions()
-            }
-        };
-        Assert.Throws<UnauthorizedAccessException>(() =>
-            temp.Context.MaintenanceService.SearchInternalWorkOrdersPaged(limited, new MantWorkOrderFilter(), 0, 50));
+        IReadOnlyList<Requester> reqs = temp.Context.Requesters.GetAll(includeInactive: true);
+        Assert.NotEmpty(reqs);
+        Assert.All(reqs, r => Assert.False(string.IsNullOrWhiteSpace(r.Alias)));
     }
 }

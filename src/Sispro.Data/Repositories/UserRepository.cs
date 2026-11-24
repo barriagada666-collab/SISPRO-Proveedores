@@ -18,7 +18,6 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                u.id_grupo, COALESCE(g.nombre, ''), COALESCE(u.row_version, 1),
                p.m1_ot, p.tab_0_1_ingreso_ot, p.tab_0_vbj, p.tab_0_vbs,
                p.tab_0_2_busqueda_ot, p.tab_0_3_impresion_ot,
-               p.m2_facturas, p.tab_1_0_ingreso_fac, p.tab_1_1_busqueda_fac,
                p.m3_mantenedor,
                p.m4_usuarios, p.tab_2_0_ingreso_us, p.tab_2_1_listado_us
         FROM Usuarios u
@@ -354,6 +353,38 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
+    public IReadOnlyList<ApproverDirectoryEntry> GetApprovers()
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT u.id_usuario, u.alias_usuario,
+                   TRIM(u.nombre_usuario || ' ' || u.ape_pat_usuario || ' ' || u.ape_mat_usuario),
+                   COALESCE(p.tab_0_vbs, 0),
+                   COALESCE(p.tab_0_vbj, 0)
+            FROM Usuarios u
+            LEFT JOIN Permisos p ON p.id_usuario = u.id_usuario
+            WHERE u.activo = 1
+              AND COALESCE(p.m1_ot, 0) = 1
+              AND (COALESCE(p.tab_0_vbs, 0) = 1 OR COALESCE(p.tab_0_vbj, 0) = 1)
+            ORDER BY COALESCE(p.tab_0_vbj, 0) DESC, COALESCE(p.tab_0_vbs, 0) DESC, u.alias_usuario COLLATE NOCASE ASC;
+            """;
+
+        List<ApproverDirectoryEntry> list = [];
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            list.Add(new ApproverDirectoryEntry(
+                rdr.GetString(0),
+                rdr.GetString(1),
+                rdr.GetString(2),
+                rdr.GetInt32(3) != 0,
+                rdr.GetInt32(4) != 0));
+        }
+
+        return list;
+    }
+
     private static void BindUserParameters(SqliteCommand cmd, User user, bool includePassword)
     {
         cmd.Parameters.AddWithValue("$id", user.IdUsuario.Trim());
@@ -382,11 +413,10 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.CommandText = """
             INSERT INTO Permisos(
                 id_usuario, m1_ot, tab_0_1_ingreso_ot, tab_0_vbj, tab_0_vbs,
-                tab_0_2_busqueda_ot, tab_0_3_impresion_ot, m2_facturas,
-                tab_1_0_ingreso_fac, tab_1_1_busqueda_fac, m3_mantenedor,
+                tab_0_2_busqueda_ot, tab_0_3_impresion_ot, m3_mantenedor,
                 m4_usuarios, tab_2_0_ingreso_us, tab_2_1_listado_us
             ) VALUES (
-                $id, $m1, $t01, $vbj, $vbs, $t02, $t03, $m2, $t10, $t11, $m3, $m4, $t20, $t21
+                $id, $m1, $t01, $vbj, $vbs, $t02, $t03, $m3, $m4, $t20, $t21
             )
             ON CONFLICT(id_usuario) DO UPDATE SET
                 m1_ot = excluded.m1_ot,
@@ -395,9 +425,6 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                 tab_0_vbs = excluded.tab_0_vbs,
                 tab_0_2_busqueda_ot = excluded.tab_0_2_busqueda_ot,
                 tab_0_3_impresion_ot = excluded.tab_0_3_impresion_ot,
-                m2_facturas = excluded.m2_facturas,
-                tab_1_0_ingreso_fac = excluded.tab_1_0_ingreso_fac,
-                tab_1_1_busqueda_fac = excluded.tab_1_1_busqueda_fac,
                 m3_mantenedor = excluded.m3_mantenedor,
                 m4_usuarios = excluded.m4_usuarios,
                 tab_2_0_ingreso_us = excluded.tab_2_0_ingreso_us,
@@ -410,9 +437,6 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.Parameters.AddWithValue("$vbs", p.VistoBuenoSupervisor ? 1 : 0);
         cmd.Parameters.AddWithValue("$t02", p.BusquedaOt ? 1 : 0);
         cmd.Parameters.AddWithValue("$t03", p.ImpresionOt ? 1 : 0);
-        cmd.Parameters.AddWithValue("$m2", p.MenuFacturas ? 1 : 0);
-        cmd.Parameters.AddWithValue("$t10", p.IngresoFacturas ? 1 : 0);
-        cmd.Parameters.AddWithValue("$t11", p.BusquedaFacturas ? 1 : 0);
         cmd.Parameters.AddWithValue("$m3", p.MenuMantenedor ? 1 : 0);
         cmd.Parameters.AddWithValue("$m4", p.MenuUsuarios ? 1 : 0);
         cmd.Parameters.AddWithValue("$t20", p.IngresoUsuarios ? 1 : 0);
@@ -457,13 +481,10 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                 VistoBuenoSupervisor = !rdr.IsDBNull(22) && rdr.GetInt32(22) != 0,
                 BusquedaOt = !rdr.IsDBNull(23) && rdr.GetInt32(23) != 0,
                 ImpresionOt = !rdr.IsDBNull(24) && rdr.GetInt32(24) != 0,
-                MenuFacturas = !rdr.IsDBNull(25) && rdr.GetInt32(25) != 0,
-                IngresoFacturas = !rdr.IsDBNull(26) && rdr.GetInt32(26) != 0,
-                BusquedaFacturas = !rdr.IsDBNull(27) && rdr.GetInt32(27) != 0,
-                MenuMantenedor = !rdr.IsDBNull(28) && rdr.GetInt32(28) != 0,
-                MenuUsuarios = !rdr.IsDBNull(29) && rdr.GetInt32(29) != 0,
-                IngresoUsuarios = !rdr.IsDBNull(30) && rdr.GetInt32(30) != 0,
-                ListadoUsuarios = !rdr.IsDBNull(31) && rdr.GetInt32(31) != 0
+                MenuMantenedor = !rdr.IsDBNull(25) && rdr.GetInt32(25) != 0,
+                MenuUsuarios = !rdr.IsDBNull(26) && rdr.GetInt32(26) != 0,
+                IngresoUsuarios = !rdr.IsDBNull(27) && rdr.GetInt32(27) != 0,
+                ListadoUsuarios = !rdr.IsDBNull(28) && rdr.GetInt32(28) != 0
             }
         };
     }

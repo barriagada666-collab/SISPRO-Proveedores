@@ -46,7 +46,18 @@ public sealed class UserManagementService(
         return users.CountWithoutGroup();
     }
 
-    public int CreateUser(UserSession session, User user, string plainPassword, string confirmPassword)
+    public IReadOnlyList<ApproverDirectoryEntry> GetApprovers(UserSession session)
+    {
+        EnsureAdministrator(session, "Consultar directorio de aprobadores VB");
+        return users.GetApprovers();
+    }
+
+    public int CreateUser(
+        UserSession session,
+        User user,
+        string plainPassword,
+        string confirmPassword,
+        ProcessedSignature? requesterSignature = null)
     {
         EnsureAdministrator(session, "Crear usuario");
 
@@ -95,9 +106,23 @@ public sealed class UserManagementService(
         EnforceRolePermissionBoundary(user);
 
         int codigoId = users.Create(user);
+        bool catalogTouched = false;
         if (user.EsSolicitante)
         {
             requesters.EnsureFromUser(user);
+            catalogTouched = true;
+            if (requesterSignature is not null)
+            {
+                Requester? createdReq = requesters.GetByAlias(user.AliasUsuario);
+                if (createdReq is not null)
+                {
+                    createdReq.FirmaBytes = requesterSignature.RawBytes;
+                    createdReq.FirmaNombre = requesterSignature.FileName;
+                    createdReq.FirmaTipo = requesterSignature.FileType;
+                    createdReq.FirmaPreviewPng = requesterSignature.PreviewPngBytes;
+                    requesters.Update(createdReq);
+                }
+            }
         }
 
         if (targetGroup is not null && groups is not null)
@@ -120,9 +145,11 @@ public sealed class UserManagementService(
             session.Usuario.AliasUsuario,
             "Usuarios",
             "CREAR_USUARIO",
-            $"Usuario '{user.AliasUsuario}' (ID {codigoId}, Nombre '{user.NombreCompleto}', Perfil {user.Nivel}, Grupo '{(targetGroup?.Nombre ?? "Sin grupo")}', Estado {(user.Activo ? "Activo" : "Inactivo")}) creado.");
+            $"Usuario '{user.AliasUsuario}' (ID {codigoId}, Nombre '{user.NombreCompleto}', Perfil {user.Nivel}, Grupo '{(targetGroup?.Nombre ?? "Sin grupo")}', Estado {(user.Activo ? "Activo" : "Inactivo")}{(requesterSignature is not null ? $", Firma {requesterSignature.FileType}" : string.Empty)}) creado.");
 
-        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit, "CREAR_USUARIO");
+        DataChangeKind changeKind = DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit;
+        if (catalogTouched) changeKind |= DataChangeKind.Catalogs;
+        syncHub?.Publish(changeKind, "CREAR_USUARIO");
         return codigoId;
     }
 
@@ -131,7 +158,9 @@ public sealed class UserManagementService(
         User user,
         string? newPassword = null,
         string? confirmPassword = null,
-        int? expectedRowVersion = null)
+        int? expectedRowVersion = null,
+        ProcessedSignature? requesterSignature = null,
+        bool clearRequesterSignature = false)
     {
         EnsureAdministrator(session, "Modificar usuario");
 
@@ -197,9 +226,34 @@ public sealed class UserManagementService(
         EnforceRolePermissionBoundary(user);
 
         users.Update(user, updatePwd, expectedRowVersion);
+        bool catalogTouched = false;
         if (user.EsSolicitante)
         {
             requesters.EnsureFromUser(user);
+            catalogTouched = true;
+            if (requesterSignature is not null || clearRequesterSignature)
+            {
+                Requester? sol = requesters.GetByAlias(user.AliasUsuario);
+                if (sol is not null)
+                {
+                    if (clearRequesterSignature)
+                    {
+                        sol.FirmaBytes = null;
+                        sol.FirmaNombre = string.Empty;
+                        sol.FirmaTipo = string.Empty;
+                        sol.FirmaPreviewPng = null;
+                    }
+                    else if (requesterSignature is not null)
+                    {
+                        sol.FirmaBytes = requesterSignature.RawBytes;
+                        sol.FirmaNombre = requesterSignature.FileName;
+                        sol.FirmaTipo = requesterSignature.FileType;
+                        sol.FirmaPreviewPng = requesterSignature.PreviewPngBytes;
+                    }
+
+                    requesters.Update(sol);
+                }
+            }
         }
 
         if (groupChanged && groups is not null)
@@ -261,7 +315,9 @@ public sealed class UserManagementService(
                 $"Contraseña de '{user.AliasUsuario}' (ID {existing.CodigoId}) actualizada por administrador.");
         }
 
-        syncHub?.Publish(DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit, "MODIFICAR_USUARIO");
+        DataChangeKind changeKind = DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Audit;
+        if (catalogTouched) changeKind |= DataChangeKind.Catalogs;
+        syncHub?.Publish(changeKind, "MODIFICAR_USUARIO");
     }
 
     public void ChangeUserPassword(

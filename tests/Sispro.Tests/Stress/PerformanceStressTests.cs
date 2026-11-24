@@ -13,7 +13,7 @@ public sealed class PerformanceStressTests
         using TempTestDatabase temp = new(copyMigratedRealDb: true);
         UserSession admin = temp.Context.AuthService.Login("L Reyes", "wanderes").Session!;
 
-        // 1. Query latency benchmark across all 7,284 OTs / 7,803 details + 43,989 Mant_OT analytics
+        // 1. Query latency benchmark across all 7,284 OTs / 7,803 details + External Analytics
         Stopwatch sw = Stopwatch.StartNew();
         IReadOnlyList<WorkOrderSearchRow> allRows = temp.Context.WorkOrderService.Search(admin, new WorkOrderSearchFilter());
         sw.Stop();
@@ -21,16 +21,10 @@ public sealed class PerformanceStressTests
         Assert.True(sw.ElapsedMilliseconds < 2500, $"Consulta completa tomó {sw.ElapsedMilliseconds}ms (umbral 2500ms).");
 
         Stopwatch analyticsSw = Stopwatch.StartNew();
-        DashboardAnalytics analytics = temp.Context.MaintenanceService.GetDashboardAnalytics();
+        DashboardAnalytics analytics = temp.Context.WorkOrderService.GetDashboardAnalytics();
         analyticsSw.Stop();
         Assert.Equal(7284, analytics.Metrics.TotalOrdenesTrabajo);
         Assert.True(analyticsSw.ElapsedMilliseconds < 1500, $"Analítica Dashboard tomó {analyticsSw.ElapsedMilliseconds}ms.");
-
-        Stopwatch mantSw = Stopwatch.StartNew();
-        IReadOnlyList<MantWorkOrderRow> mantRows = temp.Context.MaintenanceService.SearchInternalWorkOrders(admin, new MantWorkOrderFilter { TextoBusqueda = "MOTOR", MaxRows = 200 });
-        mantSw.Stop();
-        Assert.NotEmpty(mantRows);
-        Assert.True(mantSw.ElapsedMilliseconds < 1500, $"Búsqueda en 43.989 Mant_OT tomó {mantSw.ElapsedMilliseconds}ms.");
 
         // 2. Concurrent read stress (16 parallel threads)
         Task[] tasks = Enumerable.Range(0, 16).Select(i => Task.Run(() =>

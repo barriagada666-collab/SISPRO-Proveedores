@@ -87,6 +87,20 @@ public sealed class UsersForm : UserControl
     private readonly CheckBox _chkSolicitante;
     private readonly CheckBox _chkForzarCambioClave;
     private readonly Button _btnPermisos;
+    private readonly Button _btnUserAttachSig;
+    private readonly Button _btnUserClearSig;
+    private readonly Label _lblUserSigInfo;
+    private readonly PictureBox _picUserSig;
+    private readonly Label _lblApproversBanner;
+
+    private Dictionary<string, Requester> _requestersByAlias = new(StringComparer.OrdinalIgnoreCase);
+    private ProcessedSignature? _pendingUserSignature;
+    private bool _clearUserSignature;
+
+    internal TabControl MainTabs { get; }
+    private readonly TabPage _tabUsers;
+    private readonly TabPage _tabRequesters;
+    internal RequesterManagerControl RequesterManager { get; }
 
     // Area 1: Groups panel
     internal ListBox ListGroups { get; }
@@ -242,7 +256,35 @@ public sealed class UsersForm : UserControl
             AutoSize = true,
             Font = CambiasoTheme.SmallFont,
             ForeColor = CambiasoTheme.TextPrimary,
-            Margin = new Padding(0, 3, 10, 0)
+            Margin = new Padding(0, 4, 8, 0)
+        };
+        _chkSolicitante.CheckedChanged += (_, _) => UpdateUserSignatureControls();
+
+        _btnUserAttachSig = CambiasoTheme.CreateButton("Firma (PNG/JPG/PDF)", AppIcon.FileText, ButtonTone.Accent, _toolTip, "Adjuntar firma digital del usuario solicitante (PNG, JPG o PDF)", width: 174, height: 24);
+        _btnUserAttachSig.Font = CambiasoTheme.SmallFont;
+        _btnUserAttachSig.Margin = new Padding(0, 1, 6, 0);
+        _btnUserAttachSig.Click += (_, _) => BrowseUserSignatureFile();
+
+        _btnUserClearSig = CambiasoTheme.CreateButton("Quitar Firma", AppIcon.Remove, ButtonTone.Secondary, _toolTip, "Quitar firma digital del solicitante", width: 124, height: 24);
+        _btnUserClearSig.Font = CambiasoTheme.SmallFont;
+        _btnUserClearSig.Margin = new Padding(0, 1, 8, 0);
+        _btnUserClearSig.Click += (_, _) => ClearUserEditorSignature();
+
+        _picUserSig = new PictureBox
+        {
+            Size = new Size(72, 24),
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle,
+            Margin = new Padding(0, 1, 6, 0)
+        };
+        _lblUserSigInfo = new Label
+        {
+            AutoSize = true,
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = CambiasoTheme.TextMuted,
+            Text = "Sin firma digital",
+            Margin = new Padding(0, 4, 6, 0)
         };
 
         _chkForzarCambioClave = new CheckBox
@@ -258,6 +300,38 @@ public sealed class UsersForm : UserControl
         _btnPermisos = CambiasoTheme.CreateButton("Permisos", AppIcon.Template, ButtonTone.Secondary, _toolTip, "Ver o personalizar permisos RBAC", width: 102, height: 24);
         _btnPermisos.Margin = new Padding(2, 0, 0, 0);
         _btnPermisos.Click += (_, _) => OpenPermissionsDialog();
+
+        _lblApproversBanner = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 28,
+            BackColor = CambiasoTheme.PrimaryDark,
+            ForeColor = Color.White,
+            Font = CambiasoTheme.SmallFont,
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true,
+            Padding = new Padding(10, 0, 10, 0),
+            Text = "Aprobadores vigentes: cargando..."
+        };
+
+        MainTabs = new TabControl
+        {
+            Dock = DockStyle.Fill,
+            Font = CambiasoTheme.LabelFont,
+            Padding = new Point(14, 6)
+        };
+        _tabUsers = new TabPage("Usuarios, Aprobadores VB y Grupos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+        _tabRequesters = new TabPage("Solicitados Por y Firmas Digitales") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+        RequesterManager = new RequesterManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
+        RequesterManager.RequestersChanged += (_, _) =>
+        {
+            LoadUsersGrid(_selectedUser?.IdUsuario);
+            if (_selectedUser is not null && _mode == EditorMode.View)
+            {
+                PopulateUserSignatureFromCatalog(_selectedUser);
+            }
+        };
+        _tabRequesters.Controls.Add(RequesterManager);
 
         // --- AREA 1: GROUPS PANEL ---
         ListGroups = new ListBox
@@ -391,7 +465,7 @@ public sealed class UsersForm : UserControl
         _txtBuscar = new TextBox
         {
             Name = "txtBuscarUsuarios",
-            Width = 104,
+            Width = 86,
             PlaceholderText = "Buscar..."
         };
         _txtBuscar.KeyDown += (_, e) =>
@@ -407,7 +481,7 @@ public sealed class UsersForm : UserControl
         {
             Name = "cmbFiltroPerfil",
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 88
+            Width = 78
         };
         _cmbFiltroPerfil.Items.Add("Todos");
         foreach (UserRoleLevel lvl in Enum.GetValues<UserRoleLevel>())
@@ -421,7 +495,7 @@ public sealed class UsersForm : UserControl
         {
             Name = "cmbFiltroEstado",
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 74
+            Width = 66
         };
         _cmbFiltroEstado.Items.AddRange(["Todos", "Activo", "Inactivo"]);
         _cmbFiltroEstado.SelectedIndex = 0;
@@ -504,6 +578,31 @@ public sealed class UsersForm : UserControl
     {
         string? preserveId = _selectedUser?.IdUsuario;
         ReloadGroupsAndUsers(preserveId);
+        RequesterManager.ReloadRequesters();
+    }
+
+    public void ShowRequestersTab()
+    {
+        MainTabs.SelectedTab = _tabRequesters;
+        RequesterManager.ReloadRequesters();
+    }
+
+    internal void AttachSignatureToUserEditor(string filePath)
+    {
+        ProcessedSignature sig = SignatureFileService.ProcessFile(filePath);
+        _pendingUserSignature = sig;
+        _clearUserSignature = false;
+        _chkSolicitante.Checked = true;
+        UpdateUserSignatureControls();
+    }
+
+    internal void AttachSignatureBytesToUserEditor(string fileName, byte[] rawBytes)
+    {
+        ProcessedSignature sig = SignatureFileService.ProcessBytes(fileName, rawBytes);
+        _pendingUserSignature = sig;
+        _clearUserSignature = false;
+        _chkSolicitante.Checked = true;
+        UpdateUserSignatureControls();
     }
 
     private void SubscribeSyncEvents()
@@ -519,7 +618,7 @@ public sealed class UsersForm : UserControl
 
     private void OnSyncDataChanged(object? sender, DataChangedEventArgs e)
     {
-        if (IsDisposed || (e.Kind & (DataChangeKind.Users | DataChangeKind.Groups)) == 0)
+        if (IsDisposed || (e.Kind & (DataChangeKind.Users | DataChangeKind.Groups | DataChangeKind.Catalogs)) == 0)
         {
             return;
         }
@@ -564,27 +663,31 @@ public sealed class UsersForm : UserControl
             ReadOnly = false
         };
 
-        DataGridViewTextBoxColumn MakeCol(string name, string header, float weight) => new()
+        DataGridViewTextBoxColumn MakeCol(string name, string header, float weight, int minW = 36) => new()
         {
             Name = name,
             HeaderText = header,
             FillWeight = weight,
+            MinimumWidth = minW,
             ReadOnly = true
         };
 
         GridUsers.Columns.AddRange(
         [
             colSel,
-            MakeCol("colId", "ID", 5),
-            MakeCol("colUsuario", "Usuario", 10),
-            MakeCol("colNombre", "Nombre", 16),
-            MakeCol("colCorreo", "Correo", 16),
-            MakeCol("colTelefono", "Teléfono", 9),
-            MakeCol("colPerfil", "Perfil", 9),
-            MakeCol("colGrupo", "Grupo", 11),
-            MakeCol("colEstado", "Estado", 8),
-            MakeCol("colCreacion", "Creación", 10),
-            MakeCol("colUltimoAcceso", "Últ. Acceso", 10)
+            MakeCol("colId", "ID", 5, 36),
+            MakeCol("colUsuario", "Usuario", 9, 64),
+            MakeCol("colNombre", "Nombre", 14, 90),
+            MakeCol("colCorreo", "Correo", 13, 84),
+            MakeCol("colTelefono", "Teléfono", 8, 60),
+            MakeCol("colPerfil", "Perfil", 8, 64),
+            MakeCol("colGrupo", "Grupo", 9, 68),
+            MakeCol("colVbs", "VBS", 6, 44),
+            MakeCol("colVbj", "VBJ", 6, 44),
+            MakeCol("colSolicitante", "Solicitante / Firma", 11, 86),
+            MakeCol("colEstado", "Estado", 7, 54),
+            MakeCol("colCreacion", "Creación", 8, 72),
+            MakeCol("colUltimoAcceso", "Últ. Acceso", 8, 72)
         ]);
     }
 
@@ -659,12 +762,12 @@ public sealed class UsersForm : UserControl
             RowCount = 3,
             Padding = new Padding(4, 0, 0, 0)
         };
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 258));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 282));
         rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         // 1. Editor DATOS DEL USUARIO
-        GroupBox grpDatos = CambiasoTheme.CreateGroupBox("DATOS DEL USUARIO");
+        GroupBox grpDatos = CambiasoTheme.CreateGroupBox("DATOS DEL USUARIO Y SOLICITANTE");
         grpDatos.Dock = DockStyle.Fill;
 
         TableLayoutPanel topContainer = new()
@@ -681,7 +784,7 @@ public sealed class UsersForm : UserControl
         {
             Dock = DockStyle.Fill,
             ColumnCount = 6,
-            RowCount = 5,
+            RowCount = 6,
             Padding = new Padding(2, 4, 2, 0)
         };
         fieldsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
@@ -693,9 +796,10 @@ public sealed class UsersForm : UserControl
 
         for (int r = 0; r < 4; r++)
         {
-            fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 31));
         }
-        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
 
         // Row 0: ID | Usuario | Perfil
         fieldsGrid.Controls.Add(FieldLabel("ID:"), 0, 0);
@@ -731,10 +835,16 @@ public sealed class UsersForm : UserControl
         fieldsGrid.Controls.Add(passOpts, 4, 3);
         fieldsGrid.SetColumnSpan(passOpts, 2);
 
-        // Row 4: Flags + Timestamps
+        // Row 4: Solicitante OT + Firma digital PNG/JPG/PDF
+        FlowLayoutPanel sigRow = new() { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
+        sigRow.Controls.AddRange([_chkSolicitante, _btnUserAttachSig, _btnUserClearSig, _picUserSig, _lblUserSigInfo]);
+        fieldsGrid.Controls.Add(sigRow, 0, 4);
+        fieldsGrid.SetColumnSpan(sigRow, 6);
+
+        // Row 5: Forzar clave + Timestamps
         FlowLayoutPanel metaRow = new() { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
-        metaRow.Controls.AddRange([_chkSolicitante, _chkForzarCambioClave, _lblTimestamps]);
-        fieldsGrid.Controls.Add(metaRow, 0, 4);
+        metaRow.Controls.AddRange([_chkForzarCambioClave, _lblTimestamps]);
+        fieldsGrid.Controls.Add(metaRow, 0, 5);
         fieldsGrid.SetColumnSpan(metaRow, 6);
 
         FlowLayoutPanel editorButtons = new()
@@ -825,7 +935,10 @@ public sealed class UsersForm : UserControl
 
         outer.Controls.Add(grpAreas1, 0, 0);
         outer.Controls.Add(rightPanel, 1, 0);
-        Controls.Add(outer);
+        _tabUsers.Controls.Add(outer);
+        _tabUsers.Controls.Add(_lblApproversBanner);
+        MainTabs.TabPages.AddRange([_tabUsers, _tabRequesters]);
+        Controls.Add(MainTabs);
     }
 
     private void ReloadGroupsAndUsers(string? preserveUserId = null)
@@ -1481,6 +1594,7 @@ public sealed class UsersForm : UserControl
         _chkSolicitante.Enabled = editable;
         _chkForzarCambioClave.Enabled = isCreate;
         _btnPermisos.Enabled = isCreate || hasSelection;
+        UpdateUserSignatureControls();
 
         BtnNuevo.Enabled = mode == EditorMode.View;
         BtnGuardar.Enabled = mode == EditorMode.Create;
@@ -1535,9 +1649,12 @@ public sealed class UsersForm : UserControl
 
         _chkSolicitante.Checked = false;
         _chkForzarCambioClave.Checked = true;
+        _pendingUserSignature = null;
+        _clearUserSignature = false;
         _workingPermissions = PermissionPresets.CreateForRole(UserRoleLevel.Usuario);
 
         ApplyMode(EditorMode.Create);
+        UpdateUserSignatureControls();
         _txtUsuario.Focus();
     }
 
@@ -1566,10 +1683,13 @@ public sealed class UsersForm : UserControl
         try
         {
             User user = BuildUserFromEditor(existingId: null);
-            int assignedId = _ctx.UserManagementService.CreateUser(_session, user, _txtPassword.Text, _txtConfirmPassword.Text);
+            int assignedId = _ctx.UserManagementService.CreateUser(_session, user, _txtPassword.Text, _txtConfirmPassword.Text, _pendingUserSignature);
+            _pendingUserSignature = null;
+            _clearUserSignature = false;
             CambiasoTheme.ShowInfo(this, $"Usuario '{user.AliasUsuario}' (ID {assignedId}) creado correctamente.");
             ApplyMode(EditorMode.View);
             ReloadGroupsAndUsers(user.IdUsuario);
+            RequesterManager.ReloadRequesters();
         }
         catch (Exception ex)
         {
@@ -1587,10 +1707,18 @@ public sealed class UsersForm : UserControl
         try
         {
             User user = BuildUserFromEditor(existingId: _selectedUser.IdUsuario);
-            _ctx.UserManagementService.UpdateUser(_session, user, expectedRowVersion: _selectedUser.RowVersion);
+            _ctx.UserManagementService.UpdateUser(
+                _session,
+                user,
+                expectedRowVersion: _selectedUser.RowVersion,
+                requesterSignature: _pendingUserSignature,
+                clearRequesterSignature: _clearUserSignature);
+            _pendingUserSignature = null;
+            _clearUserSignature = false;
             CambiasoTheme.ShowInfo(this, $"Usuario '{user.AliasUsuario}' actualizado correctamente.");
             ApplyMode(EditorMode.View);
             ReloadGroupsAndUsers(user.IdUsuario);
+            RequesterManager.ReloadRequesters();
         }
         catch (ConcurrencyConflictException cx)
         {
@@ -1602,6 +1730,76 @@ public sealed class UsersForm : UserControl
         {
             CambiasoTheme.ShowWarning(this, ex.Message);
         }
+    }
+
+    private void BrowseUserSignatureFile()
+    {
+        using OpenFileDialog dlg = new()
+        {
+            Title = "Adjuntar Firma Digital del Solicitante",
+            Filter = "Firmas (PNG, JPG, PDF)|*.png;*.jpg;*.jpeg;*.pdf|PNG (*.png)|*.png|JPG (*.jpg;*.jpeg)|*.jpg;*.jpeg|PDF (*.pdf)|*.pdf",
+            CheckFileExists = true
+        };
+
+        if (dlg.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            AttachSignatureToUserEditor(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message, "SISPRO — Firma Digital");
+        }
+    }
+
+    private void ClearUserEditorSignature()
+    {
+        _pendingUserSignature = null;
+        _clearUserSignature = true;
+        UpdateUserSignatureControls();
+    }
+
+    private void UpdateUserSignatureControls()
+    {
+        bool editable = _mode is EditorMode.Create or EditorMode.Edit;
+        Requester? catalogReq = _selectedUser is not null &&
+                                _requestersByAlias.TryGetValue(_selectedUser.AliasUsuario, out Requester? found)
+            ? found
+            : null;
+
+        byte[]? previewBytes = _pendingUserSignature?.PreviewPngBytes ??
+                               (!_clearUserSignature ? catalogReq?.FirmaPreviewPng : null);
+        string sigLabel = _pendingUserSignature is not null
+            ? $"{_pendingUserSignature.FileName} ({_pendingUserSignature.FileType})"
+            : (!_clearUserSignature && catalogReq is { TieneFirma: true }
+                ? $"{catalogReq.FirmaNombre} ({catalogReq.FirmaBadge})"
+                : "Sin firma digital");
+
+        bool hasSig = previewBytes is { Length: > 0 } ||
+                      _pendingUserSignature is not null ||
+                      (!_clearUserSignature && catalogReq is { TieneFirma: true });
+
+        _btnUserAttachSig.Enabled = editable && _chkSolicitante.Checked;
+        _btnUserClearSig.Enabled = editable && _chkSolicitante.Checked && hasSig;
+        _lblUserSigInfo.Text = _chkSolicitante.Checked ? sigLabel : "Marque Solicitante OT para adjuntar firma";
+        _lblUserSigInfo.ForeColor = hasSig && _chkSolicitante.Checked ? CambiasoTheme.Success : CambiasoTheme.TextMuted;
+
+        Image? old = _picUserSig.Image;
+        _picUserSig.Image = previewBytes is { Length: > 0 } && _chkSolicitante.Checked
+            ? SignatureFileService.CreateBitmapFromBytes(previewBytes)
+            : null;
+        old?.Dispose();
+    }
+
+    private void PopulateUserSignatureFromCatalog(User u)
+    {
+        _pendingUserSignature = null;
+        _clearUserSignature = false;
+        UpdateUserSignatureControls();
     }
 
     private void OpenResetPasswordDialog()
@@ -1692,6 +1890,9 @@ public sealed class UsersForm : UserControl
         _lblTimestamps.Text = "Creación: —   |   Modificación: —   |   Último acceso: —";
         _chkSolicitante.Checked = false;
         _chkForzarCambioClave.Checked = false;
+        _pendingUserSignature = null;
+        _clearUserSignature = false;
+        UpdateUserSignatureControls();
     }
 
     private void OnProfileChanged()
@@ -1765,14 +1966,12 @@ public sealed class UsersForm : UserControl
             VistoBuenoJefatura = u.Permisos.VistoBuenoJefatura,
             BusquedaOt = u.Permisos.BusquedaOt,
             ImpresionOt = u.Permisos.ImpresionOt,
-            MenuFacturas = u.Permisos.MenuFacturas,
-            IngresoFacturas = u.Permisos.IngresoFacturas,
-            BusquedaFacturas = u.Permisos.BusquedaFacturas,
             MenuMantenedor = u.Permisos.MenuMantenedor,
             MenuUsuarios = u.Permisos.MenuUsuarios,
             IngresoUsuarios = u.Permisos.IngresoUsuarios,
             ListadoUsuarios = u.Permisos.ListadoUsuarios
         };
+        PopulateUserSignatureFromCatalog(u);
     }
 
     private void SelectGroupInCombo(int? idGrupo)
@@ -1819,6 +2018,19 @@ public sealed class UsersForm : UserControl
         try
         {
             _users = _ctx.UserManagementService.Search(_session, BuildSearchFilter());
+            IReadOnlyList<Requester> catalogRequesters = _ctx.MaintainerService.GetRequesters(includeInactive: true);
+            _requestersByAlias = catalogRequesters
+                .GroupBy(r => r.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+            IReadOnlyList<ApproverDirectoryEntry> approvers = _ctx.UserManagementService.GetApprovers(_session);
+            List<string> vbsAlias = approvers.Where(a => a.Vbs).Select(a => a.AliasUsuario).ToList();
+            List<string> vbjAlias = approvers.Where(a => a.Vbj).Select(a => a.AliasUsuario).ToList();
+            string vbsFull = string.Join(", ", approvers.Where(a => a.Vbs).Select(a => $"{a.AliasUsuario} ({a.NombreCompleto})"));
+            string vbjFull = string.Join(", ", approvers.Where(a => a.Vbj).Select(a => $"{a.AliasUsuario} ({a.NombreCompleto})"));
+            _lblApproversBanner.Text =
+                $"APROBADORES OT VIGENTES  —  VB Supervisor: {(vbsAlias.Count == 0 ? "Sin asignar" : string.Join(", ", vbsAlias))}    |    VB Jefatura: {(vbjAlias.Count == 0 ? "Sin asignar" : string.Join(", ", vbjAlias))}";
+            _toolTip.SetToolTip(_lblApproversBanner, $"VB Supervisor: {vbsFull}\nVB Jefatura: {vbjFull}");
 
             // Retener únicamente checkmarks que siguen en los resultados visibles
             HashSet<string> visibleIds = _users.Select(u => u.IdUsuario).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1828,6 +2040,19 @@ public sealed class UsersForm : UserControl
             foreach (User u in _users)
             {
                 bool isChecked = _checkedUserIds.Contains(u.IdUsuario);
+                string solDisplay = "No";
+                if (u.EsSolicitante)
+                {
+                    if (_requestersByAlias.TryGetValue(u.AliasUsuario.Trim(), out Requester? req) && req.TieneFirma)
+                    {
+                        solDisplay = $"✓ {req.FirmaBadge}";
+                    }
+                    else
+                    {
+                        solDisplay = "✓ Sin firma";
+                    }
+                }
+
                 int rIdx = GridUsers.Rows.Add(
                     isChecked,
                     u.CodigoId,
@@ -1837,6 +2062,9 @@ public sealed class UsersForm : UserControl
                     u.FonoUsuario,
                     u.Nivel.ToString(),
                     string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo,
+                    u.Permisos.VistoBuenoSupervisor ? "✓" : "—",
+                    u.Permisos.VistoBuenoJefatura ? "✓" : "—",
+                    solDisplay,
                     u.Activo ? "Activo" : "Inactivo",
                     u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
                     u.UltimoAcceso.HasValue ? u.UltimoAcceso.Value.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture) : "Sin accesos");
@@ -1970,18 +2198,35 @@ public sealed class UsersForm : UserControl
             return;
         }
 
-        if (e.ColumnIndex == 8) // Estado
+        string colName = GridUsers.Columns[e.ColumnIndex].Name;
+        if (colName == "colEstado")
         {
             e.CellStyle.Font = CambiasoTheme.LabelFont;
             e.CellStyle.ForeColor = u.Activo ? CambiasoTheme.Success : CambiasoTheme.Danger;
         }
-        else if (e.ColumnIndex == 7) // Grupo
+        else if (colName == "colGrupo")
         {
             e.CellStyle.ForeColor = string.IsNullOrWhiteSpace(u.NombreGrupo) ? CambiasoTheme.TextMuted : CambiasoTheme.Primary;
             if (!string.IsNullOrWhiteSpace(u.NombreGrupo))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
             }
+        }
+        else if (colName == "colVbs")
+        {
+            e.CellStyle.Font = CambiasoTheme.LabelFont;
+            e.CellStyle.ForeColor = u.Permisos.VistoBuenoSupervisor ? CambiasoTheme.Success : CambiasoTheme.TextMuted;
+        }
+        else if (colName == "colVbj")
+        {
+            e.CellStyle.Font = CambiasoTheme.LabelFont;
+            e.CellStyle.ForeColor = u.Permisos.VistoBuenoJefatura ? CambiasoTheme.Primary : CambiasoTheme.TextMuted;
+        }
+        else if (colName == "colSolicitante")
+        {
+            bool hasSig = _requestersByAlias.TryGetValue(u.AliasUsuario.Trim(), out Requester? req) && req.TieneFirma;
+            e.CellStyle.Font = u.EsSolicitante ? CambiasoTheme.LabelFont : CambiasoTheme.BodyFont;
+            e.CellStyle.ForeColor = !u.EsSolicitante ? CambiasoTheme.TextMuted : (hasSig ? CambiasoTheme.Success : CambiasoTheme.Accent);
         }
         else if (!u.Activo && e.ColumnIndex > 0)
         {
@@ -2081,6 +2326,8 @@ public sealed class UsersForm : UserControl
                 _syncSubscribed = false;
             }
 
+            _picUserSig.Image?.Dispose();
+            _picUserSig.Image = null;
             _toolTip.Dispose();
         }
 
