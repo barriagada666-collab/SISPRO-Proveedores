@@ -35,6 +35,7 @@ public sealed class UserSearchFilter
 {
     public string? TextoBusqueda { get; set; }
     public UserRoleLevel? Perfil { get; set; }
+    public int? IdNivelPerfil { get; set; }
     public int? IdGrupo { get; set; }
     public bool SoloSinGrupo { get; set; }
     public bool? Activo { get; set; }
@@ -317,3 +318,14 @@ public sealed record PagedResult<T>(
     int TotalCount,
     int PageIndex,
     int PageSize);
+
+public sealed record SignaturePersonOption(
+    string Nombre,
+    string Etiqueta,
+    string Origen,
+    string Cargo = "",
+    byte[]? FirmaPreviewPng = null,
+    int? IdSol = null)
+{
+    public override string ToString() => Etiqueta;
+}

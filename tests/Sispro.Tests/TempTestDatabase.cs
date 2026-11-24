@@ -58,13 +58,19 @@ internal sealed class TempTestDatabase : IDisposable
         Exception? captured = null;
         Thread thread = new(() =>
         {
+            ThreadExceptionEventHandler threadHandler = (_, args) => captured ??= args.Exception;
+            Application.ThreadException += threadHandler;
             try
             {
                 action();
             }
             catch (Exception ex)
             {
-                captured = ex;
+                captured ??= ex;
+            }
+            finally
+            {
+                Application.ThreadException -= threadHandler;
             }
         });
         thread.SetApartmentState(ApartmentState.STA);

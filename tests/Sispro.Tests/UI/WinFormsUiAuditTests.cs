@@ -125,10 +125,11 @@ public sealed class WinFormsUiAuditTests
             Assert.Equal("Desactivar", directUsers.BtnDesactivar.Text);
             Assert.Equal("Mover", directUsers.BtnMover.Text);
             Assert.Equal("Exportar", directUsers.BtnExportar.Text);
-            Assert.Equal(14, directUsers.GridUsers.Columns.Count);
-            Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "VBS");
-            Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "VBJ");
+            Assert.Equal(12, directUsers.GridUsers.Columns.Count);
+            Assert.DoesNotContain(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText is "VBS" or "VBJ");
             Assert.Contains(directUsers.GridUsers.Columns.Cast<DataGridViewColumn>(), c => c.HeaderText == "Solicitante / Firma");
+            Assert.Equal(3, directUsers.MainTabs.TabPages.Count);
+            Assert.Contains(directUsers.MainTabs.TabPages.Cast<TabPage>(), t => t.Text == "Perfiles de Usuarios");
             Assert.True(directUsers.GridUsers.Rows.Count >= 3);
             Assert.True(directUsers.ListGroups.Items.Count >= 7); // Todos + Sin grupo + 5 grupos base
 
@@ -150,6 +151,7 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(permsDlg, "UserPermissionsDialog");
             List<CheckBox> permBoxes = CollectControls<CheckBox>(permsDlg);
             Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("Factura", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("VB Supervisor", StringComparison.OrdinalIgnoreCase) || cb.Text.Contains("VB Jefatura", StringComparison.OrdinalIgnoreCase));
 
             using AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");

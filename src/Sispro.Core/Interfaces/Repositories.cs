@@ -18,9 +18,22 @@ public interface IUserRepository
     void SetActive(string idUsuario, bool active);
     void SetGroup(string idUsuario, int? idGrupo);
     void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions);
+    void SetProfile(string idUsuario, int idNivel, UserPermissions normalizedPermissions);
     int CountActiveAdmins();
     int CountWithoutGroup();
     IReadOnlyList<ApproverDirectoryEntry> GetApprovers();
+}
+
+public interface IUserProfileRepository
+{
+    IReadOnlyList<UserProfile> GetAll(bool includeInactive = true);
+    UserProfile? GetById(int idNivel);
+    UserProfile? GetByName(string nombre);
+    int Create(UserProfile profile);
+    void Update(UserProfile profile);
+    void SetActive(int idNivel, bool active);
+    void Delete(int idNivel);
+    int CountUsers(int idNivel);
 }
 
 public interface IGroupRepository
@@ -104,7 +117,13 @@ public interface IWorkOrderRepository
     int GetNextWorkOrderNumber();
     int Create(WorkOrder workOrder);
     void Update(WorkOrder workOrder);
-    void UpdateSignatures(int idOt, SignatureOption firmas);
+    void UpdateSignatures(
+        int idOt,
+        SignatureOption firmas,
+        string? firmaJefatura = null,
+        string? firmaTecnico = null,
+        string? firmaSupervisor = null);
+    IReadOnlyList<SignaturePersonOption> GetSignaturePersonnelCatalog();
     void Delete(int idOt);
     int DeleteMany(IReadOnlyCollection<int> idOts);
     IReadOnlyList<WorkOrderSearchRow> Search(WorkOrderSearchFilter filter);

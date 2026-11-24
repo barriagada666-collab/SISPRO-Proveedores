@@ -98,6 +98,7 @@ public sealed class SisproApplicationContext : IDisposable
     public SqliteConnectionFactory ConnectionFactory { get; private set; }
     public SisproSyncHub SyncHub { get; private set; }
     public IUserRepository Users { get; private set; }
+    public IUserProfileRepository UserProfiles { get; private set; }
     public IGroupRepository Groups { get; private set; }
     public IProviderRepository Providers { get; private set; }
     public IRequesterRepository Requesters { get; private set; }
@@ -110,6 +111,7 @@ public sealed class SisproApplicationContext : IDisposable
     public MaintainerService MaintainerService { get; private set; }
     public AssetTreeService AssetTreeService { get; private set; }
     public UserManagementService UserManagementService { get; private set; }
+    public UserProfileService UserProfileService { get; private set; }
     public GroupManagementService GroupManagementService { get; private set; }
     public ExcelExportService ExcelExportService { get; private set; }
     public PdfExportService PdfExportService { get; private set; }
@@ -128,6 +130,7 @@ public sealed class SisproApplicationContext : IDisposable
         SyncHub = new SisproSyncHub(ConnectionFactory);
 
         Users = new UserRepository(ConnectionFactory);
+        UserProfiles = new UserProfileRepository(ConnectionFactory);
         Groups = new GroupRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);
         Requesters = new RequesterRepository(ConnectionFactory);
@@ -139,7 +142,8 @@ public sealed class SisproApplicationContext : IDisposable
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub, WorkOrders, Users);
         AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub, WorkOrders, Providers);
-        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
+        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub, UserProfiles);
+        UserProfileService = new UserProfileService(UserProfiles, Users, Audit, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         ExcelExportService = new ExcelExportService(settings);
         PdfExportService = new PdfExportService(settings);
@@ -159,6 +163,7 @@ public sealed class SisproApplicationContext : IDisposable
         SyncHub.AttachDatabase(ConnectionFactory);
 
         Users = new UserRepository(ConnectionFactory);
+        UserProfiles = new UserProfileRepository(ConnectionFactory);
         Groups = new GroupRepository(ConnectionFactory);
         Providers = new ProviderRepository(ConnectionFactory);
         Requesters = new RequesterRepository(ConnectionFactory);
@@ -170,7 +175,8 @@ public sealed class SisproApplicationContext : IDisposable
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
         MaintainerService = new MaintainerService(Providers, Requesters, AssetTree, Audit, SyncHub, WorkOrders, Users);
         AssetTreeService = new AssetTreeService(AssetTree, Users, Audit, SyncHub, WorkOrders, Providers);
-        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub);
+        UserManagementService = new UserManagementService(Users, Requesters, Audit, Groups, SyncHub, UserProfiles);
+        UserProfileService = new UserProfileService(UserProfiles, Users, Audit, SyncHub);
         GroupManagementService = new GroupManagementService(Groups, Users, Audit, SyncHub);
         ExcelExportService = new ExcelExportService(Settings);
         PdfExportService = new PdfExportService(Settings);

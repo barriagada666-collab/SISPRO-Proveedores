@@ -1,4 +1,4 @@
-# Manual Funcional de Usuario — SISPRO v4.3.0
+# Manual Funcional de Usuario — SISPRO v4.4.0
 
 ## 1. Acceso al Sistema
 
@@ -15,10 +15,10 @@
 ## 2. Panel de Control y Analítica (`Inicio / Analítica`)
 
 Al iniciar sesión se despliega el **Panel de Control** enfocado íntegramente en trabajos externos:
-- **Banner Hero Principal**: encabezado **Trabajos Externos — Crear y Gestionar Órdenes de Trabajo**, resumen en vivo de aprobadores vigentes **VB Supervisor** y **VB Jefatura**, y botón dorado principal **Nueva OT Externa** para iniciar inmediatamente una nueva orden de trabajo.
-- **KPIs Interactivos (5 tarjetas clicables)**: **OTs Externas** (`7.284`), **Proveedores** (`214`), **Activos Reales** (`1.823` activos), **Pendientes VB** (sin VBS o sin VBJ) y **Solicitantes / Firmas** (con firma `PNG`/`JPG`/`PDF`).
+- **Banner Hero Principal**: encabezado **Trabajos Externos — Crear y Gestionar Órdenes de Trabajo**, botón **Actualizar Panel**, **Buscar OTs** y botón dorado principal **Nueva OT Externa** para iniciar inmediatamente una nueva orden de trabajo.
+- **KPIs Interactivos (5 tarjetas clicables)**: **OTs Externas** (`7.284`), **Proveedores** (`214`), **Activos Reales** (`1.823` activos), **OTs Año 2026** y **Solicitantes / Firmas** (con firma `PNG`/`JPG`/`PDF`).
 - **Gráficas en vivo**: **Evolución Anual de OTs**, **Distribución por Planta** (Donut) y **Top 6 Proveedores**.
-- En la tabla inferior se muestran las OTs más recientes con columnas **VBS** y **VBJ** identificando al aprobador (`Sí (<alias>)` o `Pendiente`); haciendo **doble clic** sobre cualquier fila se abre directamente en el módulo de **Trabajos Externos**.
+- En la tabla inferior se muestran las OTs más recientes con columnas **Valor Neto** y **Firmas**; haciendo **doble clic** se edita la orden y con **clic derecho → Visualizar OT (Vista Previa)** se abre el documento oficial al instante.
 
 ---
 
@@ -36,27 +36,23 @@ En el panel izquierdo permanece visible el **Árbol de Activos (10 niveles)** co
   1. Presione **Siguiente N°** (o ingrese el correlativo manual).
   2. Seleccione **Fecha**, **Proveedor** y **Solicitado por** (solo permite registros activos al crear nuevas órdenes).
   3. Seleccione en el árbol izquierdo la planta/sección/equipo destino (mínimo nivel 2).
-  4. Ingrese **Cantidad** y **Descripción del trabajo**, y presione **Agregar Ítem** (puede agregar múltiples ítems; doble clic sobre la grilla permite editarlos).
-  5. Complete opcionalmente **Observación de la OT**, ingrese el **Valor Neto ($)** en formato peso chileno destacado (`$ >= 0`) y seleccione qué **Firmas** irán al pie del documento (**Jefatura**, **Técnico (Sol.)**, **Supervisor**; combinables o vacías, persistidas junto con la OT).
-  6. Presione **Guardar Nueva** (o **Guardar y Exportar**).
+  4. Ingrese **Cantidad** y **Descripción del trabajo**, y presione **Agregar Ítem** (puede agregar múltiples ítems; doble clic sobre la grilla permite editarlos y clic derecho abre **Visualizar OT (Vista Previa)**).
+  5. Complete opcionalmente **Observación de la OT**, ingrese el **Valor Neto ($)** en formato peso chileno destacado (`$ >= 0`) y utilice las casillas + listas desplegables de **Firmas al Pie** (**Jefatura**, **Técnico**, **Supervisor**) para elegir cualquier firmante desde **Personal y Usuarios** (o desmarcar para omitir).
+  6. Presione **Guardar OT**, **Guardar y Exportar** (siempre habilitado tanto en OT nueva como cargada) o **Vista Previa** para revisar el documento antes o después de guardar.
 - **Consultar / Modificar / Eliminar OT existente**:
   1. Ingrese el **N° OT** y presione **Buscar OT** (o tecla `Enter`).
-  2. El árbol se expande automáticamente al activo correspondiente y se restauran **Observación**, **Valor Neto ($)** y las casillas de **Firmas** almacenadas.
-  3. Realice cambios y presione **Modificar**, o elimine con **Eliminar** cuando corresponda.
-- **Visto Bueno (`VB Supervisor` / `VB Jefatura`)**:
-  - Solo visibles/habilitados para usuarios con permiso `tab_0_VBS` o `tab_0_VBJ` respectivamente.
-  - Junto a cada casilla se muestra en tiempo real **quién aprobó y cuándo** (`✓ Aprobado por <Usuario> (<fecha>)`) o los **usuarios autorizados vigentes** cuando está `Pendiente`.
-  - Al marcar/desmarcar la casilla sobre una OT cargada, la aprobación se registra inmediatamente con usuario y fecha en la base y en la bitácora.
+  2. El árbol se expande automáticamente al activo correspondiente y se restauran **Observación**, **Valor Neto ($)**, casillas de **Firmas** y firmantes seleccionados.
+  3. Realice cambios y presione **Modificar**, **Guardar y Exportar**, **Vista Previa** o **Eliminar** cuando corresponda.
 
 ### 3.2 Pestaña Búsqueda de OT (`tab_0_2`) y Exportación Masiva Exclusiva
-- Permite combinar filtros por **Rango de fechas**, **Proveedor**, **Solicitante**, **Palabra clave / N° OT**, **Nodo seleccionado del árbol** y **Solo pendientes de VB**.
+- Permite combinar filtros por **Rango de fechas**, **Proveedor**, **Solicitante**, **Palabra clave / N° OT** y **Nodo seleccionado del árbol**.
 - **Selección individual y masiva por Checkboxes**:
   - Marque cada orden deseada en la columna `Sel.` o use **Seleccionar todos (página visible)**.
   - La selección **se conserva** al ordenar columnas o navegar entre páginas de resultados (`OT seleccionadas: N`).
-  - **Exportar seleccionadas** (habilitado solo con 1+ selección) solicita confirmación indicando la cantidad exacta de OTs a exportar y genera **exclusivamente las órdenes seleccionadas** (sin duplicar ítems por OT, incluyendo número, fecha, proveedor, solicitante, cantidad total, detalle resumido, observaciones, valor neto, estado, firmas seleccionadas y `VBS`/`VBJ`) en **Excel (`.xlsx`)**, **CSV (`.csv`)** o **PDF (`.pdf`)**.
+  - **Exportar seleccionadas** (habilitado solo con 1+ selección) solicita confirmación indicando la cantidad exacta de OTs a exportar y genera **exclusivamente las órdenes seleccionadas** (sin duplicar ítems por OT, incluyendo número, fecha, proveedor, solicitante, cantidad total, detalle resumido, observaciones, valor neto, estado y firmas seleccionadas) en **Excel (`.xlsx`)**, **CSV (`.csv`)** o **PDF (`.pdf`)**.
   - **Limpiar selección** desmarca toda la selección acumulada.
 - Dispone de **ordenamiento por clic en cualquier columna** y **barra de paginación inferior** (`50`, `100`, `200`, `500` registros por página).
-- **Doble clic** o menú de **clic derecho** sobre un resultado abre la OT para edición o impresión.
+- **Doble clic** o menú de **clic derecho** sobre un resultado permite **Visualizar OT (Vista Previa)**, abrir para edición, imprimir o eliminar.
 - **Exportar Lista** exporta el listado completo filtrado actual (`.xlsx`, `.pdf`, `.docx` o `.csv`).
 
 ### 3.3 Pestaña Generar / Imprimir OT (`tab_0_3`)
@@ -104,19 +100,23 @@ Accesible desde **Editor de Árbol** en el menú lateral izquierdo o mediante **
 
 ---
 
-## 6. Módulo Usuarios y Solicitantes (Exclusivo Administrador)
+## 6. Módulo Usuarios, Solicitantes y Perfiles (Exclusivo Administrador)
 
-Disponible únicamente para usuarios con perfil **Administrador** (validado en interfaz y backend) bajo dos pestañas integradas:
+Disponible únicamente para usuarios con perfil **Administrador** (validado en interfaz y backend) bajo tres pestañas integradas:
 
-### 6.1 Pestaña `Usuarios, Aprobadores VB y Grupos`
-- **Franja `APROBADORES OT VIGENTES`**: muestra en tiempo real qué usuarios activos tienen asignado el visto bueno **VB Supervisor** (`tab_0_VBS`) y **VB Jefatura** (`tab_0_VBJ`).
-- **Sección `DATOS DEL USUARIO`**: campos completos (ID automático, Usuario, Nombre, Apellido, Correo, Teléfono, Perfil, Grupo, Estado, Contraseña, Confirmar contraseña, cambio obligatorio de clave, Fecha de creación, Último acceso) + botón **Permisos RBAC**.
-- **Integración directa `Solicitante OT` + Firma Digital**: al marcar `Solicitante OT` durante la creación o edición de un usuario, se habilita el adjunto y vista previa de su firma digital (`PNG`, `JPG` o `PDF`, máx. 10 MB), sincronizándose automáticamente en la tabla `Solicitantes` para quedar seleccionable en el campo *Solicitado por* de las OTs.
-- **Operaciones CRUD, Grupos y Lotes**: `Nuevo`, `Guardar`, `Editar`, `Actualizar`, `Eliminar` (eliminación lógica protegiendo sesión propia y último Administrador activo), `Cambiar Contraseña`, botones masivos (`Activar`, `Desactivar`, `Mover`, `Cambiar Perfil`), filtros, búsqueda, impresión y exportación Excel.
-- **Listado de Usuarios (14 columnas)**: incluye columnas explícitas **VBS**, **VBJ** y **Solicitante / Firma** además de estado (`● Activo` / `● Inactivo`) y grupo.
+### 6.1 Pestaña `Usuarios y Grupos`
+- **Sección `DATOS DEL USUARIO Y SOLICITANTE`**: campos completos (ID automático, Usuario, Nombre, Apellido, Correo, Teléfono, Perfil dinámico, Grupo, Estado, Contraseña, Confirmar contraseña, cambio obligatorio de clave `Cambiar clave 1er acceso`, Fecha de creación, Último acceso) + botón **Permisos**.
+- **Integración directa `Solicitante OT` + Firma Digital**: al marcar `Solicitante OT` durante la creación o edición de un usuario, se habilita el adjunto y vista previa de su firma digital (`PNG`, `JPG` o `PDF`, máx. 10 MB), sincronizándose automáticamente en la tabla `Solicitantes`.
+- **Operaciones CRUD, Grupos y Lotes**: `Nuevo`, `Guardar`, `Editar`, `Actualizar`, `Eliminar` (eliminación lógica protegiendo sesión propia y último Administrador activo), `Cambiar Contraseña`, botones masivos (`Activar`, `Desactivar`, `Mover`, `Cambiar Perfil`), filtros por perfil dinámico y estado, búsqueda, impresión y exportación Excel.
+- **Listado de Usuarios (12 columnas)**: incluye columnas `Solicitante / Firma`, `Perfil`, `Grupo`, `Estado`, `Creación` y `Últ. Acceso`.
 
 ### 6.2 Pestaña `Solicitados Por y Firmas Digitales`
-- Panel dedicado para administrar de forma independiente cualquier registro de **Solicitado Por** (tenga o no usuario del sistema), con carga/reemplazo/eliminación de firma digital en **PNG**, **JPG** o **PDF** (página 1 renderizada a vista previa PNG nítida), filtros rápidos (`Todos`, `Activos`, `Inactivos`, `Con Firma Digital`, `Sin Firma Digital`), menú de clic derecho y exportación multiformato.
+- Panel dedicado para administrar de forma independiente cualquier registro de **Solicitado Por** (tenga o no usuario del sistema), con carga/reemplazo/eliminación de firma digital en **PNG**, **JPG** o **PDF** (página 1 renderizada a vista previa PNG nítida), filtros rápidos, menú de clic derecho y exportación multiformato.
+
+### 6.3 Pestaña `Perfiles de Usuarios`
+- Catálogo dinámico conectado a la tabla `Niveles`: permite al Administrador **crear**, **editar**, **activar/desactivar** y **eliminar** perfiles personalizados (`ID >= 5`) definiendo sus permisos por defecto sobre Trabajos Externos y Mantenedores.
+- Los 4 perfiles base del sistema (`Usuario`, `Supervisor`, `Jefatura`, `Administrador`) permanecen protegidos contra borrado o desactivación, y todo perfil con usuarios asignados bloquea su eliminación hasta reasignarlos.
+- Los cambios en perfiles se sincronizan inmediatamente con los combos de asignación, filtros y cambio masivo de perfil en `Usuarios y Grupos`.
 
 ---
 

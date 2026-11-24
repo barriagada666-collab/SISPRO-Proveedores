@@ -100,6 +100,15 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "07_solicitantes_firmas.png"));
 
+            UsersForm? usrCtrl = FindChildControl<UsersForm>(main);
+            if (usrCtrl is not null && usrCtrl.MainTabs.TabPages.Count >= 3)
+            {
+                usrCtrl.MainTabs.SelectedIndex = 2;
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "14_perfiles_usuarios.png"));
+                usrCtrl.MainTabs.SelectedIndex = 0;
+            }
+
             main.ShowTreeEditor();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "09_editor_arbol.png"));

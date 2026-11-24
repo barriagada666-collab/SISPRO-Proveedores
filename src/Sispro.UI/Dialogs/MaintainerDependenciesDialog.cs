@@ -80,7 +80,7 @@ public sealed class MaintainerDependenciesDialog : Form
         Panel summaryPanel = new()
         {
             Dock = DockStyle.Top,
-            Height = 76,
+            Height = 82,
             BackColor = CambiasoTheme.SubtleFill,
             Padding = new Padding(14, 8, 14, 8)
         };
@@ -102,10 +102,33 @@ public sealed class MaintainerDependenciesDialog : Form
         summaryPanel.Controls.Add(_lblSelectionSummary);
 
         // Grilla de OTs asociadas
-        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Órdenes de Trabajo Relacionadas (Conservación de Historial)");
+        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Órdenes de Trabajo Relacionadas (doble clic o clic derecho para visualizar)");
         grpGrid.Dock = DockStyle.Fill;
         _gridRelations = new DataGridView { Name = "gridDependenciasOt", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridRelations);
+        _gridRelations.CellDoubleClick += (_, _) =>
+        {
+            RelatedWorkOrderInfo? rel = GridBindingHelper.GetRowSource<RelatedWorkOrderInfo>(_gridRelations);
+            if (rel is not null)
+            {
+                ExportUiHelper.ShowWorkOrderPreview(this, _ctx, rel.NumeroOt);
+            }
+        };
+        ContextMenuHelper.AttachToGrid(_gridRelations, idx =>
+        {
+            RelatedWorkOrderInfo? rel = GridBindingHelper.GetRowSource<RelatedWorkOrderInfo>(_gridRelations, idx);
+            if (rel is null)
+            {
+                return [];
+            }
+
+            int numOt = rel.NumeroOt;
+            return
+            [
+                ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary,
+                    () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt))
+            ];
+        });
         grpGrid.Controls.Add(_gridRelations);
 
         // Panel inferior de acciones administrativas

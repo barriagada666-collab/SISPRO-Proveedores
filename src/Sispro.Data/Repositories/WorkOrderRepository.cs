@@ -19,7 +19,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                o.id_n6, o.id_n7, o.id_n8, o.id_n9, o.id_n10,
                o.id_nivel, o.ruta_activo,
                COALESCE(s.nombre_sol, ''), COALESCE(s.ape_pat_sol, ''), COALESCE(s.ape_mat_sol, ''),
-               COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), COALESCE(o.firmas_mask, 7)
+               COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), COALESCE(o.firmas_mask, 7),
+               COALESCE(o.firma_jefatura, ''), COALESCE(o.firma_tecnico, ''), COALESCE(o.firma_supervisor, '')
         FROM OrdenesTrabajo o
         INNER JOIN Proveedores p ON p.id_prov = o.id_prov
         LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -117,11 +118,13 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                 INSERT INTO OrdenesTrabajo(
                     n_ot, id_prov, id_sol, fecha_ot, estado,
                     id_n1, id_n2, id_n3, id_n4, id_n5, id_n6, id_n7, id_n8, id_n9, id_n10,
-                    id_nivel, ruta_activo, observacion, valor_neto, firmas_mask
+                    id_nivel, ruta_activo, observacion, valor_neto, firmas_mask,
+                    firma_jefatura, firma_tecnico, firma_supervisor
                 ) VALUES (
                     $not, $prov, $sol, $fecha, $est,
                     $n1, $n2, $n3, $n4, $n5, $n6, $n7, $n8, $n9, $n10,
-                    $niv, $ruta, $obs, $vneto, $fmask
+                    $niv, $ruta, $obs, $vneto, $fmask,
+                    $fjef, $ftec, $fsup
                 );
                 SELECT last_insert_rowid();
                 """;
@@ -149,7 +152,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                     id_n1 = $n1, id_n2 = $n2, id_n3 = $n3, id_n4 = $n4, id_n5 = $n5,
                     id_n6 = $n6, id_n7 = $n7, id_n8 = $n8, id_n9 = $n9, id_n10 = $n10,
                     id_nivel = $niv, ruta_activo = $ruta,
-                    observacion = $obs, valor_neto = $vneto, firmas_mask = $fmask
+                    observacion = $obs, valor_neto = $vneto, firmas_mask = $fmask,
+                    firma_jefatura = $fjef, firma_tecnico = $ftec, firma_supervisor = $fsup
                 WHERE id_ot = $id;
                 """;
             cmd.Parameters.AddWithValue("$id", workOrder.IdOt);
@@ -169,14 +173,168 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         tx.Commit();
     }
 
-    public void UpdateSignatures(int idOt, SignatureOption firmas)
+    public void UpdateSignatures(
+        int idOt,
+        SignatureOption firmas,
+        string? firmaJefatura = null,
+        string? firmaTecnico = null,
+        string? firmaSupervisor = null)
     {
         using SqliteConnection conn = factory.OpenConnection();
         using SqliteCommand cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE OrdenesTrabajo SET firmas_mask = $fmask WHERE id_ot = $id;";
+        cmd.CommandText = """
+            UPDATE OrdenesTrabajo
+            SET firmas_mask = $fmask,
+                firma_jefatura = COALESCE($fjef, firma_jefatura),
+                firma_tecnico = COALESCE($ftec, firma_tecnico),
+                firma_supervisor = COALESCE($fsup, firma_supervisor)
+            WHERE id_ot = $id;
+            """;
         cmd.Parameters.AddWithValue("$id", idOt);
         cmd.Parameters.AddWithValue("$fmask", (int)firmas & 7);
+        cmd.Parameters.AddWithValue("$fjef", firmaJefatura is null ? DBNull.Value : firmaJefatura.Trim());
+        cmd.Parameters.AddWithValue("$ftec", firmaTecnico is null ? DBNull.Value : firmaTecnico.Trim());
+        cmd.Parameters.AddWithValue("$fsup", firmaSupervisor is null ? DBNull.Value : firmaSupervisor.Trim());
         cmd.ExecuteNonQuery();
+    }
+
+    public IReadOnlyList<SignaturePersonOption> GetSignaturePersonnelCatalog()
+    {
+        CultureInfo esCl = new("es-CL");
+        Dictionary<string, SignaturePersonOption> byNormalizedName = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> knownAliases = new(StringComparer.OrdinalIgnoreCase);
+
+        static string NormalizeSpaces(string raw) =>
+            string.Join(" ", raw.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        string FormatDisplayName(string raw)
+        {
+            string collapsed = NormalizeSpaces(raw);
+            if (string.IsNullOrWhiteSpace(collapsed))
+            {
+                return string.Empty;
+            }
+
+            return esCl.TextInfo.ToTitleCase(collapsed.ToLower(esCl));
+        }
+
+        void TryAdd(string rawName, string alias, string origen, string cargo, byte[]? preview, int? idSol)
+        {
+            string cleanName = FormatDisplayName(rawName);
+            if (string.IsNullOrWhiteSpace(cleanName))
+            {
+                cleanName = alias.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(cleanName))
+            {
+                return;
+            }
+
+            string cleanAlias = NormalizeSpaces(alias);
+            if (!string.IsNullOrWhiteSpace(cleanAlias) && !knownAliases.Add(cleanAlias))
+            {
+                // Si el mismo alias ya proviene de Solicitantes/Usuarios, evita duplicar desde Mant_Personal
+                if (origen == "Personal")
+                {
+                    return;
+                }
+            }
+
+            if (byNormalizedName.TryGetValue(cleanName, out SignaturePersonOption? existing))
+            {
+                if (existing.FirmaPreviewPng is null && preview is { Length: > 0 })
+                {
+                    byNormalizedName[cleanName] = existing with { FirmaPreviewPng = preview, IdSol = idSol ?? existing.IdSol };
+                }
+
+                return;
+            }
+
+            string suffix = !string.IsNullOrWhiteSpace(cargo) ? $" ({cargo})" : $" ({origen})";
+            byNormalizedName[cleanName] = new SignaturePersonOption(
+                cleanName,
+                $"{cleanName}{suffix}",
+                origen,
+                cargo,
+                preview,
+                idSol);
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+
+        // 1. Solicitantes activos (prioritarios por posibles firmas digitales PNG/JPG/PDF)
+        using (SqliteCommand solCmd = conn.CreateCommand())
+        {
+            solCmd.CommandText = """
+                SELECT id_sol, alias, nombre_sol, ape_pat_sol, ape_mat_sol, firma_preview_png
+                FROM Solicitantes
+                WHERE activo = 1
+                ORDER BY nombre_sol COLLATE NOCASE, ape_pat_sol COLLATE NOCASE;
+                """;
+            using SqliteDataReader rdr = solCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                int idSol = rdr.GetInt32(0);
+                string alias = rdr.GetString(1);
+                string full = $"{rdr.GetString(2)} {rdr.GetString(3)} {rdr.GetString(4)}";
+                byte[]? sig = rdr.IsDBNull(5) ? null : (byte[])rdr.GetValue(5);
+                TryAdd(full, alias, "Solicitante", sig is { Length: > 0 } ? "Solicitante · Con firma" : "Solicitante", sig, idSol);
+            }
+        }
+
+        // 2. Usuarios activos y su perfil
+        using (SqliteCommand usrCmd = conn.CreateCommand())
+        {
+            usrCmd.CommandText = """
+                SELECT u.alias_usuario, u.nombre_usuario, u.ape_pat_usuario, u.ape_mat_usuario,
+                       COALESCE(n.tipo_nivel, 'Usuario')
+                FROM Usuarios u
+                LEFT JOIN Niveles n ON n.id_nivel = u.id_nivel
+                WHERE u.activo = 1
+                ORDER BY u.nombre_usuario COLLATE NOCASE, u.ape_pat_usuario COLLATE NOCASE;
+                """;
+            using SqliteDataReader rdr = usrCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                string alias = rdr.GetString(0);
+                string full = $"{rdr.GetString(1)} {rdr.GetString(2)} {rdr.GetString(3)}";
+                string perfil = rdr.GetString(4);
+                TryAdd(full, alias, "Usuario", $"Usuario · {perfil}", null, null);
+            }
+        }
+
+        // 3. Personal de Mantención (Mant_Personal si existe en la BD)
+        bool hasPersonalTable = false;
+        using (SqliteCommand chkCmd = conn.CreateCommand())
+        {
+            chkCmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'Mant_Personal';";
+            hasPersonalTable = Convert.ToInt64(chkCmd.ExecuteScalar() ?? 0L) > 0;
+        }
+
+        if (hasPersonalTable)
+        {
+            using SqliteCommand perCmd = conn.CreateCommand();
+            perCmd.CommandText = """
+                SELECT COALESCE(nombres, ''), COALESCE(apellidos, ''),
+                       COALESCE(desc_personal, ''), COALESCE(oficio, '')
+                FROM Mant_Personal
+                WHERE TRIM(COALESCE(nombres, '') || COALESCE(apellidos, '')) <> ''
+                ORDER BY nombres COLLATE NOCASE, apellidos COLLATE NOCASE;
+                """;
+            using SqliteDataReader rdr = perCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                string full = $"{rdr.GetString(0)} {rdr.GetString(1)}";
+                string alias = rdr.GetString(2);
+                string oficio = NormalizeSpaces(rdr.GetString(3));
+                TryAdd(full, alias, "Personal", string.IsNullOrWhiteSpace(oficio) ? "Personal" : $"Personal · {oficio}", null, null);
+            }
+        }
+
+        return byNormalizedName.Values
+            .OrderBy(static x => x.Nombre, StringComparer.Create(esCl, ignoreCase: true))
+            .ToList();
     }
 
     public void Delete(int idOt)
@@ -533,6 +691,9 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         cmd.Parameters.AddWithValue("$obs", o.Observacion.Trim());
         cmd.Parameters.AddWithValue("$vneto", Convert.ToDouble(Math.Max(0m, o.ValorNeto)));
         cmd.Parameters.AddWithValue("$fmask", (int)o.FirmasSeleccionadas & 7);
+        cmd.Parameters.AddWithValue("$fjef", o.FirmaJefaturaNombre.Trim());
+        cmd.Parameters.AddWithValue("$ftec", o.FirmaTecnicoNombre.Trim());
+        cmd.Parameters.AddWithValue("$fsup", o.FirmaSupervisorNombre.Trim());
     }
 
     private static WorkOrder MapOrder(SqliteDataReader rdr) => new()
@@ -572,6 +733,9 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         RutaActivo = rdr.GetString(26),
         Observacion = rdr.IsDBNull(30) ? string.Empty : rdr.GetString(30),
         ValorNeto = rdr.IsDBNull(31) ? 0m : Convert.ToDecimal(rdr.GetDouble(31), CultureInfo.InvariantCulture),
-        FirmasSeleccionadas = rdr.IsDBNull(32) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(32), 0, 7)
+        FirmasSeleccionadas = rdr.IsDBNull(32) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(32), 0, 7),
+        FirmaJefaturaNombre = rdr.IsDBNull(33) ? string.Empty : rdr.GetString(33),
+        FirmaTecnicoNombre = rdr.IsDBNull(34) ? string.Empty : rdr.GetString(34),
+        FirmaSupervisorNombre = rdr.IsDBNull(35) ? string.Empty : rdr.GetString(35)
     };
 }

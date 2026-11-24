@@ -14,8 +14,17 @@ public sealed class BatchConfirmDialog : Form
     private readonly ComboBox? _cmbTargetRole;
     private readonly TextBox _txtMotivo;
 
+    public int SelectedProfileId => _cmbTargetRole?.SelectedItem switch
+    {
+        UserProfile prof => prof.IdNivel,
+        UserRoleLevel lvl => (int)lvl,
+        _ => (int)UserRoleLevel.Usuario
+    };
+
     public UserRoleLevel SelectedRole =>
-        _cmbTargetRole?.SelectedItem is UserRoleLevel lvl ? lvl : UserRoleLevel.Usuario;
+        Enum.IsDefined(typeof(UserRoleLevel), SelectedProfileId)
+            ? (UserRoleLevel)SelectedProfileId
+            : UserRoleLevel.Usuario;
 
     public string Motivo => _txtMotivo.Text.Trim();
 
@@ -26,7 +35,8 @@ public sealed class BatchConfirmDialog : Form
         IReadOnlyList<User> affectedUsers,
         IReadOnlyList<(User User, string Reason)> protectedUsers,
         bool requireRoleSelection = false,
-        bool isDestructive = false)
+        bool isDestructive = false,
+        IReadOnlyList<UserProfile>? availableProfiles = null)
     {
         Text = $"Confirmar {operationTitle} — SISPRO";
         Icon = IconCatalog.GetAppIcon();
@@ -89,11 +99,26 @@ public sealed class BatchConfirmDialog : Form
                 Location = new Point(0, 22),
                 Width = 260
             };
-            foreach (UserRoleLevel lvl in Enum.GetValues<UserRoleLevel>())
+            if (availableProfiles is { Count: > 0 })
             {
-                _cmbTargetRole.Items.Add(lvl);
+                List<UserProfile> activeProfiles = availableProfiles.Where(p => p.Activo).ToList();
+                foreach (UserProfile prof in activeProfiles)
+                {
+                    _cmbTargetRole.Items.Add(prof);
+                }
+
+                int defaultIdx = activeProfiles.FindIndex(p => p.IdNivel == (int)UserRoleLevel.Supervisor);
+                if (defaultIdx >= 0) _cmbTargetRole.SelectedIndex = defaultIdx;
+                else if (_cmbTargetRole.Items.Count > 0) _cmbTargetRole.SelectedIndex = 0;
             }
-            _cmbTargetRole.SelectedItem = UserRoleLevel.Supervisor;
+            else
+            {
+                foreach (UserRoleLevel lvl in Enum.GetValues<UserRoleLevel>())
+                {
+                    _cmbTargetRole.Items.Add(lvl);
+                }
+                _cmbTargetRole.SelectedItem = UserRoleLevel.Supervisor;
+            }
             rolePanel.Controls.AddRange([lblRole, _cmbTargetRole]);
         }
 
@@ -120,7 +145,7 @@ public sealed class BatchConfirmDialog : Form
         foreach (User u in affectedUsers)
         {
             string grp = string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo;
-            lstAffected.Items.Add($"[APLICAR] #{u.CodigoId} {u.AliasUsuario} — {u.NombreCompleto} ({u.Nivel} | {grp})");
+            lstAffected.Items.Add($"[APLICAR] #{u.CodigoId} {u.AliasUsuario} — {u.NombreCompleto} ({u.PerfilDisplay} | {grp})");
         }
         if (affectedUsers.Count == 0)
         {

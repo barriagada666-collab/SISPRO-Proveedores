@@ -74,19 +74,17 @@ public sealed class DocumentExportService(
             new("Proveedor", ExportColumnKind.Text, 1.45),
             new("Solicitante", ExportColumnKind.Text, 1.05),
             new("Cant.", ExportColumnKind.Integer, 0.45, SumInFooter: true),
-            new("Detalle del Trabajo", ExportColumnKind.Text, 1.95),
-            new("Ruta de Activo", ExportColumnKind.Text, 1.35),
-            new("VB Supervisor", ExportColumnKind.Text, 1.25),
-            new("VB Jefatura", ExportColumnKind.Text, 1.25),
-            new("Observaciones", ExportColumnKind.Text, 1.25),
-            new("Valor Neto", ExportColumnKind.Currency, 0.9, SumInFooter: true),
-            new("Estado", ExportColumnKind.Text, 0.72),
-            new("Firmas", ExportColumnKind.Text, 1.15)
+            new("Detalle del Trabajo", ExportColumnKind.Text, 2.25),
+            new("Ruta de Activo", ExportColumnKind.Text, 1.5),
+            new("Observaciones", ExportColumnKind.Text, 1.35),
+            new("Valor Neto", ExportColumnKind.Currency, 0.95, SumInFooter: true),
+            new("Estado", ExportColumnKind.Text, 0.78),
+            new("Firmas", ExportColumnKind.Text, 1.25)
         ],
         Rows = rows.Select(r => new object?[]
         {
             r.NumeroOt, r.Fecha, r.Proveedor, r.Solicitante, r.Cantidad,
-            r.Detalle, r.RutaActivo, r.VbsDisplay, r.VbjDisplay,
+            r.Detalle, r.RutaActivo,
             r.Observacion, r.ValorNeto, r.EstadoDisplay, r.FirmasDisplay
         }).ToList()
     };
@@ -198,7 +196,7 @@ public sealed class DocumentExportService(
             u.NombreCompleto,
             u.MailUsuario,
             u.FonoUsuario,
-            u.Nivel.ToString(),
+            u.PerfilDisplay,
             string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo,
             u.Activo ? "Activo" : "Inactivo",
             u.FechaCreacion,

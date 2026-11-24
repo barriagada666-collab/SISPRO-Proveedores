@@ -25,29 +25,57 @@ internal static class WorkOrderSignatureLayout
 
         if (option.IncludeJefatura())
         {
+            string jefeName = string.IsNullOrWhiteSpace(order.FirmaJefaturaNombre)
+                ? "Juan Ramos Moyano"
+                : order.FirmaJefaturaNombre.Trim();
+            string? fallbackAsset = jefeName.Contains("Juan Ramos", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(assetsDir, "Firmas", "JR.jpg")
+                : null;
             slots.Add(new WorkOrderSignatureSlot(
-                "Juan Ramos Moyano",
+                jefeName,
                 "Jefatura Mantención",
-                Path.Combine(assetsDir, "Firmas", "JR.jpg"),
-                null));
+                order.FirmaJefaturaPreviewPng is { Length: > 0 } ? null : fallbackAsset,
+                order.FirmaJefaturaPreviewPng));
         }
 
         if (option.IncludeTecnico())
         {
+            string tecName = !string.IsNullOrWhiteSpace(order.FirmaTecnicoNombre)
+                ? order.FirmaTecnicoNombre.Trim()
+                : (string.IsNullOrWhiteSpace(order.SolicitanteDisplayNombre) ? "Técnico Solicitante" : order.SolicitanteDisplayNombre);
+            byte[]? tecBytes = order.FirmaTecnicoPreviewPng is { Length: > 0 }
+                ? order.FirmaTecnicoPreviewPng
+                : (string.IsNullOrWhiteSpace(order.FirmaTecnicoNombre) ||
+                   string.Equals(order.FirmaTecnicoNombre.Trim(), order.SolicitanteDisplayNombre, StringComparison.OrdinalIgnoreCase))
+                    ? order.FirmaSolicitantePreviewPng
+                    : null;
+            string? fallbackAsset = tecBytes is { Length: > 0 }
+                ? null
+                : tecName.Contains("Juan Ramos", StringComparison.OrdinalIgnoreCase)
+                    ? Path.Combine(assetsDir, "Firmas", "JR.jpg")
+                    : tecName.Contains("Marcelo Silva", StringComparison.OrdinalIgnoreCase)
+                        ? Path.Combine(assetsDir, "Firmas", "MS.jpg")
+                        : null;
             slots.Add(new WorkOrderSignatureSlot(
-                string.IsNullOrWhiteSpace(order.SolicitanteDisplayNombre) ? "Técnico Solicitante" : order.SolicitanteDisplayNombre,
+                tecName,
                 "Técnico",
-                null,
-                order.FirmaSolicitantePreviewPng));
+                fallbackAsset,
+                tecBytes));
         }
 
         if (option.IncludeSupervisor())
         {
+            string supName = string.IsNullOrWhiteSpace(order.FirmaSupervisorNombre)
+                ? "Marcelo Silva Morgado"
+                : order.FirmaSupervisorNombre.Trim();
+            string? fallbackAsset = supName.Contains("Marcelo Silva", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(assetsDir, "Firmas", "MS.jpg")
+                : null;
             slots.Add(new WorkOrderSignatureSlot(
-                "Marcelo Silva Morgado",
+                supName,
                 "Supervisor Mantención",
-                Path.Combine(assetsDir, "Firmas", "MS.jpg"),
-                null));
+                order.FirmaSupervisorPreviewPng is { Length: > 0 } ? null : fallbackAsset,
+                order.FirmaSupervisorPreviewPng));
         }
 
         return slots;

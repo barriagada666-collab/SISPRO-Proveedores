@@ -75,8 +75,9 @@ public sealed class MultiFormatExportTests
                 Assert.Equal(2002, ws.Cell(6, 1).GetValue<int>()); // First data row (newest)
                 Assert.Equal(2001, ws.Cell(7, 1).GetValue<int>()); // Second data row
                 Assert.True(ws.Cell(8, 5).HasFormula); // SUM formula on Cant. column
-                Assert.Contains("M Silva", ws.Cell(6, 8).GetString());
-                Assert.Contains("J Ramos", ws.Cell(6, 9).GetString());
+                Assert.Equal("Valor Neto", ws.Cell(5, 9).GetString());
+                Assert.DoesNotContain("VB Supervisor", ws.Row(5).Cells(1, 11).Select(c => c.GetString()));
+                Assert.DoesNotContain("VB Jefatura", ws.Row(5).Cells(1, 11).Select(c => c.GetString()));
             }
 
             // 2. Validate PDF (.pdf): real PDF 1.4 header, EOF, text content & pagination
@@ -86,7 +87,8 @@ public sealed class MultiFormatExportTests
             Assert.Contains("%%EOF", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("2002", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("MAESTRANZA", pdfAscii, StringComparison.Ordinal);
-            Assert.Contains("M Silva", pdfAscii, StringComparison.Ordinal);
+            Assert.Contains("Valor Neto", pdfAscii, StringComparison.Ordinal);
+            Assert.DoesNotContain("VB Supervisor", pdfAscii, StringComparison.Ordinal);
             Assert.Contains("de 1", pdfAscii, StringComparison.Ordinal);
 
             // 3. Validate Word (.docx): real OpenXML package with table rows and footer
@@ -96,7 +98,8 @@ public sealed class MultiFormatExportTests
                 string innerText = doc.MainDocumentPart!.Document.InnerText;
                 Assert.Contains("TRABAJO EXTERNAS", innerText, StringComparison.OrdinalIgnoreCase);
                 Assert.Contains("MAESTRANZA", innerText, StringComparison.OrdinalIgnoreCase);
-                Assert.Contains("M Silva", innerText, StringComparison.Ordinal);
+                Assert.Contains("Valor Neto", innerText, StringComparison.Ordinal);
+                Assert.DoesNotContain("VB Supervisor", innerText, StringComparison.Ordinal);
                 Assert.True(innerText.IndexOf("2002", StringComparison.Ordinal) < innerText.IndexOf("2001", StringComparison.Ordinal));
                 Assert.NotEmpty(doc.MainDocumentPart.FooterParts);
             }

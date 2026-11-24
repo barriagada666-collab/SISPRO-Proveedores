@@ -19,10 +19,12 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                p.m1_ot, p.tab_0_1_ingreso_ot, p.tab_0_vbj, p.tab_0_vbs,
                p.tab_0_2_busqueda_ot, p.tab_0_3_impresion_ot,
                p.m3_mantenedor,
-               p.m4_usuarios, p.tab_2_0_ingreso_us, p.tab_2_1_listado_us
+               p.m4_usuarios, p.tab_2_0_ingreso_us, p.tab_2_1_listado_us,
+               COALESCE(n.tipo_nivel, '')
         FROM Usuarios u
         LEFT JOIN Grupos g ON g.id_grupo = u.id_grupo
         LEFT JOIN Permisos p ON p.id_usuario = u.id_usuario
+        LEFT JOIN Niveles n ON n.id_nivel = u.id_nivel
         """;
 
     public User? GetByAlias(string alias)
@@ -85,7 +87,12 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             cmd.Parameters.AddWithValue("$q", $"%{filter.TextoBusqueda.Trim()}%");
         }
 
-        if (filter.Perfil.HasValue)
+        if (filter.IdNivelPerfil.HasValue)
+        {
+            clauses.Add("u.id_nivel = $nivel");
+            cmd.Parameters.AddWithValue("$nivel", filter.IdNivelPerfil.Value);
+        }
+        else if (filter.Perfil.HasValue)
         {
             clauses.Add("u.id_nivel = $nivel");
             cmd.Parameters.AddWithValue("$nivel", (int)filter.Perfil.Value);
@@ -310,7 +317,10 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.ExecuteNonQuery();
     }
 
-    public void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions)
+    public void SetRole(string idUsuario, UserRoleLevel newRole, UserPermissions normalizedPermissions) =>
+        SetProfile(idUsuario, (int)newRole, normalizedPermissions);
+
+    public void SetProfile(string idUsuario, int idNivel, UserPermissions normalizedPermissions)
     {
         normalizedPermissions.IdUsuario = idUsuario;
         normalizedPermissions.NormalizeHierarchy();
@@ -328,7 +338,7 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
                     row_version = row_version + 1
                 WHERE id_usuario = $id;
                 """;
-            cmd.Parameters.AddWithValue("$nivel", (int)newRole);
+            cmd.Parameters.AddWithValue("$nivel", idNivel);
             cmd.Parameters.AddWithValue("$id", idUsuario);
             cmd.ExecuteNonQuery();
         }
@@ -397,7 +407,7 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         cmd.Parameters.AddWithValue("$nom", user.NombreUsuario.Trim());
         cmd.Parameters.AddWithValue("$pat", user.ApePatUsuario.Trim());
         cmd.Parameters.AddWithValue("$mat", user.ApeMatUsuario.Trim());
-        cmd.Parameters.AddWithValue("$nivel", (int)user.Nivel);
+        cmd.Parameters.AddWithValue("$nivel", user.EffectiveIdNivel);
         cmd.Parameters.AddWithValue("$grupo", user.IdGrupo.HasValue ? user.IdGrupo.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("$mail", user.MailUsuario.Trim());
         cmd.Parameters.AddWithValue("$fono", user.FonoUsuario.Trim());
@@ -451,6 +461,11 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
         DateTime fechaModificacion = !rdr.IsDBNull(14) && DateTime.TryParse(rdr.GetString(14), out DateTime fm) ? fm : fechaCreacion;
         DateTime? ultimoAcceso = !rdr.IsDBNull(15) && DateTime.TryParse(rdr.GetString(15), out DateTime ua) ? ua : null;
 
+        int rawLevel = rdr.GetInt32(7);
+        UserRoleLevel mappedRole = Enum.IsDefined(typeof(UserRoleLevel), rawLevel)
+            ? (UserRoleLevel)rawLevel
+            : UserRoleLevel.Usuario;
+
         return new User
         {
             IdUsuario = id,
@@ -460,7 +475,9 @@ public sealed class UserRepository(SqliteConnectionFactory factory) : IUserRepos
             NombreUsuario = rdr.GetString(4),
             ApePatUsuario = rdr.GetString(5),
             ApeMatUsuario = rdr.GetString(6),
-            Nivel = (UserRoleLevel)rdr.GetInt32(7),
+            Nivel = mappedRole,
+            IdNivel = rawLevel,
+            NombrePerfil = rdr.IsDBNull(29) ? mappedRole.ToString() : rdr.GetString(29),
             MailUsuario = rdr.GetString(8),
             FonoUsuario = rdr.GetString(9),
             EsSolicitante = rdr.GetInt32(10) != 0,

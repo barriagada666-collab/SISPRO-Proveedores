@@ -50,7 +50,7 @@ public sealed class MainForm : Form
     private Label? _kpiTotalOts;
     private Label? _kpiProviders;
     private Label? _kpiAssets;
-    private Label? _kpiPendingVb;
+    private Label? _kpiCurrentYearOts;
     private Label? _kpiRequesters;
     private Label? _lblApproversSummary;
     private VerticalBarChartCard? _chartYearlyOts;
@@ -67,7 +67,7 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v4.3 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Text = $"SISPRO v4.4 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -170,7 +170,7 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Top,
             Height = 46,
-            Text = $"{_session.Usuario.NombreCompleto}\nPerfil: {_session.Usuario.Nivel}",
+            Text = $"{_session.Usuario.NombreCompleto}\nPerfil: {_session.Usuario.PerfilDisplay}",
             Font = CambiasoTheme.SmallFont,
             ForeColor = Color.FromArgb(200, 224, 240),
             TextAlign = ContentAlignment.MiddleCenter
@@ -187,7 +187,7 @@ public sealed class MainForm : Form
         NavDashboard = CreateNavButton("Inicio / Analítica", AppIcon.Dashboard, "Resumen operativo, KPIs y gráficas de Órdenes Externas");
         NavDashboard.Click += (_, _) => ShowDashboard();
 
-        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Ingreso, aprobación VB, búsqueda e impresión de Órdenes de Trabajo (M1)");
+        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Ingreso, búsqueda, exportación y vista previa de Órdenes de Trabajo (M1)");
         NavWorkOrders.Enabled = _session.Permisos.MenuOrdenesTrabajo;
         NavWorkOrders.Click += (_, _) => ShowWorkOrders();
 
@@ -199,7 +199,7 @@ public sealed class MainForm : Form
         NavTreeEditor.Enabled = isAdmin;
         NavTreeEditor.Click += (_, _) => ShowTreeEditor();
 
-        NavUsers = CreateNavButton("Usuarios y Solicitantes", AppIcon.Users, "Gestión de usuarios, solicitados por con firma PNG/JPG/PDF, aprobadores VB y grupos (exclusivo Administrador)");
+        NavUsers = CreateNavButton("Usuarios y Perfiles", AppIcon.Users, "Gestión de usuarios, solicitados por con firma PNG/JPG/PDF, grupos y perfiles de usuario (exclusivo Administrador)");
         NavUsers.Enabled = isAdmin;
         NavUsers.Click += (_, _) => ShowUsers();
 
@@ -234,7 +234,7 @@ public sealed class MainForm : Form
 
         // --- STATUS BAR ---
         StatusStrip status = new() { BackColor = CambiasoTheme.CardBackground };
-        _statusUser = new ToolStripStatusLabel($"Usuario: {_session.Usuario.AliasUsuario} ({_session.Usuario.Nivel})") { BorderSides = ToolStripStatusLabelBorderSides.Right };
+        _statusUser = new ToolStripStatusLabel($"Usuario: {_session.Usuario.AliasUsuario} ({_session.Usuario.PerfilDisplay})") { BorderSides = ToolStripStatusLabelBorderSides.Right };
         _statusDb = new ToolStripStatusLabel($"BD: {_ctx.Settings.DatabasePath}") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
         _statusClock = new ToolStripStatusLabel(DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss"));
         status.Items.AddRange([_statusUser, _statusDb, _statusClock]);
@@ -455,7 +455,7 @@ public sealed class MainForm : Form
         };
         _lblApproversSummary = new Label
         {
-            Text = "Cargando aprobadores VB Supervisor y VB Jefatura...",
+            Text = "Cargando indicadores de Órdenes de Trabajo...",
             Font = CambiasoTheme.SmallFont,
             ForeColor = Color.FromArgb(215, 232, 245),
             AutoSize = false,
@@ -487,7 +487,7 @@ public sealed class MainForm : Form
         BtnHeroNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
         BtnHeroNewExternalOt.Click += (_, _) => StartNewExternalOrderFlow();
 
-        Button btnSearchOts = CambiasoTheme.CreateButton("Buscar OTs", AppIcon.Search, ButtonTone.Accent, _toolTip, "Abrir buscador y aprobaciones de OTs externas", width: 132, height: 36);
+        Button btnSearchOts = CambiasoTheme.CreateButton("Buscar OTs", AppIcon.Search, ButtonTone.Accent, _toolTip, "Abrir buscador y exportación masiva de OTs externas", width: 132, height: 36);
         btnSearchOts.Margin = new Padding(8, 6, 4, 2);
         btnSearchOts.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.BusquedaOt;
         btnSearchOts.Click += (_, _) =>
@@ -514,7 +514,7 @@ public sealed class MainForm : Form
         Panel c1 = CambiasoTheme.CreateMetricCard("OTs Externas", out _kpiTotalOts, CambiasoTheme.Primary, AppIcon.WorkOrder, "Histórico trabajos externos");
         Panel c2 = CambiasoTheme.CreateMetricCard("Proveedores", out _kpiProviders, CambiasoTheme.Accent, AppIcon.Provider, "Catálogo activo");
         Panel c3 = CambiasoTheme.CreateMetricCard("Activos Reales", out _kpiAssets, CambiasoTheme.GoldAccent, AppIcon.Factory, "Árbol industrial 10 niveles");
-        Panel c4 = CambiasoTheme.CreateMetricCard("Pendientes VB", out _kpiPendingVb, CambiasoTheme.Warning, AppIcon.ClipboardCheck, "Sin VBS o sin VBJ");
+        Panel c4 = CambiasoTheme.CreateMetricCard($"OTs Año {DateTime.Today.Year}", out _kpiCurrentYearOts, CambiasoTheme.Primary, AppIcon.Calendar, "Órdenes emitidas este año");
         Panel c5 = CambiasoTheme.CreateMetricCard("Solicitantes / Firmas", out _kpiRequesters, CambiasoTheme.Success, AppIcon.Users, "Con firma PNG/JPG/PDF");
         c1.Dock = c2.Dock = c3.Dock = c4.Dock = c5.Dock = DockStyle.Fill;
         c5.Margin = new Padding(0, 0, 0, 8);
@@ -534,7 +534,7 @@ public sealed class MainForm : Form
             if (_session.Permisos.MenuOrdenesTrabajo && _session.Permisos.BusquedaOt)
             {
                 ShowWorkOrders();
-                _workOrdersView?.OpenSearchPendingVb();
+                _workOrdersView?.OpenSearchTab();
             }
         });
         MakeCardClickable(c5, () =>
@@ -568,7 +568,7 @@ public sealed class MainForm : Form
         chartsRow.Controls.Add(_chartTopProviders, 2, 0);
 
         // 4. Recent Work Orders Grid
-        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para abrir · indica aprobador VB)");
+        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para editar · clic derecho para visualizar)");
         grpRecent.Dock = DockStyle.Fill;
         _gridRecentOts = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridRecentOts);
@@ -587,12 +587,7 @@ public sealed class MainForm : Form
             if (e.ColumnIndex == 7)
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = row.TieneVbs ? CambiasoTheme.Success : CambiasoTheme.Warning;
-            }
-            else if (e.ColumnIndex == 8)
-            {
-                e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = row.TieneVbj ? CambiasoTheme.Success : CambiasoTheme.Warning;
+                e.CellStyle.ForeColor = CambiasoTheme.PrimaryDark;
             }
         };
         ContextMenuHelper.AttachToGrid(_gridRecentOts, rowIndex =>
@@ -606,8 +601,9 @@ public sealed class MainForm : Form
             int numOt = row.NumeroOt;
             return
             [
-                ContextMenuHelper.Item("Abrir OT", AppIcon.Edit, CambiasoTheme.Primary, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt),
+                ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.TextMuted, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt),
                 ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Actualizar listado", AppIcon.Refresh, CambiasoTheme.Primary, RefreshDashboard)
             ];
@@ -637,24 +633,21 @@ public sealed class MainForm : Form
     {
         DashboardAnalytics analytics = _ctx.WorkOrderService.GetDashboardAnalytics();
         DashboardMetrics m = analytics.Metrics;
-        IReadOnlyList<ApproverDirectoryEntry> approvers = _ctx.WorkOrderService.GetApproverDirectory();
         int nextOt = _ctx.WorkOrderService.GetNextWorkOrderNumber();
+        double currentYearRaw = analytics.WorkOrdersByYear
+            .FirstOrDefault(y => y.Label == DateTime.Today.Year.ToString())?.Value ?? 0d;
+        int currentYearOts = (int)Math.Round(currentYearRaw);
 
         if (_kpiTotalOts is not null) _kpiTotalOts.Text = m.TotalOrdenesTrabajo.ToString("N0");
         if (_kpiProviders is not null) _kpiProviders.Text = m.TotalProveedoresActivos.ToString("N0");
         if (_kpiAssets is not null) _kpiAssets.Text = m.TotalNodosActivos.ToString("N0");
-        if (_kpiPendingVb is not null) _kpiPendingVb.Text = m.OrdenesSinVistoBueno.ToString("N0");
+        if (_kpiCurrentYearOts is not null) _kpiCurrentYearOts.Text = currentYearOts.ToString("N0");
         if (_kpiRequesters is not null) _kpiRequesters.Text = $"{m.TotalSolicitantesActivos:N0} ({m.TotalSolicitantesConFirma:N0})";
 
         if (_lblApproversSummary is not null)
         {
-            List<string> vbsAll = approvers.Where(a => a.Vbs).Select(a => a.AliasUsuario).ToList();
-            List<string> vbjAll = approvers.Where(a => a.Vbj).Select(a => a.AliasUsuario).ToList();
-            string vbsSummary = vbsAll.Count == 0 ? "Sin asignar" : (vbsAll.Count <= 3 ? string.Join(", ", vbsAll) : $"{string.Join(", ", vbsAll.Take(2))} +{vbsAll.Count - 2}");
-            string vbjSummary = vbjAll.Count == 0 ? "Sin asignar" : (vbjAll.Count <= 3 ? string.Join(", ", vbjAll) : $"{string.Join(", ", vbjAll.Take(2))} +{vbjAll.Count - 2}");
-            _lblApproversSummary.Text = $"Próxima OT: #{nextOt}   |   VB Supervisor: {vbsSummary}   |   VB Jefatura: {vbjSummary}";
-            _toolTip.SetToolTip(_lblApproversSummary,
-                $"VB Supervisor: {string.Join(", ", vbsAll)}\nVB Jefatura: {string.Join(", ", vbjAll)}");
+            _lblApproversSummary.Text = $"Próxima OT: #{nextOt}   ·   Gestión integral de Trabajos Externos, Proveedores y Activos";
+            _toolTip.SetToolTip(_lblApproversSummary, "Panel centralizado de órdenes de trabajo externas y firmas digitales");
         }
 
         _chartYearlyOts?.SetData(analytics.WorkOrdersByYear);
@@ -669,15 +662,15 @@ public sealed class MainForm : Form
 
             if (_gridRecentOts.Columns.Count >= 9)
             {
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 6);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 8, "dd-MM-yyyy");
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, null, 15);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, null, 9);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 7);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 11, "dd-MM-yyyy");
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, "Proveedor", 16);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, "Solicitante", 10);
                 GridBindingHelper.ConfigureColumn(_gridRecentOts, 4, "Cant.", 5);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, null, 21);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, null, 16);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, "VB Sup.", 10);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, "VB Jef.", 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, "Detalle", 21);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, "Activo", 11);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, "Valor Neto", 9, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, "Firmas", 10);
             }
         }
     }
@@ -695,8 +688,8 @@ public sealed class MainForm : Form
         public string Activo => Source.RutaActivo.StartsWith("CAMBIASO HNOS S.A.C. \\ ", StringComparison.OrdinalIgnoreCase)
             ? Source.RutaActivo["CAMBIASO HNOS S.A.C. \\ ".Length..]
             : Source.RutaActivo;
-        public string VBS => Source.VbsDisplay;
-        public string VBJ => Source.VbjDisplay;
+        public decimal ValorNeto => Source.ValorNeto;
+        public string Firmas => Source.FirmasDisplay;
     }
 
     private void HostControl(Control view)

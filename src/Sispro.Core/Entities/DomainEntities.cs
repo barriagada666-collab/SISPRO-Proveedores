@@ -10,8 +10,40 @@ public sealed class User
     public string PassHash { get; set; } = string.Empty;
     public string NombreUsuario { get; set; } = string.Empty;
     public string ApePatUsuario { get; set; } = string.Empty;
+    private UserRoleLevel _nivel = UserRoleLevel.Usuario;
+    private int _idNivel;
+
     public string ApeMatUsuario { get; set; } = string.Empty;
-    public UserRoleLevel Nivel { get; set; } = UserRoleLevel.Usuario;
+
+    public UserRoleLevel Nivel
+    {
+        get => _nivel;
+        set
+        {
+            _nivel = value;
+            if (!(_idNivel > (int)UserRoleLevel.Administrador && value == UserRoleLevel.Usuario))
+            {
+                _idNivel = (int)value;
+            }
+        }
+    }
+
+    public int IdNivel
+    {
+        get => _idNivel > 0 ? _idNivel : (int)_nivel;
+        set
+        {
+            _idNivel = value;
+            if (value > 0)
+            {
+                _nivel = Enum.IsDefined(typeof(UserRoleLevel), value)
+                    ? (UserRoleLevel)value
+                    : UserRoleLevel.Usuario;
+            }
+        }
+    }
+
+    public string NombrePerfil { get; set; } = string.Empty;
     public string MailUsuario { get; set; } = string.Empty;
     public string FonoUsuario { get; set; } = string.Empty;
     public bool EsSolicitante { get; set; }
@@ -24,6 +56,12 @@ public sealed class User
     public string NombreGrupo { get; set; } = string.Empty;
     public int RowVersion { get; set; } = 1;
     public UserPermissions Permisos { get; set; } = new();
+
+    public int EffectiveIdNivel => _idNivel > 0 ? _idNivel : (int)_nivel;
+
+    public string PerfilDisplay => !string.IsNullOrWhiteSpace(NombrePerfil)
+        ? NombrePerfil
+        : Nivel.ToString();
 
     public string Apellidos =>
         string.Join(" ", new[] { ApePatUsuario, ApeMatUsuario }.Where(s => !string.IsNullOrWhiteSpace(s)));
@@ -184,6 +222,12 @@ public sealed class WorkOrder
     public string Observacion { get; set; } = string.Empty;
     public decimal ValorNeto { get; set; }
     public SignatureOption FirmasSeleccionadas { get; set; } = SignatureOption.AmbasConSolicitante;
+    public string FirmaJefaturaNombre { get; set; } = string.Empty;
+    public string FirmaTecnicoNombre { get; set; } = string.Empty;
+    public string FirmaSupervisorNombre { get; set; } = string.Empty;
+    public byte[]? FirmaJefaturaPreviewPng { get; set; }
+    public byte[]? FirmaTecnicoPreviewPng { get; set; }
+    public byte[]? FirmaSupervisorPreviewPng { get; set; }
     public int IdN1 { get; set; } = 1;
     public int IdN2 { get; set; }
     public int IdN3 { get; set; }
@@ -299,4 +343,19 @@ public sealed class GroupMovementEntry
     public string EjecutadoPor { get; set; } = string.Empty;
     public string Motivo { get; set; } = string.Empty;
     public DateTime FechaMovimiento { get; set; } = DateTime.Now;
+}
+
+public sealed class UserProfile
+{
+    public int IdNivel { get; set; }
+    public string Nombre { get; set; } = string.Empty;
+    public string Descripcion { get; set; } = string.Empty;
+    public bool EsSistema { get; set; }
+    public bool Activo { get; set; } = true;
+    public int CantidadUsuarios { get; set; }
+    public UserPermissions PermisosPorDefecto { get; set; } = new();
+
+    public bool EsAdministrador => IdNivel == (int)UserRoleLevel.Administrador;
+
+    public override string ToString() => Nombre;
 }

@@ -1,4 +1,4 @@
-# Guía de Despliegue, Actualización y Respaldo — SISPRO v4.3.0
+# Guía de Despliegue, Actualización y Respaldo — SISPRO v4.4.0
 
 ## 1. Requisitos del Equipo de Producción
 
@@ -12,18 +12,18 @@
 ## 2. Instalación
 
 ### Instalación Interactiva
-1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt` (`C3F54BE3B15BE9D59670EC8C0A6A632346D6D09D8B7C5E128077A104F07F403E` para `v4.3.0`):
+1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt` (`6F04BB17609D17AE6026DCB2FE2493E8673729AE9C49655D5CD8578A9715B1C8` para `v4.4.0`):
    ```powershell
-   Get-FileHash SISPRO_Setup_v4.3.0_win-x64.exe -Algorithm SHA256
+   Get-FileHash SISPRO_Setup_v4.4.0_win-x64.exe -Algorithm SHA256
    ```
-2. Ejecute `SISPRO_Setup_v4.3.0_win-x64.exe`.
+2. Ejecute `SISPRO_Setup_v4.4.0_win-x64.exe`.
 3. **Ruta predeterminada:** `C:\Temp` (editable libremente por el usuario durante la instalación).
 4. Seleccione instalación para el usuario actual (no requiere privilegios de administrador) o para todos los usuarios.
 5. Complete el asistente y opcionalmente cree acceso directo en el escritorio.
 
 ### Instalación Desatendida (Despliegue Corporativo)
 ```powershell
-.\SISPRO_Setup_v4.3.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="C:\Temp"
+.\SISPRO_Setup_v4.4.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="C:\Temp"
 ```
 
 ---

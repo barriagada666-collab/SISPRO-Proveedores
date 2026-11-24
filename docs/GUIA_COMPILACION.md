@@ -1,4 +1,4 @@
-# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.3.0
+# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.4.0
 
 ## 1. Requisitos del Entorno de Desarrollo
 
@@ -32,10 +32,10 @@ dotnet build SISPRO.sln -c Release --no-restore
 
 ## 3. Ejecución de Pruebas Automatizadas
 
-La suite `tests/Sispro.Tests` cubre 6 categorías (**65 casos automatizados**):
+La suite `tests/Sispro.Tests` cubre 6 categorías (**68 casos automatizados**):
 - **Unit**: RUT chileno, PBKDF2 + compatibilidad VB6, jerarquía de permisos RBAC y normalización de tipos de nodos (`AssetNodeTypes`).
-- **Integration**: base SQLite real (`7.284` OTs externas, `1.824` activos, `214` proveedores activos), migración idempotente de esquema legado en `Solicitantes` y `OrdenesTrabajo` (`observacion`, `valor_neto`, `firmas_mask`) sin perder registros, árbol 10 niveles, sincronización/concurrencia y respaldos en caliente.
-- **Functional**: flujo E2E (OT Externa → VBS/VBJ con identidad → Excel → Seguridad/Lockout/SQLi), gestión de `Solicitado Por` con firma `PNG`/`JPG`/`PDF` y renderizado PDF en exportaciones (`RequestersSignaturesAndApproversTests`), exportación masiva exclusiva de OTs seleccionadas (`.xlsx`/`.csv`/`.pdf` sin duplicar ítems), persistencia de Observación/Valor Neto (`>= 0`)/firmas al pie y operaciones masivas + diálogo de dependencias/reasignaciones con RBAC Admin (`BulkOperationsAndExtendedWorkOrderTests`), módulo CRUD `GESTIÓN DE USUARIOS` y `GESTIÓN DE GRUPOS`, administración del Árbol de Activos (`AssetTreeAdministrationTests`) y exportaciones multiformato (`MultiFormatExportTests`).
+- **Integration**: base SQLite real (`7.284` OTs externas, `1.824` activos, `214` proveedores activos), migración idempotente de esquema legado en `Solicitantes`, `Niveles` y `OrdenesTrabajo` (`observacion`, `valor_neto`, `firmas_mask`, `firma_jefatura`, `firma_tecnico`, `firma_supervisor`) sin perder registros, árbol 10 niveles, sincronización/concurrencia y respaldos en caliente.
+- **Functional**: flujo E2E (OT Externa → Excel → Seguridad/Lockout/SQLi), catálogo de firmantes desde Personal/Usuarios y CRUD de **Perfiles de Usuarios** (`ProfilesSignersAndUiFeaturesTests`), gestión de `Solicitado Por` con firma `PNG`/`JPG`/`PDF` y renderizado PDF en exportaciones (`RequestersSignaturesAndApproversTests`), exportación masiva exclusiva de OTs seleccionadas (`.xlsx`/`.csv`/`.pdf` sin duplicar ítems), persistencia de Observación/Valor Neto (`>= 0`)/firmas al pie y operaciones masivas + diálogo de dependencias/reasignaciones con RBAC Admin (`BulkOperationsAndExtendedWorkOrderTests`), módulo CRUD `GESTIÓN DE USUARIOS` y `GESTIÓN DE GRUPOS`, administración del Árbol de Activos (`AssetTreeAdministrationTests`) y exportaciones multiformato (`MultiFormatExportTests`).
 - **UI**: auditoría en hilo STA de formularios y diálogos (`WinFormsUiAuditTests`, incluyendo confirmación explícita de ausencia de módulos de Facturas y Mantención Industrial), capturas visuales (`ScreenshotCaptureTests`), ordenamiento/paginación (`GridSortingAndPaginationTests`), menús contextuales seguros (`ContextMenuHelperTests`) e iconos Lucide aislados por hilo STA (`IconCatalog`).
 - **Regression**: validación explícita contra defectos históricos de VB6 (sin inversión VBS/VBJ, actualización/eliminación de OT sin dependencias obsoletas de facturas).
 - **Stress**: concurrencia multi-hilo, búsqueda indexada y exportación sobre la base real `data/sispro.db`.
@@ -65,7 +65,7 @@ dotnet publish src\Sispro.UI\Sispro.UI.csproj -c Release -r win-x64 --self-conta
 ```
 
 El instalador resultante se genera en:
-- `installer\Output\SISPRO_Setup_v4.3.0_win-x64.exe`
+- `installer\Output\SISPRO_Setup_v4.4.0_win-x64.exe`
 - `installer\Output\checksums_sha256.txt`
 
 ---

@@ -1,3 +1,4 @@
+using System.Drawing.Printing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
@@ -202,6 +203,47 @@ public static class ExportUiHelper
         catch (Exception ex)
         {
             CambiasoTheme.ShowError(owner, $"No se pudo exportar la OT: {ex.Message}");
+        }
+    }
+
+    public static void ShowWorkOrderPreview(
+        IWin32Window owner,
+        SisproApplicationContext ctx,
+        int numeroOt)
+    {
+        WorkOrder? order = ctx.WorkOrderService.GetByNumber(numeroOt);
+        if (order is null)
+        {
+            CambiasoTheme.ShowWarning(owner, $"No se encontró la OT N° {numeroOt} para visualizar.");
+            return;
+        }
+
+        ShowWorkOrderPreview(owner, ctx, order);
+    }
+
+    public static void ShowWorkOrderPreview(
+        IWin32Window owner,
+        SisproApplicationContext ctx,
+        WorkOrder order,
+        SignatureOption? signatureOverride = null)
+    {
+        try
+        {
+            ctx.WorkOrderService.HydrateSignerPreviews(order);
+            SignatureOption effectiveSig = signatureOverride ?? order.FirmasSeleccionadas;
+            using PrintDocument doc = ctx.PrintService.CreateWorkOrderPrintDocument(order, effectiveSig);
+            using PrintPreviewDialog preview = new()
+            {
+                Document = doc,
+                Width = 980,
+                Height = 760,
+                StartPosition = FormStartPosition.CenterParent
+            };
+            preview.ShowDialog(owner);
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(owner, $"No se pudo abrir la vista previa de la OT: {ex.Message}");
         }
     }
 

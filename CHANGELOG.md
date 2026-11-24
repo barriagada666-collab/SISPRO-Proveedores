@@ -2,6 +2,30 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.4.0] — 2026-11-24
+
+### Agregado y Mejorado
+- **Selector de Firmantes con CheckBox + Lista Desplegable desde Personal y Usuarios (`WorkOrdersForm`, `WorkOrderRepository`, `WorkOrderService`, `WorkOrderSignatureLayout`)**:
+  - Agregados CheckBox + `ComboBox` combinables para **Jefatura**, **Técnico** y **Supervisor** tanto en `Ingreso / Edición de OT` como en `Generar / Imprimir OT`, poblados y deduplicados desde `Solicitantes` activos, `Usuarios` activos y la nómina histórica `Mant_Personal` de `sispro.db` (`GetSignaturePersonnelCatalog`).
+  - Migración idempotente de `OrdenesTrabajo` agregando `firma_jefatura`, `firma_tecnico` y `firma_supervisor` (`SchemaInitializer.MigrateOrdenesTrabajoSchema`), reflejando los nombres seleccionados (y vista previa digital si corresponde) en Excel, PDF, Word, Impresión y Vista Previa.
+- **Perfiles de Usuarios Dinámicos (`UserProfile`, `UserProfileRepository`, `UserProfileService`, `UserProfileManagerControl`, `UsersForm`)**:
+  - Nueva pestaña **Perfiles de Usuarios** en `UsersForm` con CRUD completo para que el Administrador cree, edite, active, desactive y elimine perfiles personalizados (`id_nivel >= 5`) definiendo sus permisos por defecto y protegiendo los 4 perfiles base del sistema (`Usuario`, `Supervisor`, `Jefatura`, `Administrador`) y perfiles con usuarios asignados.
+  - Combos de perfil, filtros, cambio masivo (`BatchChangeProfile`, `BatchConfirmDialog`) y visualización (`User.PerfilDisplay`) sincronizados en tiempo real mediante `SisproSyncHub`.
+- **Acciones Directas de OT (`WorkOrdersForm`, `ExportUiHelper`, `MainForm`, `MaintainerDependenciesDialog`)**:
+  - Botón **Guardar y Exportar** habilitado permanentemente en `Ingreso / Edición de OT` (tanto al guardar una OT nueva como al actualizar y exportar una OT cargada).
+  - Nuevo botón **Vista Previa** directamente en `Ingreso / Edición de OT`.
+  - Nueva acción **"Visualizar OT (Vista Previa)"** en los menús contextuales de **clic derecho** de las grillas de OT (Dashboard, Búsqueda de OT, Ingreso/Edición de OT y diálogo de dependencias `MaintainerDependenciesDialog`).
+- **Limpieza de `VB Supervisor` / `VB Jefatura` en la UI y Estabilización de Espaciados WinForms**:
+  - Retiradas las aprobaciones, banners, filtros y columnas `VB Supervisor` (`VBS`) y `VB Jefatura` (`VBJ`) de `MainForm`, `WorkOrdersForm`, `UsersForm`, `UserPermissionsDialog` y `DocumentExportService.BuildWorkOrdersReport` (conservando la tabla histórica `VistoBueno` en SQLite sin pérdida de datos).
+  - Reorganizados espaciados y layouts (`WorkOrdersForm`, `UsersForm`, `UserProfileManagerControl`) y reemplazado `SplitContainer` por `TableLayoutPanel` en `WorkOrdersForm` para eliminar `ExternalException (GDI+)` de `RepaintSplitterRect` y evitar todo recorte de textos o botones.
+
+### Verificado
+- **Compilación y Seguridad NuGet**: `Debug` y `Release` `0` errores, `0` advertencias; `0` paquetes vulnerables en los 5 proyectos (`dotnet list SISPRO.sln package --vulnerable --include-transitive`).
+- **Suite Automatizada (`Release`)**: `68 / 68` pruebas `xUnit` aprobadas (`ProfilesSignersAndUiFeaturesTests` + suite previa, `9 s`) e inspección visual directa de las 14 capturas regeneradas en `docs/screenshots/` (incluyendo `14_perfiles_usuarios.png`).
+- **Instalador `SISPRO_Setup_v4.4.0_win-x64.exe`**: `57.895.568` bytes (`SHA-256`: `6F04BB17609D17AE6026DCB2FE2493E8673729AE9C49655D5CD8578A9715B1C8`), validada actualización silenciosa `v4.3.0 → v4.4.0` (preservación íntegra de `Data\sispro.db` con hash `F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`) y desinstalación limpia.
+
+---
+
 ## [4.3.0] — 2026-11-24
 
 ### Agregado y Mejorado

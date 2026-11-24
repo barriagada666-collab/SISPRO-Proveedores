@@ -164,7 +164,10 @@ public static class SchemaInitializer
             ruta_activo TEXT NOT NULL DEFAULT '',
             observacion TEXT NOT NULL DEFAULT '',
             valor_neto REAL NOT NULL DEFAULT 0,
-            firmas_mask INTEGER NOT NULL DEFAULT 7
+            firmas_mask INTEGER NOT NULL DEFAULT 7,
+            firma_jefatura TEXT NOT NULL DEFAULT '',
+            firma_tecnico TEXT NOT NULL DEFAULT '',
+            firma_supervisor TEXT NOT NULL DEFAULT ''
         );
 
         CREATE INDEX IF NOT EXISTS IX_OT_Numero ON OrdenesTrabajo(n_ot);
@@ -213,6 +216,7 @@ public static class SchemaInitializer
             cmd.ExecuteNonQuery();
         }
 
+        MigrateNivelesSchema(conn);
         MigrateUsuariosSchema(conn);
         MigrateSolicitantesSchema(conn);
         MigrateActivosSchema(conn);
@@ -271,7 +275,10 @@ public static class SchemaInitializer
         [
             ("observacion", "TEXT NOT NULL DEFAULT ''"),
             ("valor_neto", "REAL NOT NULL DEFAULT 0"),
-            ("firmas_mask", "INTEGER NOT NULL DEFAULT 7")
+            ("firmas_mask", "INTEGER NOT NULL DEFAULT 7"),
+            ("firma_jefatura", "TEXT NOT NULL DEFAULT ''"),
+            ("firma_tecnico", "TEXT NOT NULL DEFAULT ''"),
+            ("firma_supervisor", "TEXT NOT NULL DEFAULT ''")
         ];
 
         foreach ((string name, string ddl) in otColumns)
@@ -454,14 +461,77 @@ public static class SchemaInitializer
         cmd.ExecuteNonQuery();
     }
 
+    private static void MigrateNivelesSchema(SqliteConnection conn)
+    {
+        HashSet<string> cols = new(StringComparer.OrdinalIgnoreCase);
+        using (SqliteCommand infoCmd = conn.CreateCommand())
+        {
+            infoCmd.CommandText = "PRAGMA table_info(Niveles);";
+            using SqliteDataReader rdr = infoCmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                cols.Add(rdr.GetString(1));
+            }
+        }
+
+        (string Name, string Ddl)[] colsToAdd =
+        [
+            ("descripcion", "TEXT NOT NULL DEFAULT ''"),
+            ("es_sistema", "INTEGER NOT NULL DEFAULT 0"),
+            ("activo", "INTEGER NOT NULL DEFAULT 1"),
+            ("m1_ot", "INTEGER NOT NULL DEFAULT 1"),
+            ("tab_0_1_ingreso_ot", "INTEGER NOT NULL DEFAULT 1"),
+            ("tab_0_2_busqueda_ot", "INTEGER NOT NULL DEFAULT 1"),
+            ("tab_0_3_impresion_ot", "INTEGER NOT NULL DEFAULT 1"),
+            ("m3_mantenedor", "INTEGER NOT NULL DEFAULT 0"),
+            ("m4_usuarios", "INTEGER NOT NULL DEFAULT 0"),
+            ("tab_2_0_ingreso_us", "INTEGER NOT NULL DEFAULT 0"),
+            ("tab_2_1_listado_us", "INTEGER NOT NULL DEFAULT 0")
+        ];
+
+        foreach ((string name, string ddl) in colsToAdd)
+        {
+            if (!cols.Contains(name))
+            {
+                ExecuteNonQuery(conn, $"ALTER TABLE Niveles ADD COLUMN {name} {ddl};");
+            }
+        }
+    }
+
     private static void SeedLevels(SqliteConnection conn)
     {
         ExecuteNonQuery(conn, """
-            INSERT OR IGNORE INTO Niveles(id_nivel, tipo_nivel) VALUES
-            (1, 'Usuario'),
-            (2, 'Supervisor'),
-            (3, 'Jefatura'),
-            (4, 'Administrador');
+            INSERT OR IGNORE INTO Niveles(
+                id_nivel, tipo_nivel, descripcion, es_sistema, activo,
+                m1_ot, tab_0_1_ingreso_ot, tab_0_2_busqueda_ot, tab_0_3_impresion_ot,
+                m3_mantenedor, m4_usuarios, tab_2_0_ingreso_us, tab_2_1_listado_us
+            ) VALUES
+            (1, 'Usuario', 'Operación estándar de Órdenes de Trabajo (ingreso, búsqueda e impresión).', 1, 1, 1, 1, 1, 1, 0, 0, 0, 0),
+            (2, 'Supervisor', 'Supervisión operativa de Órdenes de Trabajo Externas.', 1, 1, 1, 1, 1, 1, 0, 0, 0, 0),
+            (3, 'Jefatura', 'Jefatura de Mantención con acceso completo a Órdenes de Trabajo y Mantenedores.', 1, 1, 1, 1, 1, 1, 1, 0, 0, 0),
+            (4, 'Administrador', 'Control total del sistema, usuarios, perfiles, mantenedores y árbol de activos.', 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+
+            UPDATE Niveles
+            SET es_sistema = 1,
+                activo = 1,
+                descripcion = CASE
+                    WHEN COALESCE(descripcion, '') = '' AND id_nivel = 1 THEN 'Operación estándar de Órdenes de Trabajo (ingreso, búsqueda e impresión).'
+                    WHEN COALESCE(descripcion, '') = '' AND id_nivel = 2 THEN 'Supervisión operativa de Órdenes de Trabajo Externas.'
+                    WHEN COALESCE(descripcion, '') = '' AND id_nivel = 3 THEN 'Jefatura de Mantención con acceso completo a Órdenes de Trabajo y Mantenedores.'
+                    WHEN COALESCE(descripcion, '') = '' AND id_nivel = 4 THEN 'Control total del sistema, usuarios, perfiles, mantenedores y árbol de activos.'
+                    ELSE descripcion
+                END
+            WHERE id_nivel IN (1, 2, 3, 4);
+
+            UPDATE Niveles
+            SET m3_mantenedor = 1,
+                m1_ot = 1, tab_0_1_ingreso_ot = 1, tab_0_2_busqueda_ot = 1, tab_0_3_impresion_ot = 1
+            WHERE id_nivel = 3 AND es_sistema = 1;
+
+            UPDATE Niveles
+            SET m1_ot = 1, tab_0_1_ingreso_ot = 1, tab_0_2_busqueda_ot = 1, tab_0_3_impresion_ot = 1,
+                m3_mantenedor = 1, m4_usuarios = 1, tab_2_0_ingreso_us = 1, tab_2_1_listado_us = 1
+            WHERE id_nivel = 4;
             """);
     }
 

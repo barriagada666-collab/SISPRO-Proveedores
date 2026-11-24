@@ -13,8 +13,8 @@ namespace Sispro.UI.Forms;
 
 /// <summary>
 /// Módulo de Trabajos Externos / Órdenes de Trabajo (reemplaza tab_ot.frm, TAB_0.bas, TAB_2.bas y exp_excel.bas).
-/// Incluye Ingreso/Edición con VB Supervisor y VB Jefatura, Búsqueda avanzada con exportación Excel asíncrona,
-/// y Generación/Vista Previa/Impresión corporativa.
+/// Incluye Ingreso/Edición con Valor Neto, Observaciones, selección de firmantes desde Personal/Usuarios, Vista Previa,
+/// Búsqueda avanzada con exportación masiva exclusiva y Generación/Impresión corporativa.
 /// </summary>
 public sealed class WorkOrdersForm : UserControl
 {
@@ -39,11 +39,6 @@ public sealed class WorkOrdersForm : UserControl
     private readonly ComboBox _cmbProviderEntry;
     private readonly ComboBox _cmbRequesterEntry;
     private readonly DateTimePicker _dtFechaOt;
-    private readonly CheckBox _chkVbs;
-    private readonly CheckBox _chkVbj;
-    private readonly Label _lblVbsDetail;
-    private readonly Label _lblVbjDetail;
-    private readonly Label _lblAuthorizedApprovers;
     private readonly NumericUpDown _numCantidad;
     private readonly TextBox _txtDetalle;
     private readonly Button _btnAddDetail;
@@ -53,19 +48,26 @@ public sealed class WorkOrdersForm : UserControl
     private readonly Label _lblEntrySigHint;
     private readonly Button _btnSaveOt;
     private readonly Button _btnSaveAndExportOt;
+    private readonly Button _btnEntryPreview;
     private readonly Button _btnUpdateOt;
     private readonly Button _btnDeleteOt;
     private readonly Button _btnClearEntry;
     private readonly Label _lblEntryStatus;
     private readonly List<WorkOrderDetail> _entryDetails = [];
     private WorkOrder? _loadedOrder;
-    private bool _suppressApprovalEvents;
+    private bool _suppressEntrySignerSync;
+    private IReadOnlyList<SignaturePersonOption> _signatureCatalog = [];
 
     internal TextBox TxtObservacionEntry { get; }
     internal TextBox TxtValorNetoEntry { get; }
     internal CheckBox ChkEntrySigJefatura { get; }
     internal CheckBox ChkEntrySigTecnico { get; }
     internal CheckBox ChkEntrySigSupervisor { get; }
+    internal ComboBox CmbEntrySigJefatura { get; }
+    internal ComboBox CmbEntrySigTecnico { get; }
+    internal ComboBox CmbEntrySigSupervisor { get; }
+    internal Button BtnSaveAndExportOt => _btnSaveAndExportOt;
+    internal Button BtnEntryPreview => _btnEntryPreview;
 
     // Tab 1 (Búsqueda de OT)
     private readonly DateRangeFilterControl _searchDateRange;
@@ -76,7 +78,6 @@ public sealed class WorkOrdersForm : UserControl
     private readonly CheckBox _chkFilterText;
     private readonly TextBox _txtSearchKeyword;
     private readonly CheckBox _chkFilterTree;
-    private readonly CheckBox _chkPendingVb;
     private readonly Button _btnExecuteSearch;
     private readonly Button _btnClearSearch;
     private readonly Button _btnExportSearch;
@@ -113,6 +114,9 @@ public sealed class WorkOrdersForm : UserControl
     internal CheckBox ChkSigJefatura { get; }
     internal CheckBox ChkSigTecnico { get; }
     internal CheckBox ChkSigSupervisor { get; }
+    internal ComboBox CmbPrintSigJefatura { get; }
+    internal ComboBox CmbPrintSigTecnico { get; }
+    internal ComboBox CmbPrintSigSupervisor { get; }
     private readonly NumericUpDown _numPrintCantidad;
     private readonly TextBox _txtPrintWork;
     private readonly Button _btnAddPrintItem;
@@ -134,21 +138,31 @@ public sealed class WorkOrdersForm : UserControl
         Font = CambiasoTheme.BodyFont;
         Dock = DockStyle.Fill;
 
-        SplitContainer split = new()
+        TableLayoutPanel mainSplit = new()
         {
-            Size = new Size(1080, 700),
             Dock = DockStyle.Fill,
-            Panel1MinSize = 260,
-            SplitterDistance = 290,
-            FixedPanel = FixedPanel.Panel1,
-            BackColor = CambiasoTheme.BorderColor
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = CambiasoTheme.Surface,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
         };
-        Load += (_, _) =>
+        mainSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 296));
+        mainSplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+        Panel leftPane = new()
         {
-            if (split.Width > 540)
-            {
-                split.SplitterDistance = 290;
-            }
+            Dock = DockStyle.Fill,
+            BackColor = CambiasoTheme.BorderColor,
+            Padding = new Padding(0, 0, 1, 0),
+            Margin = Padding.Empty
+        };
+
+        Panel rightPane = new()
+        {
+            Dock = DockStyle.Fill,
+            BackColor = CambiasoTheme.Surface,
+            Margin = Padding.Empty
         };
 
         _assetTree = new AssetTreePanel(_ctx.MaintainerService, _ctx.AssetTreeService, _session) { Dock = DockStyle.Fill };
@@ -161,7 +175,7 @@ public sealed class WorkOrdersForm : UserControl
                 () => SearchByTreeNode(node),
                 enabled: _session.Permisos.BusquedaOt)
         ];
-        split.Panel1.Controls.Add(_assetTree);
+        leftPane.Controls.Add(_assetTree);
 
         Panel topActionStrip = new()
         {
@@ -221,52 +235,21 @@ public sealed class WorkOrdersForm : UserControl
         _btnNextOt = CambiasoTheme.CreateButton("Siguiente N°", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Sugerir el siguiente correlativo disponible", width: 122, height: 28);
         _btnNextOt.Click += (_, _) => _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString();
 
-        _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
-        _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 155 };
-        _cmbRequesterEntry.SelectedIndexChanged += (_, _) => UpdateEntrySignatureHint();
+        _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 245 };
+        _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
+        _cmbRequesterEntry.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_suppressEntrySignerSync &&
+                _loadedOrder is null &&
+                CmbEntrySigTecnico is not null &&
+                _cmbRequesterEntry.SelectedItem is Requester req)
+            {
+                string reqName = string.IsNullOrWhiteSpace(req.NombreCompleto) ? req.Alias : req.NombreCompleto;
+                SelectSignerInCombo(CmbEntrySigTecnico, reqName);
+            }
+            UpdateEntrySignatureHint();
+        };
         _dtFechaOt = new DateTimePicker { Format = DateTimePickerFormat.Custom, CustomFormat = "dd-MM-yyyy", Width = 120, Value = DateTime.Today };
-
-        _chkVbs = new CheckBox
-        {
-            Text = "VB Supervisor",
-            AutoSize = true,
-            Font = CambiasoTheme.LabelFont,
-            ForeColor = CambiasoTheme.Primary,
-            Visible = _session.Permisos.VistoBuenoSupervisor
-        };
-        _chkVbs.CheckedChanged += (_, _) => ToggleApproval(ApprovalType.Supervisor, _chkVbs.Checked);
-        _lblVbsDetail = new Label
-        {
-            AutoSize = true,
-            Font = CambiasoTheme.SmallFont,
-            ForeColor = CambiasoTheme.TextMuted,
-            Margin = new Padding(4, 3, 18, 0)
-        };
-
-        _chkVbj = new CheckBox
-        {
-            Text = "VB Jefatura",
-            AutoSize = true,
-            Font = CambiasoTheme.LabelFont,
-            ForeColor = CambiasoTheme.Primary,
-            Visible = _session.Permisos.VistoBuenoJefatura
-        };
-        _chkVbj.CheckedChanged += (_, _) => ToggleApproval(ApprovalType.Jefatura, _chkVbj.Checked);
-        _lblVbjDetail = new Label
-        {
-            AutoSize = true,
-            Font = CambiasoTheme.SmallFont,
-            ForeColor = CambiasoTheme.TextMuted,
-            Margin = new Padding(4, 3, 10, 0)
-        };
-
-        _lblAuthorizedApprovers = new Label
-        {
-            AutoSize = true,
-            Font = CambiasoTheme.SmallFont,
-            ForeColor = CambiasoTheme.Accent,
-            Margin = new Padding(0, 1, 0, 0)
-        };
 
         _numCantidad = new NumericUpDown { Minimum = 1, Maximum = 99999, Value = 1, Width = 76 };
         _txtDetalle = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
@@ -306,16 +289,16 @@ public sealed class WorkOrdersForm : UserControl
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(0, 4, 6, 2)
+            Margin = new Padding(0, 4, 4, 2)
         };
         ChkEntrySigTecnico = new CheckBox
         {
             Name = "chkEntrySigTecnico",
-            Text = "Técnico (Sol.)",
+            Text = "Técnico",
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(0, 4, 6, 2)
+            Margin = new Padding(0, 4, 4, 2)
         };
         ChkEntrySigSupervisor = new CheckBox
         {
@@ -324,11 +307,30 @@ public sealed class WorkOrdersForm : UserControl
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(0, 4, 2, 2)
+            Margin = new Padding(0, 4, 4, 2)
         };
-        ChkEntrySigJefatura.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
-        ChkEntrySigTecnico.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
-        ChkEntrySigSupervisor.CheckedChanged += (_, _) => UpdateEntrySignatureHint();
+        CmbEntrySigJefatura = CreateSignerCombo("cmbEntrySigJefatura");
+        CmbEntrySigTecnico = CreateSignerCombo("cmbEntrySigTecnico");
+        CmbEntrySigSupervisor = CreateSignerCombo("cmbEntrySigSupervisor");
+
+        ChkEntrySigJefatura.CheckedChanged += (_, _) =>
+        {
+            CmbEntrySigJefatura.Enabled = ChkEntrySigJefatura.Checked;
+            UpdateEntrySignatureHint();
+        };
+        ChkEntrySigTecnico.CheckedChanged += (_, _) =>
+        {
+            CmbEntrySigTecnico.Enabled = ChkEntrySigTecnico.Checked;
+            UpdateEntrySignatureHint();
+        };
+        ChkEntrySigSupervisor.CheckedChanged += (_, _) =>
+        {
+            CmbEntrySigSupervisor.Enabled = ChkEntrySigSupervisor.Checked;
+            UpdateEntrySignatureHint();
+        };
+        CmbEntrySigJefatura.SelectedIndexChanged += (_, _) => UpdateEntrySignatureHint();
+        CmbEntrySigTecnico.SelectedIndexChanged += (_, _) => UpdateEntrySignatureHint();
+        CmbEntrySigSupervisor.SelectedIndexChanged += (_, _) => UpdateEntrySignatureHint();
 
         _lblEntrySigHint = new Label
         {
@@ -345,27 +347,36 @@ public sealed class WorkOrdersForm : UserControl
             idx >= 0 && idx < _entryDetails.Count
                 ?
                 [
-                    ContextMenuHelper.Item("Editar ítem", AppIcon.Edit, CambiasoTheme.Primary, EditSelectedEntryDetail),
+                    ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, ShowEntryPreview),
+                    ContextMenuHelper.Separator(),
+                    ContextMenuHelper.Item("Editar ítem", AppIcon.Edit, CambiasoTheme.Accent, EditSelectedEntryDetail),
                     ContextMenuHelper.Item("Quitar ítem", AppIcon.Remove, CambiasoTheme.Danger, RemoveSelectedEntryDetail)
                 ]
-                : []);
+                :
+                [
+                    ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, ShowEntryPreview)
+                ]);
 
-        _btnSaveOt = CambiasoTheme.CreateButton("Guardar Nueva", AppIcon.Save, ButtonTone.Primary, _toolTip, "Guardar nueva orden de trabajo en base de datos", width: 146);
+        _btnSaveOt = CambiasoTheme.CreateButton("Guardar OT", AppIcon.Save, ButtonTone.Primary, _toolTip, "Guardar nueva orden de trabajo en base de datos", width: 122);
         _btnSaveOt.Click += (_, _) => SaveNewOrder();
 
-        _btnSaveAndExportOt = CambiasoTheme.CreateButton("Guardar y Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Guardar la nueva OT y abrir inmediatamente el menú de exportación", width: 174);
+        _btnSaveAndExportOt = CambiasoTheme.CreateButton("Guardar y Exportar", AppIcon.Download, ButtonTone.Accent, _toolTip, "Guardar (nueva o cambios) y abrir menú de exportación oficial", width: 158);
         _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
-        _btnSaveAndExportOt.Click += (_, _) => SaveAndExportNewOrder();
+        _btnSaveAndExportOt.Click += (_, _) => SaveAndExportOrder();
 
-        _btnUpdateOt = CambiasoTheme.CreateButton("Modificar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Guardar cambios en la orden cargada", width: 124);
+        _btnEntryPreview = CambiasoTheme.CreateButton("Vista Previa", AppIcon.Preview, ButtonTone.Secondary, _toolTip, "Visualizar vista previa de impresión de la OT actual", width: 122);
+        _btnEntryPreview.Enabled = _session.Permisos.MenuOrdenesTrabajo;
+        _btnEntryPreview.Click += (_, _) => ShowEntryPreview();
+
+        _btnUpdateOt = CambiasoTheme.CreateButton("Modificar", AppIcon.Edit, ButtonTone.Accent, _toolTip, "Guardar cambios en la orden cargada", width: 108);
         _btnUpdateOt.Enabled = false;
         _btnUpdateOt.Click += (_, _) => UpdateLoadedOrder();
 
-        _btnDeleteOt = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar orden de trabajo cargada", width: 118);
+        _btnDeleteOt = CambiasoTheme.CreateButton("Eliminar", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Eliminar orden de trabajo cargada", width: 102);
         _btnDeleteOt.Enabled = false;
         _btnDeleteOt.Click += (_, _) => DeleteLoadedOrder();
 
-        _btnClearEntry = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar formulario para nueva OT", width: 112);
+        _btnClearEntry = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar formulario para nueva OT", width: 98);
         _btnClearEntry.Click += (_, _) => ClearEntryForm();
 
         _lblEntryStatus = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted };
@@ -397,7 +408,6 @@ public sealed class WorkOrdersForm : UserControl
         _chkFilterText.CheckedChanged += (_, _) => _txtSearchKeyword.Enabled = _chkFilterText.Checked;
 
         _chkFilterTree = new CheckBox { Text = "Nodo árbol", AutoSize = true };
-        _chkPendingVb = new CheckBox { Text = "Pendientes VB", AutoSize = true };
 
         _btnExecuteSearch = CambiasoTheme.CreateButton("Buscar", AppIcon.Search, ButtonTone.Primary, _toolTip, "Ejecutar búsqueda combinada de órdenes de trabajo", width: 102, height: 30);
         _btnExecuteSearch.Click += (_, _) => ExecuteSearch();
@@ -458,22 +468,17 @@ public sealed class WorkOrdersForm : UserControl
             if (row is null || e.CellStyle is null || e.ColumnIndex < 0 || e.ColumnIndex >= _gridSearchResults.Columns.Count) return;
 
             string prop = _gridSearchResults.Columns[e.ColumnIndex].DataPropertyName;
-            if (string.Equals(prop, nameof(WorkOrderGridRow.VBS), StringComparison.Ordinal))
-            {
-                e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = row.TieneVbs ? CambiasoTheme.Success : CambiasoTheme.Warning;
-            }
-            else if (string.Equals(prop, nameof(WorkOrderGridRow.VBJ), StringComparison.Ordinal))
-            {
-                e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = row.TieneVbj ? CambiasoTheme.Success : CambiasoTheme.Warning;
-            }
-            else if (string.Equals(prop, nameof(WorkOrderGridRow.Estado), StringComparison.Ordinal))
+            if (string.Equals(prop, nameof(WorkOrderGridRow.Estado), StringComparison.Ordinal))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
                 e.CellStyle.ForeColor = row.Estado == WorkOrderStatus.Completada
                     ? CambiasoTheme.Success
                     : (row.Estado == WorkOrderStatus.Anulada ? CambiasoTheme.Danger : CambiasoTheme.Primary);
+            }
+            else if (string.Equals(prop, nameof(WorkOrderGridRow.ValorNeto), StringComparison.Ordinal))
+            {
+                e.CellStyle.Font = CambiasoTheme.LabelFont;
+                e.CellStyle.ForeColor = CambiasoTheme.PrimaryDark;
             }
         };
         ContextMenuHelper.AttachToGrid(_gridSearchResults, idx =>
@@ -487,8 +492,9 @@ public sealed class WorkOrdersForm : UserControl
             int numOt = row.NumeroOt;
             return
             [
-                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Primary, () => OpenOrderByNumber(numOt), enabled: _session.Permisos.IngresoOt),
-                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.Accent, () => ShowPrintForOrder(numOt), enabled: _session.Permisos.ImpresionOt),
+                ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => OpenOrderByNumber(numOt), enabled: _session.Permisos.IngresoOt),
+                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.TextMuted, () => ShowPrintForOrder(numOt), enabled: _session.Permisos.ImpresionOt),
                 ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Eliminar OT", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteSearchOrder(numOt), enabled: _session.Permisos.IngresoOt)
             ];
@@ -545,15 +551,15 @@ public sealed class WorkOrdersForm : UserControl
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(4, 5, 10, 2)
+            Margin = new Padding(2, 4, 4, 2)
         };
         ChkSigTecnico = new CheckBox
         {
-            Text = "Técnico (Solicitante)",
+            Text = "Técnico",
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(0, 5, 10, 2)
+            Margin = new Padding(2, 4, 4, 2)
         };
         ChkSigSupervisor = new CheckBox
         {
@@ -561,14 +567,34 @@ public sealed class WorkOrdersForm : UserControl
             Checked = true,
             AutoSize = true,
             Font = CambiasoTheme.BodyFont,
-            Margin = new Padding(0, 5, 4, 2)
+            Margin = new Padding(2, 4, 4, 2)
         };
-        ChkSigJefatura.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
-        ChkSigTecnico.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
-        ChkSigSupervisor.CheckedChanged += (_, _) => PersistPrintSignatureSelection();
-        _toolTip.SetToolTip(ChkSigJefatura, "Incluir firma de Jefatura Mantención al pie de la exportación/impresión");
-        _toolTip.SetToolTip(ChkSigTecnico, "Incluir firma del Solicitante como Técnico al pie de la exportación/impresión");
-        _toolTip.SetToolTip(ChkSigSupervisor, "Incluir firma de Supervisor Mantención al pie de la exportación/impresión");
+        CmbPrintSigJefatura = CreateSignerCombo("cmbPrintSigJefatura");
+        CmbPrintSigTecnico = CreateSignerCombo("cmbPrintSigTecnico");
+        CmbPrintSigSupervisor = CreateSignerCombo("cmbPrintSigSupervisor");
+
+        ChkSigJefatura.CheckedChanged += (_, _) =>
+        {
+            CmbPrintSigJefatura.Enabled = ChkSigJefatura.Checked;
+            PersistPrintSignatureSelection();
+        };
+        ChkSigTecnico.CheckedChanged += (_, _) =>
+        {
+            CmbPrintSigTecnico.Enabled = ChkSigTecnico.Checked;
+            PersistPrintSignatureSelection();
+        };
+        ChkSigSupervisor.CheckedChanged += (_, _) =>
+        {
+            CmbPrintSigSupervisor.Enabled = ChkSigSupervisor.Checked;
+            PersistPrintSignatureSelection();
+        };
+        CmbPrintSigJefatura.SelectedIndexChanged += (_, _) => PersistPrintSignatureSelection();
+        CmbPrintSigTecnico.SelectedIndexChanged += (_, _) => PersistPrintSignatureSelection();
+        CmbPrintSigSupervisor.SelectedIndexChanged += (_, _) => PersistPrintSignatureSelection();
+
+        _toolTip.SetToolTip(ChkSigJefatura, "Incluir firma de Jefatura Mantención y seleccionar firmante desde Personal/Usuarios");
+        _toolTip.SetToolTip(ChkSigTecnico, "Incluir firma de Técnico y seleccionar firmante desde Personal/Usuarios");
+        _toolTip.SetToolTip(ChkSigSupervisor, "Incluir firma de Supervisor Mantención y seleccionar firmante desde Personal/Usuarios");
 
         _numPrintCantidad = new NumericUpDown { Minimum = 1, Maximum = 99999, Value = 1, Width = 72 };
         _txtPrintWork = new TextBox { Multiline = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
@@ -619,11 +645,14 @@ public sealed class WorkOrdersForm : UserControl
             _tabs.TabPages.Add(_tabPrint);
         }
 
-        split.Panel2.Controls.Add(_tabs);
-        split.Panel2.Controls.Add(topActionStrip);
-        Controls.Add(split);
+        rightPane.Controls.Add(_tabs);
+        rightPane.Controls.Add(topActionStrip);
+        mainSplit.Controls.Add(leftPane, 0, 0);
+        mainSplit.Controls.Add(rightPane, 1, 0);
+        Controls.Add(mainSplit);
 
         LoadCatalogs();
+        ApplyDefaultSignersForDraft();
         SyncPrintProviderInfo();
         SyncPrintRequesterInfo();
         _assetTree.SelectedAssetChanged += (_, _) =>
@@ -634,7 +663,6 @@ public sealed class WorkOrdersForm : UserControl
             }
         };
         RefreshNextOtBadge();
-        RefreshApprovalStatusBadges();
         _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
         RefreshEntryDetailsGrid();
         RefreshPrintDetailsGrid();
@@ -704,17 +732,6 @@ public sealed class WorkOrdersForm : UserControl
         if (_tabs.TabPages.Contains(_tabSearch))
         {
             _tabs.SelectedTab = _tabSearch;
-            _chkPendingVb.Checked = false;
-            ExecuteSearch();
-        }
-    }
-
-    public void OpenSearchPendingVb()
-    {
-        if (_tabs.TabPages.Contains(_tabSearch))
-        {
-            _tabs.SelectedTab = _tabSearch;
-            _chkPendingVb.Checked = true;
             ExecuteSearch();
         }
     }
@@ -745,7 +762,6 @@ public sealed class WorkOrdersForm : UserControl
     {
         LoadCatalogs();
         SyncPrintRequesterInfo();
-        RefreshApprovalStatusBadges();
         _assetTree.ReloadPreservingSelection();
     }
 
@@ -795,11 +811,11 @@ public sealed class WorkOrdersForm : UserControl
     private void BuildEntryTabLayout()
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 152));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 134));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
 
         GroupBox grpHeader = CambiasoTheme.CreateGroupBox("Datos Generales de la Orden de Trabajo");
         grpHeader.Dock = DockStyle.Fill;
@@ -820,18 +836,6 @@ public sealed class WorkOrdersForm : UserControl
             WrapLabel("Solicitado por:", _cmbRequesterEntry)
         ]);
 
-        FlowLayoutPanel row3 = new() { Dock = DockStyle.Top, Height = 28, WrapContents = false, Padding = new Padding(6, 2, 4, 0) };
-        _chkVbs.Margin = new Padding(0, 2, 4, 0);
-        _chkVbj.Margin = new Padding(0, 2, 4, 0);
-        Label lblVb = CambiasoTheme.CreateFieldLabel("Aprobaciones:");
-        lblVb.Margin = new Padding(0, 3, 10, 0);
-        row3.Controls.AddRange([lblVb, _chkVbs, _lblVbsDetail, _chkVbj, _lblVbjDetail]);
-
-        FlowLayoutPanel row4 = new() { Dock = DockStyle.Top, Height = 22, WrapContents = false, Padding = new Padding(6, 0, 4, 0) };
-        row4.Controls.Add(_lblAuthorizedApprovers);
-
-        grpHeader.Controls.Add(row4);
-        grpHeader.Controls.Add(row3);
         grpHeader.Controls.Add(row2);
         grpHeader.Controls.Add(row1);
 
@@ -854,7 +858,9 @@ public sealed class WorkOrdersForm : UserControl
         descPanel.Controls.Add(_txtDetalle);
         descPanel.Controls.Add(lblDesc);
 
-        FlowLayoutPanel detBtns = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(4, 2, 0, 0) };
+        FlowLayoutPanel detBtns = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(4, 0, 0, 0) };
+        _btnAddDetail.Margin = new Padding(0, 2, 0, 2);
+        _btnRemoveDetail.Margin = new Padding(0, 2, 0, 2);
         detBtns.Controls.Add(_btnAddDetail);
         detBtns.Controls.Add(_btnRemoveDetail);
 
@@ -863,10 +869,10 @@ public sealed class WorkOrdersForm : UserControl
         detTbl.Controls.Add(detBtns, 2, 0);
         grpDetail.Controls.Add(detTbl);
 
-        // Fila 2: Observación (inmediatamente después de Detalle) + Valor Neto destacado + Firmas al pie
+        // Fila 2: Observación (inmediatamente después de Detalle) + Valor Neto destacado + Selector de Firmas desde Personal/Usuarios
         TableLayoutPanel obsAndMoneySplit = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
-        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        obsAndMoneySplit.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
 
         GroupBox grpObs = CambiasoTheme.CreateGroupBox("Observación de la OT");
         grpObs.Dock = DockStyle.Fill;
@@ -874,43 +880,51 @@ public sealed class WorkOrdersForm : UserControl
         obsPad.Controls.Add(TxtObservacionEntry);
         grpObs.Controls.Add(obsPad);
 
-        GroupBox grpNetAndSig = CambiasoTheme.CreateGroupBox("Valor Neto ($) y Firmas al Pie");
+        GroupBox grpNetAndSig = CambiasoTheme.CreateGroupBox("Valor Neto ($) y Firmas al Pie (Personal / Usuarios)");
         grpNetAndSig.Dock = DockStyle.Fill;
         TableLayoutPanel netSigTbl = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(4, 2, 4, 2) };
-        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        netSigTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
         netSigTbl.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        FlowLayoutPanel moneyRow = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 0) };
+        FlowLayoutPanel moneyRow = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 1, 0, 0) };
         Label lblNetTitle = new()
         {
             Text = "Valor Neto ($):",
             Font = CambiasoTheme.SectionFont,
             ForeColor = CambiasoTheme.PrimaryDark,
             AutoSize = true,
-            Margin = new Padding(0, 7, 8, 0)
+            Margin = new Padding(0, 6, 8, 0)
         };
         moneyRow.Controls.AddRange([lblNetTitle, TxtValorNetoEntry]);
 
-        FlowLayoutPanel sigChecksRow = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 0) };
-        Label lblSigPick = CambiasoTheme.CreateFieldLabel("Firmas:");
-        lblSigPick.Margin = new Padding(0, 6, 6, 0);
-        sigChecksRow.Controls.AddRange([lblSigPick, ChkEntrySigJefatura, ChkEntrySigTecnico, ChkEntrySigSupervisor]);
+        TableLayoutPanel sigPickTbl = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 3, Margin = Padding.Empty };
+        sigPickTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
+        sigPickTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        sigPickTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        sigPickTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        sigPickTbl.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
+        sigPickTbl.Controls.Add(ChkEntrySigJefatura, 0, 0);
+        sigPickTbl.Controls.Add(CmbEntrySigJefatura, 1, 0);
+        sigPickTbl.Controls.Add(ChkEntrySigTecnico, 0, 1);
+        sigPickTbl.Controls.Add(CmbEntrySigTecnico, 1, 1);
+        sigPickTbl.Controls.Add(ChkEntrySigSupervisor, 0, 2);
+        sigPickTbl.Controls.Add(CmbEntrySigSupervisor, 1, 2);
 
         netSigTbl.Controls.Add(moneyRow, 0, 0);
-        netSigTbl.Controls.Add(sigChecksRow, 0, 1);
+        netSigTbl.Controls.Add(sigPickTbl, 0, 1);
         netSigTbl.Controls.Add(_lblEntrySigHint, 0, 2);
         grpNetAndSig.Controls.Add(netSigTbl);
 
         obsAndMoneySplit.Controls.Add(grpObs, 0, 0);
         obsAndMoneySplit.Controls.Add(grpNetAndSig, 1, 0);
 
-        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Ítems de la OT (doble clic para editar)");
+        GroupBox grpGrid = CambiasoTheme.CreateGroupBox("Ítems de la OT (doble clic para editar · clic derecho para vista previa)");
         grpGrid.Dock = DockStyle.Fill;
         grpGrid.Controls.Add(_gridEntryDetails);
 
-        FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 8, 2, 4) };
-        footer.Controls.AddRange([_btnSaveOt, _btnSaveAndExportOt, _btnUpdateOt, _btnDeleteOt, _btnClearEntry, _lblEntryStatus]);
+        FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 6, 2, 4), WrapContents = false };
+        footer.Controls.AddRange([_btnSaveOt, _btnSaveAndExportOt, _btnEntryPreview, _btnUpdateOt, _btnDeleteOt, _btnClearEntry, _lblEntryStatus]);
 
         layout.Controls.Add(grpHeader, 0, 0);
         layout.Controls.Add(grpDetail, 0, 1);
@@ -937,7 +951,7 @@ public sealed class WorkOrdersForm : UserControl
         f2.Controls.AddRange([_chkFilterProvider, _cmbProviderSearch, _chkFilterRequester, _cmbRequesterSearch]);
 
         FlowLayoutPanel f3 = new() { Dock = DockStyle.Top, Height = 40, WrapContents = false, Padding = new Padding(4, 3, 4, 0) };
-        f3.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterTree, _chkPendingVb, _btnExecuteSearch]);
+        f3.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterTree, _btnExecuteSearch]);
 
         grpFilters.Controls.Add(f3);
         grpFilters.Controls.Add(f2);
@@ -982,17 +996,26 @@ public sealed class WorkOrdersForm : UserControl
     private void BuildPrintTabLayout()
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 224));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 84));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 306));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 74));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
 
         Panel topPanel = new() { Dock = DockStyle.Fill };
-        FlowLayoutPanel otBar = new() { Dock = DockStyle.Top, Height = 38, Padding = new Padding(2, 2, 2, 2), WrapContents = false };
-        Label lblFirmas = CambiasoTheme.CreateFieldLabel("Firmas al pie:");
-        lblFirmas.Margin = new Padding(10, 7, 4, 2);
-        _toolTip.SetToolTip(lblFirmas, "Elija qué firmas se mostrarán al pie (desmarque todas para omitir firmas)");
-        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, lblFirmas, ChkSigJefatura, ChkSigTecnico, ChkSigSupervisor, _lblPrintMetaSummary]);
+        FlowLayoutPanel otBar = new() { Dock = DockStyle.Top, Height = 36, Padding = new Padding(2, 2, 2, 2), WrapContents = false };
+        otBar.Controls.AddRange([WrapLabel("N° OT:", _txtPrintOtNumber), _btnLookupPrintOt, _lblPrintMetaSummary]);
+
+        GroupBox grpPrintSigners = CambiasoTheme.CreateGroupBox("Firmas al Pie (seleccionables desde Personal y Usuarios)");
+        grpPrintSigners.Dock = DockStyle.Top;
+        grpPrintSigners.Height = 60;
+        TableLayoutPanel signersTbl = new() { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(4, 2, 4, 2) };
+        signersTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+        signersTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33f));
+        signersTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34f));
+        signersTbl.Controls.Add(WrapSignerSlot(ChkSigJefatura, CmbPrintSigJefatura), 0, 0);
+        signersTbl.Controls.Add(WrapSignerSlot(ChkSigTecnico, CmbPrintSigTecnico), 1, 0);
+        signersTbl.Controls.Add(WrapSignerSlot(ChkSigSupervisor, CmbPrintSigSupervisor), 2, 0);
+        grpPrintSigners.Controls.Add(signersTbl);
 
         TableLayoutPanel cards = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1 };
         cards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 43));
@@ -1030,6 +1053,7 @@ public sealed class WorkOrdersForm : UserControl
         cards.Controls.Add(grpSol, 1, 0);
 
         topPanel.Controls.Add(cards);
+        topPanel.Controls.Add(grpPrintSigners);
         topPanel.Controls.Add(otBar);
 
         GroupBox grpAdd = CambiasoTheme.CreateGroupBox("Agregar Trabajo al Documento");
@@ -1063,6 +1087,7 @@ public sealed class WorkOrdersForm : UserControl
     {
         IReadOnlyList<Provider> providers = _ctx.MaintainerService.GetProviders();
         IReadOnlyList<Requester> requesters = _ctx.MaintainerService.GetRequesters();
+        _signatureCatalog = _ctx.WorkOrderService.GetSignaturePersonnelCatalog();
 
         BindCombo(_cmbProviderEntry, providers, nameof(Provider.Nombre), nameof(Provider.IdProv));
         BindCombo(_cmbProviderSearch, providers, nameof(Provider.Nombre), nameof(Provider.IdProv));
@@ -1071,6 +1096,13 @@ public sealed class WorkOrdersForm : UserControl
         BindCombo(_cmbRequesterEntry, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
         BindCombo(_cmbRequesterSearch, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
         BindCombo(_cmbRequesterPrint, requesters, nameof(Requester.Alias), nameof(Requester.IdSol));
+
+        BindSignerCombo(CmbEntrySigJefatura, _signatureCatalog);
+        BindSignerCombo(CmbEntrySigTecnico, _signatureCatalog);
+        BindSignerCombo(CmbEntrySigSupervisor, _signatureCatalog);
+        BindSignerCombo(CmbPrintSigJefatura, _signatureCatalog);
+        BindSignerCombo(CmbPrintSigTecnico, _signatureCatalog);
+        BindSignerCombo(CmbPrintSigSupervisor, _signatureCatalog);
     }
 
     private static void BindCombo<T>(ComboBox combo, IReadOnlyList<T> items, string display, string value)
@@ -1117,17 +1149,26 @@ public sealed class WorkOrdersForm : UserControl
         }
 
         _loadedOrder = order;
-        SelectOrBindHistoricalProvider(_cmbProviderEntry, order.IdProv);
-        if (order.IdSol.HasValue)
+        _suppressEntrySignerSync = true;
+        try
         {
-            SelectOrBindHistoricalRequester(_cmbRequesterEntry, order.IdSol.Value);
-        }
+            SelectOrBindHistoricalProvider(_cmbProviderEntry, order.IdProv);
+            if (order.IdSol.HasValue)
+            {
+                SelectOrBindHistoricalRequester(_cmbRequesterEntry, order.IdSol.Value);
+            }
 
-        _dtFechaOt.Value = order.FechaOt;
-        TxtObservacionEntry.Text = order.Observacion;
-        TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
-        TxtValorNetoEntry.Text = $"$ {order.ValorNeto:N0}";
-        ApplyEntrySelectedSignature(order.FirmasSeleccionadas);
+            _dtFechaOt.Value = order.FechaOt;
+            TxtObservacionEntry.Text = order.Observacion;
+            TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
+            TxtValorNetoEntry.Text = $"$ {order.ValorNeto:N0}";
+            ApplyEntrySelectedSignature(order.FirmasSeleccionadas);
+            SelectOrderSignersInEntryCombos(order);
+        }
+        finally
+        {
+            _suppressEntrySignerSync = false;
+        }
 
         _entryDetails.Clear();
         _entryDetails.AddRange(order.Detalles);
@@ -1135,17 +1176,12 @@ public sealed class WorkOrdersForm : UserControl
 
         _assetTree.SelectNodeByPath(order.GetLevelArray());
 
-        _suppressApprovalEvents = true;
-        _chkVbs.Checked = order.TieneVbs;
-        _chkVbj.Checked = order.TieneVbj;
-        _suppressApprovalEvents = false;
-
         _btnSaveOt.Enabled = false;
-        _btnSaveAndExportOt.Enabled = false;
+        _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
         _btnUpdateOt.Enabled = true;
         _btnDeleteOt.Enabled = true;
-        RefreshApprovalStatusBadges();
-        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada (ID #{order.IdOt}) · Neto: $ {order.ValorNeto:N0} · Firmas: {order.FirmasSeleccionadas.FormatResumen()}";
+        UpdateEntrySignatureHint();
+        _lblEntryStatus.Text = $"OT #{order.NumeroOt} cargada";
     }
 
     private void AddEntryDetail()
@@ -1226,13 +1262,60 @@ public sealed class WorkOrdersForm : UserControl
         SaveNewOrderCore(promptToPrint: true);
     }
 
-    private void SaveAndExportNewOrder()
+    private void SaveAndExportOrder()
     {
-        int? savedNum = SaveNewOrderCore(promptToPrint: false);
-        if (savedNum.HasValue && _session.Permisos.ImpresionOt)
+        try
         {
-            ShowPrintForOrder(savedNum.Value);
-            BeginInvoke(OpenWorkOrderExportMenu);
+            if (_loadedOrder is not null)
+            {
+                WorkOrder updated = BuildOrderFromEntryForm();
+                updated.IdOt = _loadedOrder.IdOt;
+                updated.Estado = _loadedOrder.Estado;
+                _ctx.WorkOrderService.Update(_session, updated);
+                WorkOrder? fresh = _ctx.WorkOrderService.GetByNumber(updated.NumeroOt) ?? updated;
+                _loadedOrder = fresh;
+                _lblEntryStatus.Text = $"OT N° {fresh.NumeroOt} actualizada — lista para exportar.";
+                ExportUiHelper.ShowWorkOrderExportMenu(_btnSaveAndExportOt, this, _ctx.DocumentExportService, fresh, fresh.FirmasSeleccionadas);
+                return;
+            }
+
+            int? savedNum = SaveNewOrderCore(promptToPrint: false);
+            if (savedNum.HasValue && _session.Permisos.ImpresionOt)
+            {
+                WorkOrder? savedOrder = _ctx.WorkOrderService.GetByNumber(savedNum.Value);
+                if (savedOrder is not null)
+                {
+                    ExportUiHelper.ShowWorkOrderExportMenu(_btnSaveAndExportOt, this, _ctx.DocumentExportService, savedOrder, savedOrder.FirmasSeleccionadas);
+                }
+                else
+                {
+                    ShowPrintForOrder(savedNum.Value);
+                    BeginInvoke(OpenWorkOrderExportMenu);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
+        }
+    }
+
+    private void ShowEntryPreview()
+    {
+        try
+        {
+            if (_entryDetails.Count == 0 && _loadedOrder is null)
+            {
+                CambiasoTheme.ShowWarning(this, "Agregue al menos un ítem de trabajo o busque una OT antes de abrir la vista previa.");
+                return;
+            }
+
+            WorkOrder previewOrder = BuildPreviewOrderFromEntryForm();
+            ExportUiHelper.ShowWorkOrderPreview(this, _ctx, previewOrder, GetEntrySelectedSignature());
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, ex.Message);
         }
     }
 
@@ -1307,37 +1390,6 @@ public sealed class WorkOrdersForm : UserControl
         }
     }
 
-    private void ToggleApproval(ApprovalType type, bool approved)
-    {
-        if (_suppressApprovalEvents || _loadedOrder is null)
-        {
-            return;
-        }
-
-        try
-        {
-            _ctx.WorkOrderService.SetApproval(_session, _loadedOrder.IdOt, type, approved);
-            _loadedOrder = _ctx.WorkOrderService.GetById(_loadedOrder.IdOt);
-            RefreshApprovalStatusBadges();
-            _lblEntryStatus.Text = $"Visto Bueno actualizado · VBS: {_loadedOrder?.VbsResumen ?? "Pendiente"} · VBJ: {_loadedOrder?.VbjResumen ?? "Pendiente"}";
-        }
-        catch (Exception ex)
-        {
-            _suppressApprovalEvents = true;
-            if (type == ApprovalType.Supervisor)
-            {
-                _chkVbs.Checked = !approved;
-            }
-            else
-            {
-                _chkVbj.Checked = !approved;
-            }
-
-            _suppressApprovalEvents = false;
-            CambiasoTheme.ShowWarning(this, ex.Message);
-        }
-    }
-
     private WorkOrder BuildOrderFromEntryForm()
     {
         if (!int.TryParse(_txtNumeroOt.Text.Trim(), out int numOt) || numOt <= 0)
@@ -1366,6 +1418,9 @@ public sealed class WorkOrdersForm : UserControl
             Observacion = TxtObservacionEntry.Text.Trim(),
             ValorNeto = valorNeto,
             FirmasSeleccionadas = GetEntrySelectedSignature(),
+            FirmaJefaturaNombre = GetSignerName(CmbEntrySigJefatura),
+            FirmaTecnicoNombre = GetSignerName(CmbEntrySigTecnico),
+            FirmaSupervisorNombre = GetSignerName(CmbEntrySigSupervisor),
             RutaActivo = _assetTree.CurrentBreadcrumb,
             Detalles = _entryDetails.Select(d => new WorkOrderDetail
             {
@@ -1376,6 +1431,53 @@ public sealed class WorkOrdersForm : UserControl
         };
         order.SetLevels(pathIds);
         return order;
+    }
+
+    private WorkOrder BuildPreviewOrderFromEntryForm()
+    {
+        int numOt = int.TryParse(_txtNumeroOt.Text.Trim(), out int parsedOt) && parsedOt > 0
+            ? parsedOt
+            : (_loadedOrder?.NumeroOt ?? _ctx.WorkOrderService.GetNextWorkOrderNumber());
+
+        decimal valorNeto = WorkOrderService.TryParseNetValue(TxtValorNetoEntry.Text, out decimal parsedNeto)
+            ? Math.Max(0m, parsedNeto)
+            : (_loadedOrder?.ValorNeto ?? 0m);
+        Provider? prov = _cmbProviderEntry.SelectedItem as Provider;
+        Requester? sol = _cmbRequesterEntry.SelectedItem as Requester;
+
+        return new WorkOrder
+        {
+            IdOt = _loadedOrder?.IdOt ?? 0,
+            NumeroOt = numOt,
+            IdProv = prov?.IdProv ?? _loadedOrder?.IdProv ?? 0,
+            NombreProveedor = prov?.Nombre ?? _loadedOrder?.NombreProveedor ?? string.Empty,
+            DireccionProveedor = prov?.Direccion ?? _loadedOrder?.DireccionProveedor ?? string.Empty,
+            CorreoProveedor = prov?.Correo ?? _loadedOrder?.CorreoProveedor ?? string.Empty,
+            IdSol = sol?.IdSol ?? _loadedOrder?.IdSol,
+            AliasSolicitante = sol?.Alias ?? _loadedOrder?.AliasSolicitante ?? string.Empty,
+            NombreSolicitante = sol is not null
+                ? (string.IsNullOrWhiteSpace(sol.NombreCompleto) ? sol.Alias : sol.NombreCompleto)
+                : (_loadedOrder?.NombreSolicitante ?? string.Empty),
+            CorreoSolicitante = sol?.Correo ?? _loadedOrder?.CorreoSolicitante ?? string.Empty,
+            TelefonoSolicitante = sol?.Telefono ?? _loadedOrder?.TelefonoSolicitante ?? string.Empty,
+            FirmaSolicitantePreviewPng = sol?.FirmaPreviewPng ?? _loadedOrder?.FirmaSolicitantePreviewPng,
+            FirmaSolicitanteTipo = !string.IsNullOrWhiteSpace(sol?.FirmaTipo) ? sol.FirmaTipo : (_loadedOrder?.FirmaSolicitanteTipo ?? string.Empty),
+            FirmaSolicitanteNombre = !string.IsNullOrWhiteSpace(sol?.FirmaNombre) ? sol.FirmaNombre : (_loadedOrder?.FirmaSolicitanteNombre ?? string.Empty),
+            FechaOt = _dtFechaOt.Value.Date,
+            Estado = _loadedOrder?.Estado ?? WorkOrderStatus.Abierta,
+            Observacion = TxtObservacionEntry.Text.Trim(),
+            ValorNeto = Math.Max(0m, valorNeto),
+            FirmasSeleccionadas = GetEntrySelectedSignature(),
+            FirmaJefaturaNombre = GetSignerName(CmbEntrySigJefatura),
+            FirmaTecnicoNombre = GetSignerName(CmbEntrySigTecnico),
+            FirmaSupervisorNombre = GetSignerName(CmbEntrySigSupervisor),
+            RutaActivo = !string.IsNullOrWhiteSpace(_assetTree.CurrentBreadcrumb)
+                ? _assetTree.CurrentBreadcrumb
+                : (_loadedOrder?.RutaActivo ?? string.Empty),
+            Detalles = _entryDetails.Count > 0
+                ? _entryDetails.Select(d => new WorkOrderDetail { IdDet = d.IdDet, Cantidad = d.Cantidad, Descripcion = d.Descripcion }).ToList()
+                : (_loadedOrder?.Detalles ?? [])
+        };
     }
 
     private SignatureOption GetEntrySelectedSignature() =>
@@ -1398,11 +1500,9 @@ public sealed class WorkOrdersForm : UserControl
 
         SignatureOption sel = GetEntrySelectedSignature();
         string sigText = sel.FormatResumen();
-        Requester? sol = _cmbRequesterEntry?.SelectedItem as Requester;
-        string techNote = ChkEntrySigTecnico.Checked && sol is not null
-            ? (sol.TieneFirma ? $" · Firma Técnico ({sol.Alias}): OK" : $" · {sol.Alias} sin imagen de firma (solo línea)")
-            : string.Empty;
-        _lblEntrySigHint.Text = $"Pie OT: {sigText}{techNote}";
+        string? tecSel = ChkEntrySigTecnico.Checked ? GetSignerName(CmbEntrySigTecnico) : null;
+        string tecInfo = !string.IsNullOrWhiteSpace(tecSel) ? $" · Técnico: {tecSel}" : string.Empty;
+        _lblEntrySigHint.Text = $"Pie OT: {sigText}{tecInfo}";
         _lblEntrySigHint.ForeColor = sel == SignatureOption.Ninguna ? CambiasoTheme.TextMuted : CambiasoTheme.Primary;
     }
 
@@ -1462,69 +1562,35 @@ public sealed class WorkOrdersForm : UserControl
         combo.SelectedValue = idSol;
     }
 
-    private void RefreshApprovalStatusBadges()
-    {
-        IReadOnlyList<ApproverDirectoryEntry> approvers = _ctx.WorkOrderService.GetApproverDirectory();
-        List<string> vbsAll = approvers.Where(a => a.Vbs).Select(a => a.AliasUsuario).ToList();
-        List<string> vbjAll = approvers.Where(a => a.Vbj).Select(a => a.AliasUsuario).ToList();
-        string vbsAuth = vbsAll.Count == 0 ? "Sin asignar" : (vbsAll.Count <= 2 ? string.Join(", ", vbsAll) : $"{string.Join(", ", vbsAll.Take(2))} +{vbsAll.Count - 2}");
-        string vbjAuth = vbjAll.Count == 0 ? "Sin asignar" : (vbjAll.Count <= 2 ? string.Join(", ", vbjAll) : $"{string.Join(", ", vbjAll.Take(2))} +{vbjAll.Count - 2}");
-
-        _lblAuthorizedApprovers.Text =
-            $"Aprobadores vigentes — VB Supervisor: {vbsAuth}   |   VB Jefatura: {vbjAuth}";
-        _toolTip.SetToolTip(_lblAuthorizedApprovers,
-            $"Autorizados VB Supervisor: {string.Join(", ", vbsAll)}\nAutorizados VB Jefatura: {string.Join(", ", vbjAll)}");
-
-        WorkOrderApproval? vbs = _loadedOrder?.VbsApproval;
-        if (vbs is not null)
-        {
-            _lblVbsDetail.Text = $"✓ Aprobado por {vbs.AprobadorDisplay} ({vbs.Fecha:dd-MM-yyyy HH:mm})";
-            _lblVbsDetail.ForeColor = CambiasoTheme.Success;
-        }
-        else
-        {
-            _lblVbsDetail.Text = vbsAll.Count == 0 ? "Pendiente" : $"Pendiente (Aut.: {vbsAuth})";
-            _lblVbsDetail.ForeColor = CambiasoTheme.Warning;
-        }
-        _toolTip.SetToolTip(_lblVbsDetail, $"Autorizados VBS: {string.Join(", ", vbsAll)}");
-
-        WorkOrderApproval? vbj = _loadedOrder?.VbjApproval;
-        if (vbj is not null)
-        {
-            _lblVbjDetail.Text = $"✓ Aprobado por {vbj.AprobadorDisplay} ({vbj.Fecha:dd-MM-yyyy HH:mm})";
-            _lblVbjDetail.ForeColor = CambiasoTheme.Success;
-        }
-        else
-        {
-            _lblVbjDetail.Text = vbjAll.Count == 0 ? "Pendiente" : $"Pendiente (Aut.: {vbjAuth})";
-            _lblVbjDetail.ForeColor = CambiasoTheme.Warning;
-        }
-        _toolTip.SetToolTip(_lblVbjDetail, $"Autorizados VBJ: {string.Join(", ", vbjAll)}");
-    }
-
     private void ClearEntryForm()
     {
         _loadedOrder = null;
         _entryDetails.Clear();
-        LoadCatalogs();
-        _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
-        RefreshNextOtBadge();
-        _dtFechaOt.Value = DateTime.Today;
-        _numCantidad.Value = 1;
-        _txtDetalle.Clear();
-        TxtObservacionEntry.Clear();
-        TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
-        TxtValorNetoEntry.Text = "$ 0";
-        ApplyEntrySelectedSignature(SignatureOption.AmbasConSolicitante);
-        _suppressApprovalEvents = true;
-        _chkVbs.Checked = false;
-        _chkVbj.Checked = false;
-        _suppressApprovalEvents = false;
+        _suppressEntrySignerSync = true;
+        try
+        {
+            LoadCatalogs();
+            _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
+            RefreshNextOtBadge();
+            _dtFechaOt.Value = DateTime.Today;
+            _numCantidad.Value = 1;
+            _txtDetalle.Clear();
+            TxtObservacionEntry.Clear();
+            TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
+            TxtValorNetoEntry.Text = "$ 0";
+            ApplyEntrySelectedSignature(SignatureOption.AmbasConSolicitante);
+            ApplyDefaultSignersForDraft();
+        }
+        finally
+        {
+            _suppressEntrySignerSync = false;
+        }
+
         _btnSaveOt.Enabled = true;
         _btnSaveAndExportOt.Enabled = _session.Permisos.ImpresionOt;
         _btnUpdateOt.Enabled = false;
         _btnDeleteOt.Enabled = false;
-        RefreshApprovalStatusBadges();
+        UpdateEntrySignatureHint();
         _lblEntryStatus.Text = $"Modo ingreso de nueva OT · Activo actual: {_assetTree.SelectedAsset?.Descripcion ?? "CAMBIASO HNOS S.A.C."}";
         RefreshEntryDetailsGrid();
     }
@@ -1548,8 +1614,7 @@ public sealed class WorkOrdersForm : UserControl
                 FechaFin = _searchDateRange.FechaFin,
                 IdProv = _chkFilterProvider.Checked && _cmbProviderSearch.SelectedValue is int pid ? pid : null,
                 IdSol = _chkFilterRequester.Checked && _cmbRequesterSearch.SelectedValue is int sid ? sid : null,
-                TextoBusqueda = _chkFilterText.Checked ? _txtSearchKeyword.Text.Trim() : null,
-                SoloPendientesVb = _chkPendingVb.Checked
+                TextoBusqueda = _chkFilterText.Checked ? _txtSearchKeyword.Text.Trim() : null
             };
 
             if (_chkFilterTree.Checked)
@@ -1601,20 +1666,18 @@ public sealed class WorkOrdersForm : UserControl
             slice.Select(r => new WorkOrderGridRow(r)));
         _searchPager.SetState(safePage, _searchPager.PageSize, _lastSearchResults.Count);
 
-        if (_gridSearchResults.Columns.Count >= 13)
+        if (_gridSearchResults.Columns.Count >= 11)
         {
             _searchSelection.ConfigureDataColumn(0, "N° OT", 9);
-            _searchSelection.ConfigureDataColumn(1, "Fecha", 11, "dd-MM-yyyy");
+            _searchSelection.ConfigureDataColumn(1, "Fecha", 12, "dd-MM-yyyy");
             _searchSelection.ConfigureDataColumn(2, "Proveedor", 14);
-            _searchSelection.ConfigureDataColumn(3, "Solicitante", 10);
+            _searchSelection.ConfigureDataColumn(3, "Solicitante", 11);
             _searchSelection.ConfigureDataColumn(4, "Cant.", 6);
-            _searchSelection.ConfigureDataColumn(5, "Detalle", 16);
-            _searchSelection.ConfigureDataColumn(6, "Obs.", 8);
+            _searchSelection.ConfigureDataColumn(5, "Detalle", 18);
+            _searchSelection.ConfigureDataColumn(6, "Obs.", 7);
             _searchSelection.ConfigureDataColumn(7, "Valor Neto", 10, "$#,##0", DataGridViewContentAlignment.MiddleRight);
-            _searchSelection.ConfigureDataColumn(8, "Estado", 7);
-            _searchSelection.ConfigureDataColumn(9, "Firmas", 9);
-            _searchSelection.ConfigureDataColumn(10, "VBS", 6);
-            _searchSelection.ConfigureDataColumn(11, "VBJ", 6);
+            _searchSelection.ConfigureDataColumn(8, "Estado", 9);
+            _searchSelection.ConfigureDataColumn(9, "Firmas", 10);
         }
 
         _searchSelection.EnsureSelectColumnAndSync();
@@ -1657,7 +1720,6 @@ public sealed class WorkOrdersForm : UserControl
         _chkFilterRequester.Checked = false;
         _chkFilterText.Checked = true;
         _chkFilterTree.Checked = false;
-        _chkPendingVb.Checked = false;
         _txtSearchKeyword.Clear();
         _lastSearchResults = [];
         _searchSelection.ClearSelection();
@@ -1711,6 +1773,7 @@ public sealed class WorkOrdersForm : UserControl
             ChkSigJefatura.Checked = order.FirmasSeleccionadas.IncludeJefatura();
             ChkSigSupervisor.Checked = order.FirmasSeleccionadas.IncludeSupervisor();
             ChkSigTecnico.Checked = order.FirmasSeleccionadas.IncludeTecnico();
+            SelectOrderSignersInPrintCombos(order);
         }
         finally
         {
@@ -1749,6 +1812,15 @@ public sealed class WorkOrdersForm : UserControl
             if (_printOrder is null)
             {
                 _txtPrintSolActivo.Text = _assetTree.CurrentBreadcrumb;
+                _suppressPrintSignaturePersist = true;
+                try
+                {
+                    SelectSignerInCombo(CmbPrintSigTecnico, r.NombreCompleto);
+                }
+                finally
+                {
+                    _suppressPrintSignaturePersist = false;
+                }
             }
 
             Image? old = _picPrintSolSig.Image;
@@ -1875,6 +1947,9 @@ public sealed class WorkOrdersForm : UserControl
             ValorNeto = _printOrder?.ValorNeto ?? 0m,
             Estado = _printOrder?.Estado ?? WorkOrderStatus.Abierta,
             FirmasSeleccionadas = GetSelectedSignature(),
+            FirmaJefaturaNombre = GetSignerName(CmbPrintSigJefatura),
+            FirmaTecnicoNombre = GetSignerName(CmbPrintSigTecnico),
+            FirmaSupervisorNombre = GetSignerName(CmbPrintSigSupervisor),
             RutaActivo = !string.IsNullOrWhiteSpace(_txtPrintSolActivo.Text) ? _txtPrintSolActivo.Text : (_printOrder?.RutaActivo ?? _assetTree.CurrentBreadcrumb),
             Detalles = [.. _printDetails],
             VistosBuenos = _printOrder?.VistosBuenos ?? []
@@ -1896,12 +1971,22 @@ public sealed class WorkOrdersForm : UserControl
         try
         {
             SignatureOption sel = GetSelectedSignature();
-            _ctx.WorkOrderService.UpdateSignatures(_session, _printOrder.IdOt, sel);
+            string jef = GetSignerName(CmbPrintSigJefatura);
+            string tec = GetSignerName(CmbPrintSigTecnico);
+            string sup = GetSignerName(CmbPrintSigSupervisor);
+            _ctx.WorkOrderService.UpdateSignatures(_session, _printOrder.IdOt, sel, jef, tec, sup);
             _printOrder.FirmasSeleccionadas = sel;
+            _printOrder.FirmaJefaturaNombre = jef;
+            _printOrder.FirmaTecnicoNombre = tec;
+            _printOrder.FirmaSupervisorNombre = sup;
             if (_loadedOrder is not null && _loadedOrder.IdOt == _printOrder.IdOt)
             {
                 _loadedOrder.FirmasSeleccionadas = sel;
+                _loadedOrder.FirmaJefaturaNombre = jef;
+                _loadedOrder.FirmaTecnicoNombre = tec;
+                _loadedOrder.FirmaSupervisorNombre = sup;
                 ApplyEntrySelectedSignature(sel);
+                SelectOrderSignersInEntryCombos(_loadedOrder);
             }
         }
         catch (Exception ex)
@@ -1979,6 +2064,7 @@ public sealed class WorkOrdersForm : UserControl
             ChkSigJefatura.Checked = true;
             ChkSigTecnico.Checked = true;
             ChkSigSupervisor.Checked = true;
+            SelectOrderSignersInPrintCombos(null);
         }
         finally
         {
@@ -1988,6 +2074,138 @@ public sealed class WorkOrdersForm : UserControl
         SyncPrintProviderInfo();
         SyncPrintRequesterInfo();
         RefreshPrintDetailsGrid();
+    }
+
+    private ComboBox CreateSignerCombo(string name)
+    {
+        ComboBox cmb = new()
+        {
+            Name = name,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Dock = DockStyle.Fill,
+            Margin = new Padding(2, 2, 2, 2)
+        };
+        _toolTip.SetToolTip(cmb, "Seleccionar firmante desde Personal y Usuarios");
+        return cmb;
+    }
+
+    private static TableLayoutPanel WrapSignerSlot(CheckBox chk, ComboBox cmb)
+    {
+        TableLayoutPanel slot = new() { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(2, 0, 6, 0) };
+        slot.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 96));
+        slot.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        slot.Controls.Add(chk, 0, 0);
+        slot.Controls.Add(cmb, 1, 0);
+        return slot;
+    }
+
+    private static void BindSignerCombo(ComboBox combo, IReadOnlyList<SignaturePersonOption> items)
+    {
+        string? previousName = combo.SelectedValue as string ?? (combo.SelectedItem as SignaturePersonOption)?.Nombre;
+        combo.DataSource = null;
+        combo.DisplayMember = nameof(SignaturePersonOption.Etiqueta);
+        combo.ValueMember = nameof(SignaturePersonOption.Nombre);
+        combo.DataSource = items.ToList();
+
+        if (!string.IsNullOrWhiteSpace(previousName))
+        {
+            SelectSignerInCombo(combo, previousName);
+        }
+    }
+
+    private static void SelectSignerInCombo(ComboBox combo, string? fullName)
+    {
+        if (combo.DataSource is not IList<SignaturePersonOption> list || list.Count == 0)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(fullName))
+        {
+            string target = fullName.Trim();
+            int idx = -1;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (string.Equals(list[i].Nombre, target, StringComparison.OrdinalIgnoreCase))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+
+            if (idx < 0)
+            {
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (list[i].Nombre.Contains(target, StringComparison.OrdinalIgnoreCase))
+                    {
+                        idx = i;
+                        break;
+                    }
+                }
+            }
+
+            if (idx >= 0)
+            {
+                combo.SelectedIndex = idx;
+                return;
+            }
+
+            List<SignaturePersonOption> extended = [.. list, new SignaturePersonOption(target, target, "Histórico")];
+            combo.DataSource = null;
+            combo.DisplayMember = nameof(SignaturePersonOption.Etiqueta);
+            combo.ValueMember = nameof(SignaturePersonOption.Nombre);
+            combo.DataSource = extended;
+            combo.SelectedIndex = extended.Count - 1;
+            return;
+        }
+
+        combo.SelectedIndex = 0;
+    }
+
+    private static string GetSignerName(ComboBox combo) =>
+        (combo.SelectedItem as SignaturePersonOption)?.Nombre ?? string.Empty;
+
+    private void ApplyDefaultSignersForDraft()
+    {
+        SelectSignerInCombo(CmbEntrySigJefatura, "Juan Ramos");
+        Requester? entryReq = _cmbRequesterEntry.SelectedItem as Requester;
+        string tecName = entryReq is not null && !string.IsNullOrWhiteSpace(entryReq.NombreCompleto)
+            ? entryReq.NombreCompleto
+            : "Técnico";
+        SelectSignerInCombo(CmbEntrySigTecnico, entryReq is not null ? tecName : null);
+        SelectSignerInCombo(CmbEntrySigSupervisor, "Marcelo Silva");
+
+        SelectOrderSignersInPrintCombos(null);
+    }
+
+    private void SelectOrderSignersInEntryCombos(WorkOrder order)
+    {
+        SelectSignerInCombo(CmbEntrySigJefatura,
+            string.IsNullOrWhiteSpace(order.FirmaJefaturaNombre) ? "Juan Ramos" : order.FirmaJefaturaNombre);
+        SelectSignerInCombo(CmbEntrySigTecnico,
+            !string.IsNullOrWhiteSpace(order.FirmaTecnicoNombre) ? order.FirmaTecnicoNombre : order.SolicitanteDisplayNombre);
+        SelectSignerInCombo(CmbEntrySigSupervisor,
+            string.IsNullOrWhiteSpace(order.FirmaSupervisorNombre) ? "Marcelo Silva" : order.FirmaSupervisorNombre);
+    }
+
+    private void SelectOrderSignersInPrintCombos(WorkOrder? order)
+    {
+        if (order is null)
+        {
+            SelectSignerInCombo(CmbPrintSigJefatura, "Juan Ramos");
+            Requester? printReq = _cmbRequesterPrint.SelectedItem as Requester;
+            SelectSignerInCombo(CmbPrintSigTecnico, printReq?.NombreCompleto);
+            SelectSignerInCombo(CmbPrintSigSupervisor, "Marcelo Silva");
+            return;
+        }
+
+        SelectSignerInCombo(CmbPrintSigJefatura,
+            string.IsNullOrWhiteSpace(order.FirmaJefaturaNombre) ? "Juan Ramos" : order.FirmaJefaturaNombre);
+        SelectSignerInCombo(CmbPrintSigTecnico,
+            !string.IsNullOrWhiteSpace(order.FirmaTecnicoNombre) ? order.FirmaTecnicoNombre : order.SolicitanteDisplayNombre);
+        SelectSignerInCombo(CmbPrintSigSupervisor,
+            string.IsNullOrWhiteSpace(order.FirmaSupervisorNombre) ? "Marcelo Silva" : order.FirmaSupervisorNombre);
     }
 
     private static TableLayoutPanel CreatePrintFieldsGrid(int rows)
@@ -2003,7 +2221,7 @@ public sealed class WorkOrdersForm : UserControl
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         for (int r = 0; r < rows; r++)
         {
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         }
 
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -2082,7 +2300,5 @@ public sealed class WorkOrdersForm : UserControl
         public decimal ValorNeto => Source.ValorNeto;
         public string Estado => Source.EstadoDisplay;
         public string Firmas => Source.FirmasDisplay;
-        public string VBS => Source.VbsDisplay;
-        public string VBJ => Source.VbjDisplay;
     }
 }

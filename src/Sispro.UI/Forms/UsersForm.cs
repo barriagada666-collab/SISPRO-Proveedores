@@ -54,6 +54,7 @@ public sealed class UsersForm : UserControl
     private bool _syncSubscribed;
 
     private IReadOnlyList<UserGroup> _groups = [];
+    private IReadOnlyList<UserProfile> _profiles = [];
     private IReadOnlyList<User> _users = [];
     private readonly HashSet<string> _checkedUserIds = new(StringComparer.OrdinalIgnoreCase);
     private User? _selectedUser;
@@ -91,7 +92,6 @@ public sealed class UsersForm : UserControl
     private readonly Button _btnUserClearSig;
     private readonly Label _lblUserSigInfo;
     private readonly PictureBox _picUserSig;
-    private readonly Label _lblApproversBanner;
 
     private Dictionary<string, Requester> _requestersByAlias = new(StringComparer.OrdinalIgnoreCase);
     private ProcessedSignature? _pendingUserSignature;
@@ -100,7 +100,9 @@ public sealed class UsersForm : UserControl
     internal TabControl MainTabs { get; }
     private readonly TabPage _tabUsers;
     private readonly TabPage _tabRequesters;
+    private readonly TabPage _tabProfiles;
     internal RequesterManagerControl RequesterManager { get; }
+    internal UserProfileManagerControl ProfileManager { get; }
 
     // Area 1: Groups panel
     internal ListBox ListGroups { get; }
@@ -185,9 +187,10 @@ public sealed class UsersForm : UserControl
             Name = "cmbPerfilCrud",
             DropDownStyle = ComboBoxStyle.DropDownList,
             Dock = DockStyle.Fill,
-            Margin = fieldMargin
+            Margin = fieldMargin,
+            DisplayMember = nameof(UserProfile.Nombre),
+            ValueMember = nameof(UserProfile.IdNivel)
         };
-        _cmbPerfil.DataSource = Enum.GetValues<UserRoleLevel>();
         _cmbPerfil.SelectedIndexChanged += (_, _) => OnProfileChanged();
 
         _cmbGrupo = new ComboBox
@@ -301,27 +304,16 @@ public sealed class UsersForm : UserControl
         _btnPermisos.Margin = new Padding(2, 0, 0, 0);
         _btnPermisos.Click += (_, _) => OpenPermissionsDialog();
 
-        _lblApproversBanner = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 28,
-            BackColor = CambiasoTheme.PrimaryDark,
-            ForeColor = Color.White,
-            Font = CambiasoTheme.SmallFont,
-            TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = true,
-            Padding = new Padding(10, 0, 10, 0),
-            Text = "Aprobadores vigentes: cargando..."
-        };
-
         MainTabs = new TabControl
         {
             Dock = DockStyle.Fill,
             Font = CambiasoTheme.LabelFont,
             Padding = new Point(14, 6)
         };
-        _tabUsers = new TabPage("Usuarios, Aprobadores VB y Grupos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+        _tabUsers = new TabPage("Usuarios y Grupos") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
         _tabRequesters = new TabPage("Solicitados Por y Firmas Digitales") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+        _tabProfiles = new TabPage("Perfiles de Usuarios") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+
         RequesterManager = new RequesterManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
         RequesterManager.RequestersChanged += (_, _) =>
         {
@@ -332,6 +324,14 @@ public sealed class UsersForm : UserControl
             }
         };
         _tabRequesters.Controls.Add(RequesterManager);
+
+        ProfileManager = new UserProfileManagerControl(_ctx, _session) { Dock = DockStyle.Fill };
+        ProfileManager.ProfilesChanged += (_, _) =>
+        {
+            LoadProfilesCatalog();
+            LoadUsersGrid(_selectedUser?.IdUsuario);
+        };
+        _tabProfiles.Controls.Add(ProfileManager);
 
         // --- AREA 1: GROUPS PANEL ---
         ListGroups = new ListBox
@@ -481,15 +481,14 @@ public sealed class UsersForm : UserControl
         {
             Name = "cmbFiltroPerfil",
             DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 78
+            Width = 104
         };
         _cmbFiltroPerfil.Items.Add("Todos");
-        foreach (UserRoleLevel lvl in Enum.GetValues<UserRoleLevel>())
-        {
-            _cmbFiltroPerfil.Items.Add(lvl);
-        }
         _cmbFiltroPerfil.SelectedIndex = 0;
-        _cmbFiltroPerfil.SelectedIndexChanged += (_, _) => LoadUsersGrid();
+        _cmbFiltroPerfil.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_suppressProfileChange) LoadUsersGrid();
+        };
 
         _cmbFiltroEstado = new ComboBox
         {
@@ -569,6 +568,7 @@ public sealed class UsersForm : UserControl
         _grpListado.Dock = DockStyle.Fill;
 
         BuildThreeAreaLayout();
+        LoadProfilesCatalog();
         SubscribeSyncEvents();
         ReloadGroupsAndUsers();
         ApplyMode(EditorMode.View);
@@ -577,8 +577,10 @@ public sealed class UsersForm : UserControl
     public void RefreshData()
     {
         string? preserveId = _selectedUser?.IdUsuario;
+        LoadProfilesCatalog();
         ReloadGroupsAndUsers(preserveId);
         RequesterManager.ReloadRequesters();
+        ProfileManager.Reload();
     }
 
     public void ShowRequestersTab()
@@ -632,6 +634,7 @@ public sealed class UsersForm : UserControl
 
             // No interrumpir si el usuario está escribiendo en modo Nuevo/Edición, pero sí refrescar grupos y grilla
             string? preserve = _selectedUser?.IdUsuario;
+            LoadProfilesCatalog();
             LoadGroupsPanel();
             if (_mode == EditorMode.View)
             {
@@ -675,17 +678,15 @@ public sealed class UsersForm : UserControl
         GridUsers.Columns.AddRange(
         [
             colSel,
-            MakeCol("colId", "ID", 5, 36),
-            MakeCol("colUsuario", "Usuario", 9, 64),
-            MakeCol("colNombre", "Nombre", 14, 90),
-            MakeCol("colCorreo", "Correo", 13, 84),
-            MakeCol("colTelefono", "Teléfono", 8, 60),
-            MakeCol("colPerfil", "Perfil", 8, 64),
-            MakeCol("colGrupo", "Grupo", 9, 68),
-            MakeCol("colVbs", "VBS", 6, 44),
-            MakeCol("colVbj", "VBJ", 6, 44),
-            MakeCol("colSolicitante", "Solicitante / Firma", 11, 86),
-            MakeCol("colEstado", "Estado", 7, 54),
+            MakeCol("colId", "ID", 6, 44),
+            MakeCol("colUsuario", "Usuario", 10, 68),
+            MakeCol("colNombre", "Nombre", 15, 96),
+            MakeCol("colCorreo", "Correo", 14, 90),
+            MakeCol("colTelefono", "Teléfono", 9, 64),
+            MakeCol("colPerfil", "Perfil", 10, 74),
+            MakeCol("colGrupo", "Grupo", 10, 72),
+            MakeCol("colSolicitante", "Solicitante / Firma", 12, 92),
+            MakeCol("colEstado", "Estado", 7, 56),
             MakeCol("colCreacion", "Creación", 8, 72),
             MakeCol("colUltimoAcceso", "Últ. Acceso", 8, 72)
         ]);
@@ -762,7 +763,7 @@ public sealed class UsersForm : UserControl
             RowCount = 3,
             Padding = new Padding(4, 0, 0, 0)
         };
-        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 282));
+        rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 304));
         rightPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
         rightPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -778,7 +779,7 @@ public sealed class UsersForm : UserControl
         };
         topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         topContainer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        topContainer.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
         TableLayoutPanel fieldsGrid = new()
         {
@@ -798,8 +799,8 @@ public sealed class UsersForm : UserControl
         {
             fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 31));
         }
+        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
-        fieldsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
 
         // Row 0: ID | Usuario | Perfil
         fieldsGrid.Controls.Add(FieldLabel("ID:"), 0, 0);
@@ -936,9 +937,55 @@ public sealed class UsersForm : UserControl
         outer.Controls.Add(grpAreas1, 0, 0);
         outer.Controls.Add(rightPanel, 1, 0);
         _tabUsers.Controls.Add(outer);
-        _tabUsers.Controls.Add(_lblApproversBanner);
-        MainTabs.TabPages.AddRange([_tabUsers, _tabRequesters]);
+        MainTabs.TabPages.AddRange([_tabUsers, _tabRequesters, _tabProfiles]);
         Controls.Add(MainTabs);
+    }
+
+    private void LoadProfilesCatalog()
+    {
+        _suppressProfileChange = true;
+        try
+        {
+            int? selectedEditorId = _cmbPerfil.SelectedValue is int ev ? ev : (_cmbPerfil.SelectedItem as UserProfile)?.IdNivel;
+            int? selectedFilterId = (_cmbFiltroPerfil.SelectedItem as UserProfile)?.IdNivel;
+
+            _profiles = _ctx.UserProfileService.GetAll(_session, includeInactive: true);
+            List<UserProfile> activeProfiles = _profiles.Where(p => p.Activo).ToList();
+            if (activeProfiles.Count == 0)
+            {
+                activeProfiles = _profiles.ToList();
+            }
+
+            _cmbPerfil.DataSource = null;
+            _cmbPerfil.DisplayMember = nameof(UserProfile.Nombre);
+            _cmbPerfil.ValueMember = nameof(UserProfile.IdNivel);
+            _cmbPerfil.DataSource = activeProfiles;
+            if (selectedEditorId.HasValue && activeProfiles.Any(p => p.IdNivel == selectedEditorId.Value))
+            {
+                _cmbPerfil.SelectedValue = selectedEditorId.Value;
+            }
+
+            _cmbFiltroPerfil.Items.Clear();
+            _cmbFiltroPerfil.Items.Add("Todos");
+            foreach (UserProfile prof in _profiles)
+            {
+                _cmbFiltroPerfil.Items.Add(prof);
+            }
+
+            if (selectedFilterId.HasValue)
+            {
+                int matchIdx = _profiles.ToList().FindIndex(p => p.IdNivel == selectedFilterId.Value);
+                _cmbFiltroPerfil.SelectedIndex = matchIdx >= 0 ? matchIdx + 1 : 0;
+            }
+            else
+            {
+                _cmbFiltroPerfil.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _suppressProfileChange = false;
+        }
     }
 
     private void ReloadGroupsAndUsers(string? preserveUserId = null)
@@ -1485,7 +1532,8 @@ public sealed class UsersForm : UserControl
             affected,
             protectedUsers,
             requireRoleSelection: true,
-            isDestructive: false);
+            isDestructive: false,
+            availableProfiles: _profiles);
 
         if (dlg.ShowDialog(this) != DialogResult.OK)
         {
@@ -1494,9 +1542,10 @@ public sealed class UsersForm : UserControl
 
         try
         {
-            BatchOperationResult result = _ctx.UserManagementService.BatchChangeRole(_session, ids, dlg.SelectedRole, dlg.Motivo);
+            BatchOperationResult result = _ctx.UserManagementService.BatchChangeProfile(_session, ids, dlg.SelectedProfileId, dlg.Motivo);
             _checkedUserIds.Clear();
             ReloadGroupsAndUsers(_selectedUser?.IdUsuario);
+            ProfileManager.Reload();
             CambiasoTheme.ShowInfo(this, result.BuildSummary());
         }
         catch (Exception ex)
@@ -1622,7 +1671,7 @@ public sealed class UsersForm : UserControl
                 _modeStrip.BackColor = CambiasoTheme.SubtleFill;
                 _lblMode.ForeColor = CambiasoTheme.Primary;
                 _lblMode.Text = hasSelection
-                    ? $"MODO: CONSULTA — '{_selectedUser!.AliasUsuario}' ({_selectedUser.Nivel} | {(string.IsNullOrWhiteSpace(_selectedUser.NombreGrupo) ? "Sin grupo" : _selectedUser.NombreGrupo)} | {(_selectedUser.Activo ? "Activo" : "Inactivo")})."
+                    ? $"MODO: CONSULTA — '{_selectedUser!.AliasUsuario}' ({_selectedUser.PerfilDisplay} | {(string.IsNullOrWhiteSpace(_selectedUser.NombreGrupo) ? "Sin grupo" : _selectedUser.NombreGrupo)} | {(_selectedUser.Activo ? "Activo" : "Inactivo")})."
                     : "MODO: CONSULTA — Seleccione usuarios en la grilla, arrástrelos a un grupo o presione Nuevo.";
                 break;
         }
@@ -1642,7 +1691,11 @@ public sealed class UsersForm : UserControl
         _lblTimestamps.Text = "Creación: (Automática)   |   Modificación: (Automática)   |   Último acceso: Sin accesos";
 
         _suppressProfileChange = true;
-        _cmbPerfil.SelectedItem = UserRoleLevel.Usuario;
+        if (_cmbPerfil.Items.Count > 0)
+        {
+            _cmbPerfil.SelectedValue = (int)UserRoleLevel.Usuario;
+            if (_cmbPerfil.SelectedIndex < 0) _cmbPerfil.SelectedIndex = 0;
+        }
         _cmbEstado.SelectedIndex = 0;
         SelectGroupInCombo(_activeGroupFilterId);
         _suppressProfileChange = false;
@@ -1651,7 +1704,20 @@ public sealed class UsersForm : UserControl
         _chkForzarCambioClave.Checked = true;
         _pendingUserSignature = null;
         _clearUserSignature = false;
-        _workingPermissions = PermissionPresets.CreateForRole(UserRoleLevel.Usuario);
+        UserProfile? initialProfile = _cmbPerfil.SelectedItem as UserProfile;
+        _workingPermissions = initialProfile is not null
+            ? new UserPermissions
+            {
+                MenuOrdenesTrabajo = initialProfile.PermisosPorDefecto.MenuOrdenesTrabajo,
+                IngresoOt = initialProfile.PermisosPorDefecto.IngresoOt,
+                BusquedaOt = initialProfile.PermisosPorDefecto.BusquedaOt,
+                ImpresionOt = initialProfile.PermisosPorDefecto.ImpresionOt,
+                MenuMantenedor = initialProfile.PermisosPorDefecto.MenuMantenedor,
+                MenuUsuarios = initialProfile.PermisosPorDefecto.MenuUsuarios,
+                IngresoUsuarios = initialProfile.PermisosPorDefecto.IngresoUsuarios,
+                ListadoUsuarios = initialProfile.PermisosPorDefecto.ListadoUsuarios
+            }
+            : PermissionPresets.CreateForRole(UserRoleLevel.Usuario);
 
         ApplyMode(EditorMode.Create);
         UpdateUserSignatureControls();
@@ -1818,9 +1884,14 @@ public sealed class UsersForm : UserControl
 
     private void OpenPermissionsDialog()
     {
-        UserRoleLevel level = _cmbPerfil.SelectedItem is UserRoleLevel lvl ? lvl : UserRoleLevel.Usuario;
+        UserProfile? selectedProf = _cmbPerfil.SelectedItem as UserProfile;
+        int profId = selectedProf?.IdNivel ?? _selectedUser?.EffectiveIdNivel ?? (int)UserRoleLevel.Usuario;
+        UserRoleLevel level = Enum.IsDefined(typeof(UserRoleLevel), profId)
+            ? (UserRoleLevel)profId
+            : UserRoleLevel.Usuario;
+        string title = selectedProf?.Nombre ?? _selectedUser?.PerfilDisplay ?? level.ToString();
         bool readOnly = _mode == EditorMode.View;
-        using UserPermissionsDialog dlg = new(level, _workingPermissions, readOnly);
+        using UserPermissionsDialog dlg = new(level, _workingPermissions, readOnly, title);
         if (dlg.ShowDialog(this) == DialogResult.OK && !readOnly)
         {
             _workingPermissions = dlg.ResultPermissions;
@@ -1902,6 +1973,24 @@ public sealed class UsersForm : UserControl
             return;
         }
 
+        if (_cmbPerfil.SelectedItem is UserProfile prof)
+        {
+            UserPermissions src = prof.PermisosPorDefecto;
+            _workingPermissions = new UserPermissions
+            {
+                IdUsuario = _selectedUser?.IdUsuario ?? string.Empty,
+                MenuOrdenesTrabajo = src.MenuOrdenesTrabajo,
+                IngresoOt = src.IngresoOt,
+                BusquedaOt = src.BusquedaOt,
+                ImpresionOt = src.ImpresionOt,
+                MenuMantenedor = src.MenuMantenedor,
+                MenuUsuarios = src.MenuUsuarios,
+                IngresoUsuarios = src.IngresoUsuarios,
+                ListadoUsuarios = src.ListadoUsuarios
+            };
+            return;
+        }
+
         UserRoleLevel level = _cmbPerfil.SelectedItem is UserRoleLevel lvl ? lvl : UserRoleLevel.Usuario;
         _workingPermissions = PermissionPresets.CreateForRole(level, _selectedUser?.IdUsuario ?? string.Empty);
     }
@@ -1909,7 +1998,9 @@ public sealed class UsersForm : UserControl
     private User BuildUserFromEditor(string? existingId)
     {
         (string pat, string mat) = User.SplitSurnames(_txtApellido.Text);
-        UserRoleLevel level = _cmbPerfil.SelectedItem is UserRoleLevel lvl ? lvl : UserRoleLevel.Usuario;
+        UserProfile? prof = _cmbPerfil.SelectedItem as UserProfile;
+        int idNivel = prof?.IdNivel ?? (int)UserRoleLevel.Usuario;
+        UserRoleLevel level = Enum.IsDefined(typeof(UserRoleLevel), idNivel) ? (UserRoleLevel)idNivel : UserRoleLevel.Usuario;
         int? groupId = (_cmbGrupo.SelectedItem as GroupComboOption)?.IdGrupo;
         bool active = _cmbEstado.SelectedIndex != 1;
 
@@ -1924,6 +2015,8 @@ public sealed class UsersForm : UserControl
             MailUsuario = _txtCorreo.Text.Trim(),
             FonoUsuario = _txtTelefono.Text.Trim(),
             Nivel = level,
+            IdNivel = idNivel,
+            NombrePerfil = prof?.Nombre ?? level.ToString(),
             IdGrupo = groupId,
             Activo = active,
             EsSolicitante = _chkSolicitante.Checked,
@@ -1943,7 +2036,17 @@ public sealed class UsersForm : UserControl
         _txtTelefono.Text = u.FonoUsuario;
 
         _suppressProfileChange = true;
-        _cmbPerfil.SelectedItem = u.Nivel;
+        _cmbPerfil.SelectedValue = u.EffectiveIdNivel;
+        if (_cmbPerfil.SelectedIndex < 0 && _profiles.FirstOrDefault(p => p.IdNivel == u.EffectiveIdNivel) is UserProfile inactiveProf)
+        {
+            List<UserProfile> ds = (_cmbPerfil.DataSource as IEnumerable<UserProfile>)?.ToList() ?? [];
+            ds.Add(inactiveProf);
+            _cmbPerfil.DataSource = null;
+            _cmbPerfil.DisplayMember = nameof(UserProfile.Nombre);
+            _cmbPerfil.ValueMember = nameof(UserProfile.IdNivel);
+            _cmbPerfil.DataSource = ds;
+            _cmbPerfil.SelectedValue = u.EffectiveIdNivel;
+        }
         SelectGroupInCombo(u.IdGrupo);
         _cmbEstado.SelectedIndex = u.Activo ? 0 : 1;
         _suppressProfileChange = false;
@@ -1987,7 +2090,7 @@ public sealed class UsersForm : UserControl
 
     private UserSearchFilter BuildSearchFilter()
     {
-        UserRoleLevel? profileFilter = _cmbFiltroPerfil.SelectedItem is UserRoleLevel lvl ? lvl : null;
+        int? profileIdFilter = _cmbFiltroPerfil.SelectedItem is UserProfile prof ? prof.IdNivel : null;
         bool? activeFilter = _cmbFiltroEstado.SelectedIndex switch
         {
             1 => true,
@@ -1998,7 +2101,7 @@ public sealed class UsersForm : UserControl
         return new UserSearchFilter
         {
             TextoBusqueda = _txtBuscar.Text,
-            Perfil = profileFilter,
+            IdNivelPerfil = profileIdFilter,
             IdGrupo = _filterUnassignedOnly ? null : _activeGroupFilterId,
             SoloSinGrupo = _filterUnassignedOnly,
             Activo = activeFilter,
@@ -2022,15 +2125,6 @@ public sealed class UsersForm : UserControl
             _requestersByAlias = catalogRequesters
                 .GroupBy(r => r.Alias.Trim(), StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
-
-            IReadOnlyList<ApproverDirectoryEntry> approvers = _ctx.UserManagementService.GetApprovers(_session);
-            List<string> vbsAlias = approvers.Where(a => a.Vbs).Select(a => a.AliasUsuario).ToList();
-            List<string> vbjAlias = approvers.Where(a => a.Vbj).Select(a => a.AliasUsuario).ToList();
-            string vbsFull = string.Join(", ", approvers.Where(a => a.Vbs).Select(a => $"{a.AliasUsuario} ({a.NombreCompleto})"));
-            string vbjFull = string.Join(", ", approvers.Where(a => a.Vbj).Select(a => $"{a.AliasUsuario} ({a.NombreCompleto})"));
-            _lblApproversBanner.Text =
-                $"APROBADORES OT VIGENTES  —  VB Supervisor: {(vbsAlias.Count == 0 ? "Sin asignar" : string.Join(", ", vbsAlias))}    |    VB Jefatura: {(vbjAlias.Count == 0 ? "Sin asignar" : string.Join(", ", vbjAlias))}";
-            _toolTip.SetToolTip(_lblApproversBanner, $"VB Supervisor: {vbsFull}\nVB Jefatura: {vbjFull}");
 
             // Retener únicamente checkmarks que siguen en los resultados visibles
             HashSet<string> visibleIds = _users.Select(u => u.IdUsuario).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -2060,10 +2154,8 @@ public sealed class UsersForm : UserControl
                     u.NombreCompleto,
                     u.MailUsuario,
                     u.FonoUsuario,
-                    u.Nivel.ToString(),
+                    u.PerfilDisplay,
                     string.IsNullOrWhiteSpace(u.NombreGrupo) ? "Sin grupo" : u.NombreGrupo,
-                    u.Permisos.VistoBuenoSupervisor ? "✓" : "—",
-                    u.Permisos.VistoBuenoJefatura ? "✓" : "—",
                     solDisplay,
                     u.Activo ? "Activo" : "Inactivo",
                     u.FechaCreacion.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
@@ -2211,16 +2303,6 @@ public sealed class UsersForm : UserControl
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
             }
-        }
-        else if (colName == "colVbs")
-        {
-            e.CellStyle.Font = CambiasoTheme.LabelFont;
-            e.CellStyle.ForeColor = u.Permisos.VistoBuenoSupervisor ? CambiasoTheme.Success : CambiasoTheme.TextMuted;
-        }
-        else if (colName == "colVbj")
-        {
-            e.CellStyle.Font = CambiasoTheme.LabelFont;
-            e.CellStyle.ForeColor = u.Permisos.VistoBuenoJefatura ? CambiasoTheme.Primary : CambiasoTheme.TextMuted;
         }
         else if (colName == "colSolicitante")
         {

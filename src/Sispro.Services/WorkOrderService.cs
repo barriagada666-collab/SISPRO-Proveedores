@@ -54,14 +54,79 @@ public sealed partial class WorkOrderService(
 
     public int GetNextWorkOrderNumber() => workOrders.GetNextWorkOrderNumber();
 
-    public WorkOrder? GetByNumber(int numeroOt) => workOrders.GetByNumber(numeroOt);
+    public IReadOnlyList<SignaturePersonOption> GetSignaturePersonnelCatalog() =>
+        workOrders.GetSignaturePersonnelCatalog();
 
-    public WorkOrder? GetById(int idOt) => workOrders.GetById(idOt);
+    public WorkOrder? GetByNumber(int numeroOt)
+    {
+        WorkOrder? order = workOrders.GetByNumber(numeroOt);
+        if (order is not null)
+        {
+            HydrateSignerPreviews(order);
+        }
+
+        return order;
+    }
+
+    public WorkOrder? GetById(int idOt)
+    {
+        WorkOrder? order = workOrders.GetById(idOt);
+        if (order is not null)
+        {
+            HydrateSignerPreviews(order);
+        }
+
+        return order;
+    }
 
     public IReadOnlyList<WorkOrder> GetByIds(UserSession session, IReadOnlyCollection<int> idOts)
     {
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.BusquedaOt || p.IngresoOt || p.ImpresionOt), "Consultar órdenes de trabajo");
-        return workOrders.GetByIds(idOts);
+        IReadOnlyList<WorkOrder> list = workOrders.GetByIds(idOts);
+        if (list.Count > 0)
+        {
+            IReadOnlyList<SignaturePersonOption> catalog = workOrders.GetSignaturePersonnelCatalog();
+            foreach (WorkOrder order in list)
+            {
+                HydrateSignerPreviews(order, catalog);
+            }
+        }
+
+        return list;
+    }
+
+    public void HydrateSignerPreviews(WorkOrder order, IReadOnlyList<SignaturePersonOption>? catalog = null)
+    {
+        catalog ??= workOrders.GetSignaturePersonnelCatalog();
+        Dictionary<string, byte[]> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (SignaturePersonOption opt in catalog)
+        {
+            if (opt.FirmaPreviewPng is { Length: > 0 } && !byName.ContainsKey(opt.Nombre))
+            {
+                byName[opt.Nombre] = opt.FirmaPreviewPng;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.FirmaJefaturaNombre) &&
+            order.FirmaJefaturaPreviewPng is null &&
+            byName.TryGetValue(order.FirmaJefaturaNombre.Trim(), out byte[]? jefImg))
+        {
+            order.FirmaJefaturaPreviewPng = jefImg;
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.FirmaTecnicoNombre) &&
+            order.FirmaTecnicoPreviewPng is null &&
+            byName.TryGetValue(order.FirmaTecnicoNombre.Trim(), out byte[]? tecImg))
+        {
+            order.FirmaTecnicoPreviewPng = tecImg;
+        }
+
+        if (!string.IsNullOrWhiteSpace(order.FirmaSupervisorNombre) &&
+            order.FirmaSupervisorPreviewPng is null &&
+            byName.TryGetValue(order.FirmaSupervisorNombre.Trim(), out byte[]? supImg))
+        {
+            order.FirmaSupervisorPreviewPng = supImg;
+        }
     }
 
     public DashboardAnalytics GetDashboardAnalytics() => workOrders.GetDashboardAnalytics();
@@ -117,20 +182,31 @@ public sealed partial class WorkOrderService(
         syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "MODIFICAR_OT");
     }
 
-    public void UpdateSignatures(UserSession session, int idOt, SignatureOption signatures)
+    public void UpdateSignatures(
+        UserSession session,
+        int idOt,
+        SignatureOption signatures,
+        string? firmaJefatura = null,
+        string? firmaTecnico = null,
+        string? firmaSupervisor = null)
     {
         AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.IngresoOt || p.ImpresionOt), "Actualizar selección de firmas de OT");
         WorkOrder existing = workOrders.GetById(idOt)
             ?? throw new InvalidOperationException("La orden de trabajo seleccionada no existe.");
 
-        if (existing.FirmasSeleccionadas == signatures)
+        bool sameMask = existing.FirmasSeleccionadas == signatures;
+        bool sameJef = firmaJefatura is null || string.Equals(existing.FirmaJefaturaNombre, firmaJefatura.Trim(), StringComparison.Ordinal);
+        bool sameTec = firmaTecnico is null || string.Equals(existing.FirmaTecnicoNombre, firmaTecnico.Trim(), StringComparison.Ordinal);
+        bool sameSup = firmaSupervisor is null || string.Equals(existing.FirmaSupervisorNombre, firmaSupervisor.Trim(), StringComparison.Ordinal);
+
+        if (sameMask && sameJef && sameTec && sameSup)
         {
             return;
         }
 
-        workOrders.UpdateSignatures(idOt, signatures);
+        workOrders.UpdateSignatures(idOt, signatures, firmaJefatura, firmaTecnico, firmaSupervisor);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "ACTUALIZAR_FIRMAS_OT",
-            $"OT N° {existing.NumeroOt}: selección de firmas actualizada a '{signatures.FormatResumen()}'.");
+            $"OT N° {existing.NumeroOt}: firmas actualizadas a '{signatures.FormatResumen()}'.");
         syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "ACTUALIZAR_FIRMAS_OT");
     }
 

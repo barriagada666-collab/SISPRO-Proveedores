@@ -12,7 +12,8 @@ public sealed class UserManagementService(
     IRequesterRepository requesters,
     IAuditRepository audit,
     IGroupRepository? groups = null,
-    SisproSyncHub? syncHub = null)
+    SisproSyncHub? syncHub = null,
+    IUserProfileRepository? profiles = null)
 {
     public void EnsureCanAccessModule(UserSession? session) =>
         EnsureAdministrator(session, "Acceder al módulo Gestión de Usuarios");
@@ -81,6 +82,7 @@ public sealed class UserManagementService(
         }
 
         ValidateCommonUserFields(user);
+        ResolveAndValidateProfile(user);
         UserGroup? targetGroup = ResolveAndValidateGroup(user.IdGrupo, requireActive: true);
 
         string? pwdError = DomainValidator.ValidatePasswordPolicy(plainPassword, confirmPassword);
@@ -168,6 +170,7 @@ public sealed class UserManagementService(
             ?? throw new InvalidOperationException("El usuario seleccionado no existe.");
 
         ValidateCommonUserFields(user);
+        ResolveAndValidateProfile(user, allowInactiveIfSameAs: existing.EffectiveIdNivel);
         bool groupChanged = existing.IdGrupo != user.IdGrupo;
         UserGroup? targetGroup = ResolveAndValidateGroup(user.IdGrupo, requireActive: groupChanged);
 
@@ -184,7 +187,7 @@ public sealed class UserManagementService(
             throw new InvalidOperationException("No puede desactivar su propia cuenta mientras mantiene la sesión activa.");
         }
 
-        if (isSelf && user.Nivel != UserRoleLevel.Administrador)
+        if (isSelf && user.EffectiveIdNivel != (int)UserRoleLevel.Administrador)
         {
             throw new InvalidOperationException("No puede quitarse el perfil Administrador a su propia cuenta.");
         }
@@ -207,8 +210,8 @@ public sealed class UserManagementService(
         }
 
         // Garantizar que siempre exista al menos un Administrador activo
-        bool wasActiveAdmin = existing.Activo && existing.Nivel == UserRoleLevel.Administrador;
-        bool staysActiveAdmin = user.Activo && user.Nivel == UserRoleLevel.Administrador;
+        bool wasActiveAdmin = existing.Activo && existing.EffectiveIdNivel == (int)UserRoleLevel.Administrador;
+        bool staysActiveAdmin = user.Activo && user.EffectiveIdNivel == (int)UserRoleLevel.Administrador;
         if (wasActiveAdmin && !staysActiveAdmin && users.CountActiveAdmins() <= 1)
         {
             throw new InvalidOperationException("No se puede quitar privilegios ni desactivar al último Administrador activo del sistema.");
@@ -288,13 +291,13 @@ public sealed class UserManagementService(
             "MODIFICAR_USUARIO",
             $"Usuario '{user.AliasUsuario}' (ID {existing.CodigoId}) actualizado [{summary}].");
 
-        if (existing.Nivel != user.Nivel)
+        if (existing.EffectiveIdNivel != user.EffectiveIdNivel)
         {
             audit.Log(
                 session.Usuario.AliasUsuario,
                 "Usuarios",
                 "CAMBIO_PERFIL",
-                $"Perfil de '{user.AliasUsuario}' (ID {existing.CodigoId}) modificado de {existing.Nivel} a {user.Nivel}.");
+                $"Perfil de '{user.AliasUsuario}' (ID {existing.CodigoId}) modificado de {existing.PerfilDisplay} a {user.PerfilDisplay}.");
         }
 
         if (existing.Activo != user.Activo)
@@ -673,6 +676,16 @@ public sealed class UserManagementService(
         UserSession session,
         IReadOnlyList<string> userIds,
         UserRoleLevel newRole,
+        string motivo = "") =>
+        BatchChangeProfile(session, userIds, (int)newRole, motivo);
+
+    /// <summary>
+    /// Cambio masivo de perfil (incluye perfiles base y personalizados) con protección de sesión actual y último Administrador activo.
+    /// </summary>
+    public BatchOperationResult BatchChangeProfile(
+        UserSession session,
+        IReadOnlyList<string> userIds,
+        int targetIdNivel,
         string motivo = "")
     {
         EnsureAdministrator(session, "Cambiar perfil por lotes");
@@ -683,12 +696,29 @@ public sealed class UserManagementService(
             throw new ArgumentException("Debe seleccionar al menos un usuario.");
         }
 
+        UserProfile? targetProfile = profiles?.GetById(targetIdNivel);
+        if (profiles is not null && targetProfile is null)
+        {
+            throw new ArgumentException("El perfil destino seleccionado no existe.");
+        }
+
+        if (targetProfile is not null && !targetProfile.Activo)
+        {
+            throw new InvalidOperationException($"El perfil '{targetProfile.Nombre}' está inactivo y no admite asignaciones.");
+        }
+
+        bool targetIsAdmin = targetIdNivel == (int)UserRoleLevel.Administrador;
+        UserRoleLevel mappedRole = Enum.IsDefined(typeof(UserRoleLevel), targetIdNivel)
+            ? (UserRoleLevel)targetIdNivel
+            : UserRoleLevel.Usuario;
+        string targetProfileName = targetProfile?.Nombre ?? mappedRole.ToString();
+
         string cleanMotivo = string.IsNullOrWhiteSpace(motivo) ? "Cambio masivo de perfil administrativo" : motivo.Trim();
         int remainingActiveAdmins = users.CountActiveAdmins();
 
         BatchOperationResult result = new()
         {
-            OperationName = $"Cambiar perfil a '{newRole}'",
+            OperationName = $"Cambiar perfil a '{targetProfileName}'",
             RequestedCount = distinctIds.Count
         };
 
@@ -710,7 +740,7 @@ public sealed class UserManagementService(
             string label = $"{u.AliasUsuario} ({u.NombreCompleto})";
             bool isSelf = string.Equals(session.Usuario.IdUsuario, u.IdUsuario, StringComparison.OrdinalIgnoreCase);
 
-            if (isSelf && newRole != UserRoleLevel.Administrador)
+            if (isSelf && !targetIsAdmin)
             {
                 result.Items.Add(new BatchItemOutcome
                 {
@@ -723,8 +753,8 @@ public sealed class UserManagementService(
                 continue;
             }
 
-            bool wasActiveAdmin = u.Activo && u.Nivel == UserRoleLevel.Administrador;
-            bool staysActiveAdmin = u.Activo && newRole == UserRoleLevel.Administrador;
+            bool wasActiveAdmin = u.Activo && u.EffectiveIdNivel == (int)UserRoleLevel.Administrador;
+            bool staysActiveAdmin = u.Activo && targetIsAdmin;
             if (wasActiveAdmin && !staysActiveAdmin && remainingActiveAdmins <= 1)
             {
                 audit.Log(
@@ -743,25 +773,29 @@ public sealed class UserManagementService(
                 continue;
             }
 
-            if (u.Nivel == newRole)
+            if (u.EffectiveIdNivel == targetIdNivel)
             {
                 result.Items.Add(new BatchItemOutcome
                 {
                     TargetId = u.IdUsuario,
                     TargetLabel = label,
                     Succeeded = true,
-                    Message = $"Ya tenía perfil {newRole}."
+                    Message = $"Ya tenía perfil {targetProfileName}."
                 });
                 continue;
             }
 
-            UserRoleLevel previousRole = u.Nivel;
-            UserPermissions perms = PermissionPresets.CreateForRole(newRole, u.IdUsuario);
-            u.Nivel = newRole;
+            string previousProfileName = u.PerfilDisplay;
+            UserPermissions perms = targetProfile is not null
+                ? ClonePermissionsForUser(targetProfile.PermisosPorDefecto, u.IdUsuario)
+                : PermissionPresets.CreateForRole(mappedRole, u.IdUsuario);
+            u.Nivel = mappedRole;
+            u.IdNivel = targetIdNivel;
+            u.NombrePerfil = targetProfileName;
             u.Permisos = perms;
             EnforceRolePermissionBoundary(u);
 
-            users.SetRole(u.IdUsuario, newRole, u.Permisos);
+            users.SetProfile(u.IdUsuario, targetIdNivel, u.Permisos);
 
             if (wasActiveAdmin && !staysActiveAdmin)
             {
@@ -776,14 +810,14 @@ public sealed class UserManagementService(
                 session.Usuario.AliasUsuario,
                 "Usuarios",
                 "CAMBIO_PERFIL_LOTE",
-                $"Perfil de '{u.AliasUsuario}' (ID {u.CodigoId}) modificado de {previousRole} -> {newRole} | Motivo: {cleanMotivo} | Resultado: OK.");
+                $"Perfil de '{u.AliasUsuario}' (ID {u.CodigoId}) modificado de {previousProfileName} -> {targetProfileName} | Motivo: {cleanMotivo} | Resultado: OK.");
 
             result.Items.Add(new BatchItemOutcome
             {
                 TargetId = u.IdUsuario,
                 TargetLabel = label,
                 Succeeded = true,
-                Message = $"{previousRole} → {newRole}"
+                Message = $"{previousProfileName} → {targetProfileName}"
             });
         }
 
@@ -902,9 +936,68 @@ public sealed class UserManagementService(
         }
     }
 
+    private void ResolveAndValidateProfile(User user, int? allowInactiveIfSameAs = null)
+    {
+        int targetId = user.EffectiveIdNivel;
+        if (Enum.IsDefined(typeof(UserRoleLevel), targetId))
+        {
+            user.Nivel = (UserRoleLevel)targetId;
+        }
+        else
+        {
+            user.Nivel = UserRoleLevel.Usuario;
+        }
+
+        user.IdNivel = targetId;
+
+        if (profiles is null)
+        {
+            if (string.IsNullOrWhiteSpace(user.NombrePerfil))
+            {
+                user.NombrePerfil = user.Nivel.ToString();
+            }
+
+            return;
+        }
+
+        UserProfile? profile = profiles.GetById(targetId);
+        if (profile is null)
+        {
+            if (Enum.IsDefined(typeof(UserRoleLevel), targetId))
+            {
+                user.NombrePerfil = user.Nivel.ToString();
+                return;
+            }
+
+            throw new ArgumentException("El perfil de usuario seleccionado no existe.");
+        }
+
+        if (!profile.Activo && allowInactiveIfSameAs != targetId)
+        {
+            throw new InvalidOperationException($"El perfil '{profile.Nombre}' está inactivo y no puede asignarse.");
+        }
+
+        user.NombrePerfil = profile.Nombre;
+    }
+
+    private static UserPermissions ClonePermissionsForUser(UserPermissions src, string userId) => new()
+    {
+        IdUsuario = userId,
+        MenuOrdenesTrabajo = src.MenuOrdenesTrabajo,
+        IngresoOt = src.IngresoOt,
+        VistoBuenoSupervisor = src.VistoBuenoSupervisor,
+        VistoBuenoJefatura = src.VistoBuenoJefatura,
+        BusquedaOt = src.BusquedaOt,
+        ImpresionOt = src.ImpresionOt,
+        MenuMantenedor = src.MenuMantenedor,
+        MenuUsuarios = src.MenuUsuarios,
+        IngresoUsuarios = src.IngresoUsuarios,
+        ListadoUsuarios = src.ListadoUsuarios
+    };
+
     private static void EnforceRolePermissionBoundary(User user)
     {
-        if (user.Nivel == UserRoleLevel.Administrador)
+        if (user.EffectiveIdNivel == (int)UserRoleLevel.Administrador)
         {
             UserPermissions full = PermissionPresets.CreateForRole(UserRoleLevel.Administrador, user.IdUsuario);
             user.Permisos = full;
@@ -944,7 +1037,7 @@ public sealed class UserManagementService(
         if (!string.Equals(before.Apellidos, after.Apellidos, StringComparison.Ordinal)) changes.Add("Apellido");
         if (!string.Equals(before.MailUsuario, after.MailUsuario, StringComparison.Ordinal)) changes.Add("Correo");
         if (!string.Equals(before.FonoUsuario, after.FonoUsuario, StringComparison.Ordinal)) changes.Add("Teléfono");
-        if (before.Nivel != after.Nivel) changes.Add($"Perfil({before.Nivel}->{after.Nivel})");
+        if (before.EffectiveIdNivel != after.EffectiveIdNivel) changes.Add($"Perfil({before.PerfilDisplay}->{after.PerfilDisplay})");
         if (before.IdGrupo != after.IdGrupo)
         {
             string g1 = string.IsNullOrWhiteSpace(before.NombreGrupo) ? "Sin grupo" : before.NombreGrupo;

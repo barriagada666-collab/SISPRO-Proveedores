@@ -382,7 +382,7 @@ public sealed class PrintService(AppSettings settings)
     private void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
     {
         g.DrawLine(Pens.LightGray, bounds.Left, bounds.Bottom - 20, bounds.Right, bounds.Bottom - 20);
-        g.DrawString($"SISPRO v4.3 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
+        g.DrawString($"SISPRO v4.4 — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
         using StringFormat right = new() { Alignment = StringAlignment.Far };
         g.DrawString($"Página {pageNumber}", smallFont, Brushes.Gray, new RectangleF(bounds.Left, bounds.Bottom - 16, bounds.Width, 16), right);
     }

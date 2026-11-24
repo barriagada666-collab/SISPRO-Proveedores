@@ -18,8 +18,6 @@ public sealed class UserPermissionsDialog : Form
 
     private readonly CheckBox _chkM1;
     private readonly CheckBox _chkTab01IngresoOt;
-    private readonly CheckBox _chkTab0Vbs;
-    private readonly CheckBox _chkTab0Vbj;
     private readonly CheckBox _chkTab02BusquedaOt;
     private readonly CheckBox _chkTab03ImpresionOt;
     private readonly CheckBox _chkM2Mantenedor;
@@ -29,15 +27,20 @@ public sealed class UserPermissionsDialog : Form
 
     public UserPermissions ResultPermissions { get; private set; }
 
-    public UserPermissionsDialog(UserRoleLevel roleLevel, UserPermissions currentPermissions, bool readOnly)
+    public UserPermissionsDialog(
+        UserRoleLevel roleLevel,
+        UserPermissions currentPermissions,
+        bool readOnly,
+        string? profileTitle = null)
     {
         _roleLevel = roleLevel;
         _readOnly = readOnly;
         ResultPermissions = ClonePermissions(currentPermissions);
+        string titleName = string.IsNullOrWhiteSpace(profileTitle) ? roleLevel.ToString() : profileTitle.Trim();
 
-        Text = $"Permisos del Perfil ({roleLevel}) — SISPRO";
+        Text = $"Permisos del Perfil ({titleName}) — SISPRO";
         Icon = IconCatalog.GetAppIcon();
-        ClientSize = new Size(510, 420);
+        ClientSize = new Size(510, 368);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -48,7 +51,7 @@ public sealed class UserPermissionsDialog : Form
         Panel header = new() { Dock = DockStyle.Top, Height = 50, BackColor = CambiasoTheme.Primary };
         header.Controls.Add(new Label
         {
-            Text = $"Permisos RBAC — Perfil {roleLevel}",
+            Text = $"Permisos RBAC — Perfil {titleName}",
             Font = CambiasoTheme.SectionFont,
             ForeColor = Color.White,
             AutoSize = true,
@@ -61,7 +64,7 @@ public sealed class UserPermissionsDialog : Form
             Dock = DockStyle.Fill,
             Text = roleLevel == UserRoleLevel.Administrador
                 ? "El perfil Administrador posee acceso total al sistema (protegido contra degradación)."
-                : "El módulo Gestión de Usuarios (M4) está restringido exclusivamente al perfil Administrador.",
+                : "El módulo Gestión de Usuarios (M3) está restringido exclusivamente al perfil Administrador.",
             Font = CambiasoTheme.SmallFont,
             ForeColor = CambiasoTheme.Primary,
             TextAlign = ContentAlignment.MiddleLeft
@@ -69,23 +72,21 @@ public sealed class UserPermissionsDialog : Form
 
         _chkM1 = new CheckBox { Text = "M1 — Menú Trabajos Externos (Órdenes de Trabajo)", Font = CambiasoTheme.LabelFont, AutoSize = true };
         _chkTab01IngresoOt = new CheckBox { Text = "Ingreso y edición de OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkTab0Vbs = new CheckBox { Text = "Aprobador VB Supervisor (VBS)", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkTab0Vbj = new CheckBox { Text = "Aprobador VB Jefatura (VBJ)", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
         _chkTab02BusquedaOt = new CheckBox { Text = "Búsqueda y exportación de OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
         _chkTab03ImpresionOt = new CheckBox { Text = "Generar / Imprimir OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkM1.CheckedChanged += (_, _) => SyncChildCheckboxes(_chkM1, _chkTab01IngresoOt, _chkTab0Vbs, _chkTab0Vbj, _chkTab02BusquedaOt, _chkTab03ImpresionOt);
+        _chkM1.CheckedChanged += (_, _) => SyncChildCheckboxes(_chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt, _chkTab03ImpresionOt);
 
         _chkM2Mantenedor = new CheckBox { Text = "M2 — Mantenedores (Proveedores, Solicitantes y Activos)", Font = CambiasoTheme.LabelFont, AutoSize = true, Margin = new Padding(0, 10, 0, 2) };
 
-        _chkM3 = new CheckBox { Text = "M3 — Gestión de Usuarios y Solicitantes (Exclusivo Administrador)", Font = CambiasoTheme.LabelFont, AutoSize = true, Margin = new Padding(0, 10, 0, 2) };
-        _chkTab20IngresoUs = new CheckBox { Text = "Crear / Modificar / Desactivar usuarios y solicitantes", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
+        _chkM3 = new CheckBox { Text = "M3 — Gestión de Usuarios, Solicitantes y Perfiles (Exclusivo Administrador)", Font = CambiasoTheme.LabelFont, AutoSize = true, Margin = new Padding(0, 10, 0, 2) };
+        _chkTab20IngresoUs = new CheckBox { Text = "Crear / Modificar / Desactivar usuarios, perfiles y solicitantes", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
         _chkTab21ListadoUs = new CheckBox { Text = "Consultar, filtrar e imprimir usuarios y firmas", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
 
         Panel body = new() { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20, 12, 20, 12) };
         TableLayoutPanel list = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
         list.Controls.AddRange(
         [
-            _chkM1, _chkTab01IngresoOt, _chkTab0Vbs, _chkTab0Vbj, _chkTab02BusquedaOt, _chkTab03ImpresionOt,
+            _chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt, _chkTab03ImpresionOt,
             _chkM2Mantenedor,
             _chkM3, _chkTab20IngresoUs, _chkTab21ListadoUs
         ]);
@@ -142,8 +143,6 @@ public sealed class UserPermissionsDialog : Form
         bool canEditNonAdmin = !_readOnly && _roleLevel != UserRoleLevel.Administrador;
         _chkM1.Enabled = canEditNonAdmin;
         _chkTab01IngresoOt.Enabled = canEditNonAdmin && _chkM1.Checked;
-        _chkTab0Vbs.Enabled = canEditNonAdmin && _chkM1.Checked;
-        _chkTab0Vbj.Enabled = canEditNonAdmin && _chkM1.Checked;
         _chkTab02BusquedaOt.Enabled = canEditNonAdmin && _chkM1.Checked;
         _chkTab03ImpresionOt.Enabled = canEditNonAdmin && _chkM1.Checked;
 
@@ -172,8 +171,6 @@ public sealed class UserPermissionsDialog : Form
     {
         _chkM1.Checked = p.MenuOrdenesTrabajo;
         _chkTab01IngresoOt.Checked = p.IngresoOt;
-        _chkTab0Vbs.Checked = p.VistoBuenoSupervisor;
-        _chkTab0Vbj.Checked = p.VistoBuenoJefatura;
         _chkTab02BusquedaOt.Checked = p.BusquedaOt;
         _chkTab03ImpresionOt.Checked = p.ImpresionOt;
 
@@ -189,8 +186,8 @@ public sealed class UserPermissionsDialog : Form
     {
         MenuOrdenesTrabajo = _chkM1.Checked,
         IngresoOt = _chkTab01IngresoOt.Checked,
-        VistoBuenoSupervisor = _chkTab0Vbs.Checked,
-        VistoBuenoJefatura = _chkTab0Vbj.Checked,
+        VistoBuenoSupervisor = false,
+        VistoBuenoJefatura = false,
         BusquedaOt = _chkTab02BusquedaOt.Checked,
         ImpresionOt = _chkTab03ImpresionOt.Checked,
         MenuMantenedor = _chkM2Mantenedor.Checked,
