@@ -38,18 +38,19 @@ En **SISPRO v4.1.0** se resolvieron los defectos detectados en operación sobre 
 - **Compilación `Debug` (`SISPRO.sln`):** **0 errores**, **0 advertencias** (`TreatWarningsAsErrors=true`, `AnalysisLevel=latest-recommended`).
 - **Compilación `Release` (`SISPRO.sln`):** **0 errores**, **0 advertencias**.
 - **Auditoría de dependencias NuGet (`dotnet list SISPRO.sln package --vulnerable --include-transitive`):** **0 paquetes vulnerables**.
-- **Suite Automatizada `xUnit` (`dotnet test -c Release --no-build`):** **59 / 59 pruebas aprobadas** (0 fallidas, 0 omitidas), incluyendo:
+- **Suite Automatizada `xUnit` (`dotnet test -c Release --no-build`):** **60 / 60 pruebas aprobadas** (0 fallidas, 0 omitidas), incluyendo:
   - `AssetTreeAdministrationTests` (5 pruebas): CRUD completo, movimiento con recálculo de subárbol, protección ciclos y nivel 11, RBAC estricto Supervisor con auditoría, bloqueo por hijos y referencias OTs/Mantención, desactivación en cascada, ruta `depth DESC`, normalización de los 28 nodos anómalos reales y exportación `.xlsx`/`.pdf`/`.docx`/`.csv`.
-  - `ContextMenuHelperTests` (1 prueba STA): verificación de ejecución diferida sin `ObjectDisposedException`, disposición limpia del menú e integridad persistente de bitmaps en `IconCatalog`.
-  - `WinFormsUiAuditTests` + `ScreenshotCaptureTests`: auditoría completa de íconos/botones/RBAC en todas las vistas y diálogos + inspección visual directa de `02_dashboard.png`, `03_ordenes_trabajo.png`, `05_mantenedores.png`, `09_editor_arbol.png` y `10_ot_externa.png`.
+  - `MultiFormatExportTests` (2 pruebas): saneamiento XML compartido (`ExportSanitizer`), codificación `Windows-1252` nativa en PDF (`€`, `—`, tildes, `ñ`) y paginación multipágina de OTs extensas (`25` ítems) sin solapar firmas.
+  - `ContextMenuHelperTests` (1 prueba STA): verificación de ejecución diferida sin `ObjectDisposedException` (con guarda `!anchor.IsDisposed`), disposición limpia del menú e integridad persistente de bitmaps en `IconCatalog`.
+  - `WinFormsUiAuditTests` + `ScreenshotCaptureTests`: auditoría completa de íconos/botones/RBAC/diálogos (`AuditLogDialog` con filtro `"Árbol de Activos"`/`"Configuración"`, `SettingsDialog` con `AcceptButton`/`CancelButton` y validación RUT/empresa) + inspección visual de `08_auditoria_fechas.png`, `09_editor_arbol.png` y `10_ot_externa.png`.
 - **Instalador Inno Setup `6.7.3`:**
-  - Artefacto: `installer/Output/SISPRO_Setup_v4.1.0_win-x64.exe` (**48.632.424 bytes** / **46,38 MiB**)
+  - Artefacto: `installer/Output/SISPRO_Setup_v4.1.0_win-x64.exe` (**48.624.998 bytes** / **46,37 MiB**)
   - Ruta predeterminada: `C:\Temp` (editable por el usuario)
-  - `SHA-256`: `AFC74492105CCC49990B3885F52A077DFD3974C668696BA28690FD4ADD1E3F3E`
+  - `SHA-256`: `55A504C47A07971618BCC665C19789209DB7787D1F0EF4A133ECFC26A9824177`
   - Prueba real silenciosa (`v4.0.0 → v4.1.0 → desinstalación` en `C:\Temp\SISPRO_V41_VERIFY`):
-    - Instalación `v4.0.0`: `EXIT=0`
-    - Actualización `v4.1.0`: `EXIT=0`, `FileVersion=4.1.0.0`, centinela BD preservado (`1 → 1`), `1.824` activos y `7.284` OTs intactas
-    - Desinstalación: `EXIT=0`, ejecutable eliminado, `Data\sispro.db` y archivos de usuario preservados.
+    - Instalación `v4.0.0`: `EXIT=0`, `FileVersion=4.0.0.0`
+    - Actualización `v4.1.0`: `EXIT=0`, `FileVersion=4.1.0.0`, `Data\sispro.db` preservada sin alteración (`SHA-256` idéntico) y archivo centinela conservado
+    - Desinstalación: `EXIT=0`, ejecutable eliminado, `Data\sispro.db` preservada (`uninsneveruninstall`).
 
 ---
 

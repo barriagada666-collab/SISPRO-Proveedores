@@ -111,6 +111,8 @@ public sealed class WinFormsUiAuditTests
 
             using SettingsDialog settingsDlg = new(temp.Context);
             AssertAllButtonsValid(settingsDlg, "SettingsDialog");
+            Assert.NotNull(settingsDlg.AcceptButton);
+            Assert.NotNull(settingsDlg.CancelButton);
 
             using ChangePasswordDialog pwdDlg = new(temp.Context.AuthService, admin);
             AssertAllButtonsValid(pwdDlg, "ChangePasswordDialog");
@@ -126,6 +128,8 @@ public sealed class WinFormsUiAuditTests
 
             using AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");
+            List<ComboBox> auditCombos = CollectControls<ComboBox>(auditDlg);
+            Assert.Contains(auditCombos, c => c.Items.Contains("Árbol de Activos") && c.Items.Contains("Configuración"));
 
             using GroupEditorDialog groupEditDlg = new(temp.Context.GroupManagementService, temp.Context.UserManagementService, admin);
             AssertAllButtonsValid(groupEditDlg, "GroupEditorDialog");

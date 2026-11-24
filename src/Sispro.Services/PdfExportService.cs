@@ -16,7 +16,7 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class PdfExportService(AppSettings settings)
 {
-    private static readonly Encoding WinAnsi = Encoding.Latin1;
+    private static readonly Encoding WinAnsi = ExportSanitizer.WinAnsi1252;
     private static readonly CultureInfo ClCulture = new("es-CL");
 
     // Paleta corporativa Cambiaso normalizada (0..1)
@@ -68,7 +68,7 @@ public sealed class PdfExportService(AppSettings settings)
             {
                 for (int c = 0; c < report.Columns.Count && c < r.Length; c++)
                 {
-                    if (report.Columns[c].SumInFooter && TryToDecimal(r[c], out decimal d))
+                    if (report.Columns[c].SumInFooter && ExportSanitizer.TryToDecimal(r[c], out decimal d))
                     {
                         sums[c] += d;
                     }
@@ -215,25 +215,52 @@ public sealed class PdfExportService(AppSettings settings)
         double marginTop = 32;
         double marginBottom = 36;
         double contentW = pageW - (marginX * 2);
+        double halfW = (contentW - 12) / 2;
+        double[] colW = [38, 46, contentW - 184, 100];
+        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo", "Guía / Estado"];
 
+        void DrawOtBanner(StringBuilder pageSb, bool isContinuation)
+        {
+            string title = isContinuation
+                ? $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6} (Continuación)"
+                : $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}";
+            DrawCorporateHeader(
+                pageSb,
+                pageW,
+                pageH,
+                marginX,
+                marginTop,
+                72,
+                contentW,
+                title,
+                $"{settings.CompanyDepartment}  |  RUT {settings.CompanyRut}",
+                $"Fecha OT: {order.FechaOt:dd-MM-yyyy}  |  Estado: {order.Estado}",
+                logo is not null);
+        }
+
+        double DrawDetailsHeader(StringBuilder pageSb, double topY)
+        {
+            pageSb.AppendLine(PrimaryFill);
+            pageSb.AppendLine(Fmt($"{marginX} {topY - 22} {contentW} 22 re f"));
+            pageSb.AppendLine(WhiteFill);
+            double cx = marginX;
+            for (int i = 0; i < colH.Length; i++)
+            {
+                DrawText(pageSb, "F2", 8.5, cx + 5, topY - 14.5, colH[i]);
+                cx += colW[i];
+            }
+
+            return topY - 22;
+        }
+
+        List<StringBuilder> pageBuilders = [];
         StringBuilder sb = new();
-        DrawCorporateHeader(
-            sb,
-            pageW,
-            pageH,
-            marginX,
-            marginTop,
-            72,
-            contentW,
-            $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}",
-            $"{settings.CompanyDepartment}  |  RUT {settings.CompanyRut}",
-            $"Fecha OT: {order.FechaOt:dd-MM-yyyy}  |  Estado: {order.Estado}",
-            logo is not null);
+        pageBuilders.Add(sb);
+        DrawOtBanner(sb, isContinuation: false);
 
         double y = pageH - marginTop - 88;
 
         // Bloque Proveedor & Solicitante
-        double halfW = (contentW - 12) / 2;
         DrawInfoCard(sb, marginX, y, halfW, 92, "DATOS DEL PROVEEDOR",
         [
             $"Señor(es): {order.NombreProveedor}",
@@ -251,27 +278,29 @@ public sealed class PdfExportService(AppSettings settings)
 
         y -= 108;
 
-        // Tabla de detalles
-        double[] colW = [38, 46, contentW - 184, 100];
-        string[] colH = ["Ítem", "Cant.", "Detalle de Pieza en Reparación y Trabajo", "Guía / Estado"];
-        sb.AppendLine(PrimaryFill);
-        sb.AppendLine(Fmt($"{marginX} {y - 22} {contentW} 22 re f"));
-        sb.AppendLine(WhiteFill);
-        double cx = marginX;
-        for (int i = 0; i < colH.Length; i++)
-        {
-            DrawText(sb, "F2", 8.5, cx + 5, y - 14.5, colH[i]);
-            cx += colW[i];
-        }
-
-        y -= 22;
-        double tableStart = y + 22;
+        double tableStart = y;
+        y = DrawDetailsHeader(sb, y);
+        double minTableY = marginBottom + 40;
 
         int itemIdx = 1;
         foreach (WorkOrderDetail d in order.Detalles)
         {
             List<string> lines = WrapText(d.Descripcion, colW[2] - 10, 8.5);
             double rh = Math.Max(20, (lines.Count * 11.5) + 8);
+            if (y - rh < minTableY)
+            {
+                sb.AppendLine("0.7 w");
+                sb.AppendLine(BorderStroke);
+                sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
+
+                sb = new();
+                pageBuilders.Add(sb);
+                DrawOtBanner(sb, isContinuation: true);
+                y = pageH - marginTop - 88;
+                tableStart = y;
+                y = DrawDetailsHeader(sb, y);
+            }
+
             if (itemIdx % 2 == 0)
             {
                 sb.AppendLine(SubtleRowFill);
@@ -304,6 +333,17 @@ public sealed class PdfExportService(AppSettings settings)
         sb.AppendLine(BorderStroke);
         sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
 
+        // Si el bloque de Vistos Buenos y Firmas no cabe limpio en la página actual, abrir página final
+        double minSignatureRoomY = marginBottom + 205;
+        bool sigOnNewPage = y < minSignatureRoomY;
+        if (sigOnNewPage)
+        {
+            sb = new();
+            pageBuilders.Add(sb);
+            DrawOtBanner(sb, isContinuation: true);
+            y = pageH - marginTop - 88;
+        }
+
         // Estado Vistos Buenos
         y -= 24;
         string vbInfo = $"VB Supervisor: {(order.TieneVbs ? "APROBADO" : "Pendiente")}     |     VB Jefatura: {(order.TieneVbj ? "APROBADO" : "Pendiente")}";
@@ -311,7 +351,9 @@ public sealed class PdfExportService(AppSettings settings)
         DrawText(sb, "F2", 9, marginX, y, vbInfo);
 
         // Firmas
-        double sigY = Math.Max(marginBottom + 66, Math.Min(y - 95, 190));
+        double sigY = sigOnNewPage
+            ? Math.Max(marginBottom + 66, y - 115)
+            : Math.Max(marginBottom + 66, Math.Min(y - 106, 190));
         if (sigJr is not null)
         {
             sb.AppendLine(Fmt($"q 115 0 0 70 {marginX + 60} {sigY + 18} cm /ImJR Do Q"));
@@ -330,14 +372,20 @@ public sealed class PdfExportService(AppSettings settings)
         DrawText(sb, "F2", 8.5, marginX + 38, sigY + 2, "Juan Ramos Moyano — Jefatura Mantención");
         DrawText(sb, "F2", 8.5, marginX + halfW + 46, sigY + 2, "Marcelo Silva Morgado — Supervisor Mantención");
 
-        DrawFooter(sb, pageW, marginX, marginBottom, 1, 1, $"{settings.CompanyName} · {settings.CompanyCity}");
+        int totalPages = pageBuilders.Count;
+        List<string> pages = new(totalPages);
+        for (int p = 0; p < totalPages; p++)
+        {
+            DrawFooter(pageBuilders[p], pageW, marginX, marginBottom, p + 1, totalPages, $"{settings.CompanyName} · {settings.CompanyCity}");
+            pages.Add(pageBuilders[p].ToString());
+        }
 
         List<(string Name, PdfImage Image)> images = [];
         if (logo is not null) images.Add(("ImLogo", logo));
         if (sigJr is not null) images.Add(("ImJR", sigJr));
         if (sigMs is not null) images.Add(("ImMS", sigMs));
 
-        WritePdfDocument(outputPath, pageW, pageH, [sb.ToString()], images);
+        WritePdfDocument(outputPath, pageW, pageH, pages, images);
     }
 
     private void DrawCorporateHeader(
@@ -598,38 +646,8 @@ public sealed class PdfExportService(AppSettings settings)
         }
     }
 
-    private static string FormatDisplayValue(object? val, ExportColumnKind kind)
-    {
-        if (val is null)
-        {
-            return string.Empty;
-        }
-
-        return kind switch
-        {
-            ExportColumnKind.Date when val is DateTime dt => dt.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture),
-            ExportColumnKind.DateTime when val is DateTime dt => dt.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
-            ExportColumnKind.Currency when TryToDecimal(val, out decimal d) => $"${d.ToString("#,##0", ClCulture)}",
-            ExportColumnKind.Integer when TryToDecimal(val, out decimal d) => d.ToString("0", CultureInfo.InvariantCulture),
-            ExportColumnKind.Decimal when TryToDecimal(val, out decimal d) => d.ToString("#,##0.##", ClCulture),
-            _ => Convert.ToString(val, ClCulture) ?? string.Empty
-        };
-    }
-
-    private static bool TryToDecimal(object? val, out decimal result)
-    {
-        switch (val)
-        {
-            case decimal dec: result = dec; return true;
-            case int i: result = i; return true;
-            case long l: result = l; return true;
-            case double dbl: result = Convert.ToDecimal(dbl); return true;
-            case float flt: result = Convert.ToDecimal(flt); return true;
-            default:
-                result = 0;
-                return false;
-        }
-    }
+    private static string FormatDisplayValue(object? val, ExportColumnKind kind) =>
+        ExportSanitizer.FormatDisplayValue(val, kind, ClCulture);
 
     private static double EstimateTextWidth(string text, double fontSize) =>
         text.Length * fontSize * 0.51;
@@ -684,26 +702,29 @@ public sealed class PdfExportService(AppSettings settings)
 
     private static string EscapePdfText(string text)
     {
-        StringBuilder sb = new(text.Length + 8);
-        foreach (char c in text)
+        string clean = ExportSanitizer.SanitizeXmlText(text);
+        StringBuilder sb = new(clean.Length + 8);
+        foreach (char c in clean)
         {
-            char mapped = c switch
+            string? multi = c switch
             {
-                '—' or '–' => '-',
-                '…' => '.',
-                '→' => '>',
-                '•' or '·' => '-',
-                '“' or '”' => '"',
-                '‘' or '’' => '\'',
-                _ => c
+                '→' => "->",
+                '≥' => ">=",
+                '≤' => "<=",
+                _ => null
             };
+            if (multi is not null)
+            {
+                sb.Append(multi);
+                continue;
+            }
 
-            if (mapped is '\\' or '(' or ')')
+            if (c is '\\' or '(' or ')')
             {
                 sb.Append('\\');
             }
 
-            sb.Append(mapped);
+            sb.Append(c);
         }
 
         return sb.ToString();

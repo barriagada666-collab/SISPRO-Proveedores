@@ -154,7 +154,13 @@ public static class ContextMenuHelper
                         menu.Close(ToolStripDropDownCloseReason.ItemClicked);
                     }
 
-                    Defer(anchor, action);
+                    Defer(anchor, () =>
+                    {
+                        if (!anchor.IsDisposed)
+                        {
+                            action();
+                        }
+                    });
                 };
             }
 

@@ -1,5 +1,7 @@
 using System.Drawing;
 using Sispro.Core.Dtos;
+using Sispro.Core.Enums;
+using Sispro.Core.Validation;
 using Sispro.Services;
 using Sispro.UI.Theme;
 
@@ -83,7 +85,7 @@ public sealed class SettingsDialog : Form
             BackColor = CambiasoTheme.CardBackground
         };
 
-        Button btnCancel = CambiasoTheme.CreateButton("Cancelar", AppIcon.Clear, ButtonTone.Secondary, _toolTip, "Descartar cambios", width: 120);
+        Button btnCancel = CambiasoTheme.CreateButton("Cancelar", AppIcon.Cancel, ButtonTone.Secondary, _toolTip, "Descartar cambios", width: 120);
         btnCancel.Click += (_, _) =>
         {
             DialogResult = DialogResult.Cancel;
@@ -95,6 +97,8 @@ public sealed class SettingsDialog : Form
 
         footer.Controls.Add(btnCancel);
         footer.Controls.Add(btnSave);
+        AcceptButton = btnSave;
+        CancelButton = btnCancel;
 
         Controls.Add(body);
         Controls.Add(footer);
@@ -160,27 +164,51 @@ public sealed class SettingsDialog : Form
 
     private void SaveSettings()
     {
-        if (string.IsNullOrWhiteSpace(_txtDbPath.Text))
+        string newDbPath = _txtDbPath.Text.Trim();
+        if (string.IsNullOrWhiteSpace(newDbPath))
         {
             CambiasoTheme.ShowWarning(this, "Debe indicar una ruta de base de datos válida.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtCompany.Text))
+        {
+            CambiasoTheme.ShowWarning(this, "Debe ingresar la razón social o nombre de la empresa.");
+            _txtCompany.Focus();
+            return;
+        }
+
+        string rawRut = _txtRut.Text.Trim();
+        if (!string.IsNullOrEmpty(rawRut) && !RutValidator.IsValid(rawRut))
+        {
+            CambiasoTheme.ShowWarning(this, "El RUT ingresado para la empresa no es válido (verifique dígitos y verificador).");
+            _txtRut.Focus();
             return;
         }
 
         try
         {
             _ctx.Settings.CompanyName = _txtCompany.Text.Trim();
-            _ctx.Settings.CompanyRut = _txtRut.Text.Trim();
+            _ctx.Settings.CompanyRut = string.IsNullOrEmpty(rawRut) ? string.Empty : RutValidator.Format(rawRut);
             _ctx.Settings.CompanyDepartment = _txtDept.Text.Trim();
             _ctx.Settings.CompanyAddress = _txtAddress.Text.Trim();
 
-            if (!string.Equals(_ctx.Settings.DatabasePath, _txtDbPath.Text.Trim(), StringComparison.OrdinalIgnoreCase))
+            bool dbChanged = !string.Equals(_ctx.Settings.DatabasePath, newDbPath, StringComparison.OrdinalIgnoreCase);
+            if (dbChanged)
             {
-                _ctx.ReloadDatabase(_txtDbPath.Text.Trim());
+                _ctx.ReloadDatabase(newDbPath);
             }
             else
             {
                 AppSettingsStore.Save(_ctx.Settings);
             }
+
+            _ctx.Audit.Log(
+                _ctx.CurrentSession?.Usuario.AliasUsuario ?? "SISTEMA",
+                "Configuración",
+                "GUARDAR_CONFIGURACION",
+                $"Configuración actualizada ({_ctx.Settings.CompanyName}, RUT {_ctx.Settings.CompanyRut}).");
+            _ctx.SyncHub.Publish(dbChanged ? DataChangeKind.Audit : DataChangeKind.Catalogs | DataChangeKind.Audit, "GUARDAR_CONFIGURACION");
 
             CambiasoTheme.ShowInfo(this, "Configuración guardada correctamente.");
             DialogResult = DialogResult.OK;

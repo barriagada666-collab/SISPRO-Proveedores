@@ -18,6 +18,7 @@ namespace Sispro.Services;
 public sealed class WordExportService(AppSettings settings)
 {
     private static readonly CultureInfo ClCulture = new("es-CL");
+    private static int _imageCounter;
     private const string PrimaryDarkHex = "0A263C";
     private const string PrimaryHex = "0E4163";
     private const string GoldHex = "C8A977";
@@ -73,7 +74,7 @@ public sealed class WordExportService(AppSettings settings)
             {
                 object? val = c < data.Length ? data[c] : null;
                 ExportColumn col = report.Columns[c];
-                if (hasTotals && col.SumInFooter && TryToDecimal(val, out decimal d))
+                if (hasTotals && col.SumInFooter && ExportSanitizer.TryToDecimal(val, out decimal d))
                 {
                     sums[c] += d;
                 }
@@ -240,7 +241,8 @@ public sealed class WordExportService(AppSettings settings)
 
         TableRow tr = new();
 
-        if (File.Exists(logoPath))
+        bool hasLogo = File.Exists(logoPath);
+        if (hasLogo)
         {
             TableCell logoCell = new(new TableCellProperties(
                 new TableCellWidth { Width = "1350", Type = TableWidthUnitValues.Pct },
@@ -256,6 +258,7 @@ public sealed class WordExportService(AppSettings settings)
         }
 
         TableCell textCell = new(new TableCellProperties(
+            new TableCellWidth { Width = hasLogo ? "3650" : "5000", Type = TableWidthUnitValues.Pct },
             new Shading { Val = ShadingPatternValues.Clear, Fill = PrimaryDarkHex },
             new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center },
             new TableCellMargin(
@@ -379,7 +382,7 @@ public sealed class WordExportService(AppSettings settings)
             rp.Append(new Bold());
         }
 
-        return new Run(rp, new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+        return new Run(rp, new Text(ExportSanitizer.SanitizeXmlText(text)) { Space = SpaceProcessingModeValues.Preserve });
     }
 
     private static Paragraph CreateImageParagraph(
@@ -399,7 +402,7 @@ public sealed class WordExportService(AppSettings settings)
         }
 
         string relId = mainPart.GetIdOfPart(imagePart);
-        uint imgId = (uint)Random.Shared.Next(1, 900_000);
+        uint imgId = (uint)Interlocked.Increment(ref _imageCounter);
 
         Drawing drawing = new(
             new DW.Inline(
@@ -430,36 +433,6 @@ public sealed class WordExportService(AppSettings settings)
         return new Paragraph(new ParagraphProperties(new Justification { Val = align }), new Run(drawing));
     }
 
-    private static string FormatValue(object? val, ExportColumnKind kind)
-    {
-        if (val is null)
-        {
-            return string.Empty;
-        }
-
-        return kind switch
-        {
-            ExportColumnKind.Date when val is DateTime dt => dt.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture),
-            ExportColumnKind.DateTime when val is DateTime dt => dt.ToString("dd-MM-yyyy HH:mm", CultureInfo.InvariantCulture),
-            ExportColumnKind.Currency when TryToDecimal(val, out decimal d) => $"${d.ToString("#,##0", ClCulture)}",
-            ExportColumnKind.Integer when TryToDecimal(val, out decimal d) => d.ToString("0", CultureInfo.InvariantCulture),
-            ExportColumnKind.Decimal when TryToDecimal(val, out decimal d) => d.ToString("#,##0.##", ClCulture),
-            _ => Convert.ToString(val, ClCulture) ?? string.Empty
-        };
-    }
-
-    private static bool TryToDecimal(object? val, out decimal result)
-    {
-        switch (val)
-        {
-            case decimal dec: result = dec; return true;
-            case int i: result = i; return true;
-            case long l: result = l; return true;
-            case double dbl: result = Convert.ToDecimal(dbl); return true;
-            case float flt: result = Convert.ToDecimal(flt); return true;
-            default:
-                result = 0;
-                return false;
-        }
-    }
+    private static string FormatValue(object? val, ExportColumnKind kind) =>
+        ExportSanitizer.FormatDisplayValue(val, kind, ClCulture);
 }

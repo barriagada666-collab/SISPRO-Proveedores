@@ -26,9 +26,9 @@
 |---|---|---|---|
 | Dominio | `src/Sispro.Core` | `.NET 10` | Entidades, DTOs, Enums, PBKDF2, presets RBAC, validadores (RUT, IVA, fechas). |
 | Persistencia | `src/Sispro.Data` | `Microsoft.Data.Sqlite 10.0.15` + `SQLitePCLRaw 2.1.14` | Esquema idempotente WAL, índices DESC, aprovisionamiento seguro y 9 repositorios parametrizados. |
-| Negocio y Reportes | `src/Sispro.Services` | `ClosedXML 0.105.1` + `DocumentFormat.OpenXml 3.1.1` + PDF 1.4 nativo | Servicios transaccionales RBAC (`AssetTreeService`, etc.), `SisproSyncHub`, exportadores Excel/PDF/Word/CSV e impresión. |
+| Negocio y Reportes | `src/Sispro.Services` | `ClosedXML 0.105.1` + `DocumentFormat.OpenXml 3.1.1` + PDF 1.4 nativo | Servicios transaccionales RBAC (`AssetTreeService`, etc.), `SisproSyncHub`, `ExportSanitizer` y exportadores Excel/PDF/Word/CSV e impresión. |
 | Interfaz | `src/Sispro.UI` | WinForms `net10.0-windows` (`PerMonitorV2`) | Identidad Cambiaso (`#0A263C`, `#0E4163`, `#0089B6`, `#C8A977`), 51 íconos Lucide, `ContextMenuHelper`, `AssetTreeEditorView` y vistas modulares. |
-| Pruebas | `tests/Sispro.Tests` | `xUnit` | **59 pruebas** (Unit, Integration, Functional, Tree Admin, ContextMenu STA, UI Audit, Regression, Stress). |
+| Pruebas | `tests/Sispro.Tests` | `xUnit` | **60 pruebas** (Unit, Integration, Functional, Tree Admin, ContextMenu STA, UI Audit, Regression, Stress). |
 
 ---
 
@@ -114,7 +114,7 @@ El 100% de los registros de origen se encuentra reconciliado y validado en [docs
 dotnet build SISPRO.sln -c Debug
 dotnet build SISPRO.sln -c Release
 
-# Ejecutar las 59 pruebas automatizadas
+# Ejecutar las 60 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build
 
 # Compilar publicación autocontenida win-x64 + instalador Inno Setup v4.1.0 + SHA-256

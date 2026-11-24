@@ -63,8 +63,8 @@ public sealed class AuditLogDialog : Form
         _txtSearch = new TextBox { Width = 210, PlaceholderText = "Usuario, acción o detalle..." };
         _txtSearch.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; LoadEntries(); } };
 
-        _cmbModulo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 165 };
-        _cmbModulo.Items.AddRange(["Todos", "Usuarios", "Grupos", "Seguridad", "Órdenes de Trabajo", "Facturas y Guías", "Mantenedores"]);
+        _cmbModulo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 175 };
+        _cmbModulo.Items.AddRange(["Todos", "Usuarios", "Grupos", "Seguridad", "Órdenes de Trabajo", "Facturas y Guías", "Mantenedores", "Árbol de Activos", "Configuración"]);
         _cmbModulo.SelectedIndex = 0;
         _cmbModulo.SelectedIndexChanged += (_, _) => LoadEntries();
 
@@ -112,6 +112,31 @@ public sealed class AuditLogDialog : Form
 
         _grid = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_grid);
+        ContextMenuHelper.AttachToGrid(_grid, idx =>
+        {
+            if (idx < 0 || idx >= _entries.Count)
+            {
+                return [];
+            }
+
+            AuditEntry entry = _entries[idx];
+            return
+            [
+                ContextMenuHelper.Item("Copiar detalle", AppIcon.Copy, CambiasoTheme.Primary, () => Clipboard.SetText(entry.Detalle), enabled: !string.IsNullOrWhiteSpace(entry.Detalle)),
+                ContextMenuHelper.Item("Filtrar por usuario", AppIcon.Search, CambiasoTheme.Accent, () =>
+                {
+                    _txtSearch.Text = entry.Usuario;
+                    LoadEntries();
+                }, enabled: !string.IsNullOrWhiteSpace(entry.Usuario)),
+                ContextMenuHelper.Item("Filtrar por módulo", AppIcon.Layers, CambiasoTheme.Primary, () =>
+                {
+                    if (_cmbModulo.Items.Contains(entry.Modulo))
+                    {
+                        _cmbModulo.SelectedItem = entry.Modulo;
+                    }
+                }, enabled: !string.IsNullOrWhiteSpace(entry.Modulo))
+            ];
+        });
 
         FlowLayoutPanel footer = new()
         {
@@ -178,8 +203,11 @@ public sealed class AuditLogDialog : Form
         _lblCount.Text = $"Eventos mostrados: {_entries.Count:N0} (más recientes primero)";
     }
 
-    private string BuildFilterSummary() =>
-        $"Módulo: {_cmbModulo.SelectedItem} | {_dateFilter.BuildFilterDescription()}";
+    private string BuildFilterSummary()
+    {
+        string q = string.IsNullOrWhiteSpace(_txtSearch.Text) ? "(Sin texto)" : $"\"{_txtSearch.Text.Trim()}\"";
+        return $"Búsqueda: {q} | Módulo: {_cmbModulo.SelectedItem} | {_dateFilter.BuildFilterDescription()}";
+    }
 
     private static Label InlineLabel(string text) => new()
     {

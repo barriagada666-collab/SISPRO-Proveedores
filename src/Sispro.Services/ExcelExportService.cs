@@ -68,7 +68,7 @@ public sealed class ExcelExportService(AppSettings settings)
         }
 
         IXLRange titleRange = ws.Range(1, textStartCol, 1, colCount).Merge();
-        titleRange.Value = report.Title;
+        titleRange.Value = ExportSanitizer.SanitizeXmlText(report.Title);
         titleRange.Style.Font.FontName = "Segoe UI";
         titleRange.Style.Font.Bold = true;
         titleRange.Style.Font.FontSize = 13;
@@ -84,7 +84,7 @@ public sealed class ExcelExportService(AppSettings settings)
         subRange.Style.Font.FontColor = CambiasoGold;
 
         IXLRange metaRange = ws.Range(3, textStartCol, 3, colCount).Merge();
-        metaRange.Value = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count:N0}  |  Filtros: {report.FilterSummary}";
+        metaRange.Value = ExportSanitizer.SanitizeXmlText($"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count:N0}  |  Filtros: {report.FilterSummary}");
         metaRange.Style.Font.FontName = "Segoe UI";
         metaRange.Style.Font.FontSize = 8.5;
         metaRange.Style.Font.FontColor = XLColor.FromHtml("#D4E3EE");
@@ -96,7 +96,7 @@ public sealed class ExcelExportService(AppSettings settings)
         const int headerRow = 5;
         for (int c = 0; c < report.Columns.Count; c++)
         {
-            ws.Cell(headerRow, c + 1).Value = report.Columns[c].Header;
+            ws.Cell(headerRow, c + 1).Value = ExportSanitizer.SanitizeXmlText(report.Columns[c].Header);
         }
 
         IXLRange tblHeader = ws.Range(headerRow, 1, headerRow, colCount);
@@ -192,6 +192,7 @@ public sealed class ExcelExportService(AppSettings settings)
         SignatureOption signatureOption = SignatureOption.Ambas,
         string? assetsDirectory = null)
     {
+        ExportSanitizer.EnsureOutputDirectory(outputPath);
         string assetsDir = assetsDirectory ?? Path.Combine(AppContext.BaseDirectory, "Assets");
 
         using XLWorkbook wb = new();
@@ -261,22 +262,22 @@ public sealed class ExcelExportService(AppSettings settings)
         }
 
         ws.Cell(8, 1).Value = "SEÑOR(ES):";
-        ws.Range(8, 2, 8, 3).Merge().Value = order.NombreProveedor;
+        ws.Range(8, 2, 8, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.NombreProveedor);
         ws.Cell(9, 1).Value = "DIRECCIÓN:";
-        ws.Range(9, 2, 9, 3).Merge().Value = order.DireccionProveedor;
+        ws.Range(9, 2, 9, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.DireccionProveedor);
         ws.Cell(10, 1).Value = "CORREO:";
-        ws.Range(10, 2, 10, 3).Merge().Value = order.CorreoProveedor;
+        ws.Range(10, 2, 10, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.CorreoProveedor);
         ws.Cell(11, 1).Value = "ACTIVO:";
-        ws.Range(11, 2, 11, 3).Merge().Value = order.RutaActivo;
+        ws.Range(11, 2, 11, 3).Merge().Value = ExportSanitizer.SanitizeXmlText(order.RutaActivo);
 
         ws.Cell(8, 4).Value = "SOLICITADO POR:";
-        ws.Range(8, 5, 8, 6).Merge().Value = order.AliasSolicitante;
+        ws.Range(8, 5, 8, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.AliasSolicitante);
         ws.Cell(9, 4).Value = "E-MAIL:";
-        ws.Range(9, 5, 9, 6).Merge().Value = order.CorreoSolicitante;
+        ws.Range(9, 5, 9, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.CorreoSolicitante);
         ws.Cell(10, 4).Value = "FONO CONTACTO:";
-        ws.Range(10, 5, 10, 6).Merge().Value = order.TelefonoSolicitante;
+        ws.Range(10, 5, 10, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(order.TelefonoSolicitante);
         ws.Cell(11, 4).Value = "DIRECCIÓN:";
-        ws.Range(11, 5, 11, 6).Merge().Value = settings.CompanyAddress;
+        ws.Range(11, 5, 11, 6).Merge().Value = ExportSanitizer.SanitizeXmlText(settings.CompanyAddress);
 
         for (int r = 8; r <= 11; r++)
         {
@@ -314,7 +315,7 @@ public sealed class ExcelExportService(AppSettings settings)
             ws.Cell(row, 2).Value = d.Cantidad;
             ws.Cell(row, 2).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
             IXLRange descRange = ws.Range(row, 3, row, 4).Merge();
-            descRange.Value = d.Descripcion;
+            descRange.Value = ExportSanitizer.SanitizeXmlText(d.Descripcion);
             descRange.Style.Alignment.WrapText = true;
             ws.Cell(row, 5).Value = order.GuiaDespacho > 0 ? order.GuiaDespacho.ToString(CultureInfo.InvariantCulture) : string.Empty;
             ws.Cell(row, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
@@ -400,21 +401,6 @@ public sealed class ExcelExportService(AppSettings settings)
         await Task.Run(() => ExportTabularReport(report, outputPath, progress: progress, cancellationToken: cancellationToken), cancellationToken);
     }
 
-    public void ExportInvoicesGrid(IReadOnlyList<InvoiceSearchRow> rows, string outputPath, string? filterSummary = null) =>
-        ExportTabularReport(DocumentExportService.BuildInvoicesReport(rows, filterSummary), outputPath);
-
-    public void ExportProvidersGrid(IReadOnlyList<Provider> providers, string outputPath, string? filterSummary = null) =>
-        ExportTabularReport(DocumentExportService.BuildProvidersReport(providers, filterSummary), outputPath);
-
-    public void ExportUsersGrid(IReadOnlyList<User> users, string outputPath, string? filterSummary = null) =>
-        ExportTabularReport(DocumentExportService.BuildUsersReport(users, filterSummary), outputPath);
-
-    public void ExportMaintenanceOrders(IReadOnlyList<MantWorkOrderRow> rows, string outputPath, string? filterSummary = null) =>
-        ExportTabularReport(DocumentExportService.BuildMaintenanceOrdersReport(rows, filterSummary), outputPath);
-
-    public void ExportSupplies(IReadOnlyList<MantSupplyRow> rows, string outputPath, string? filterSummary = null) =>
-        ExportTabularReport(DocumentExportService.BuildSuppliesReport(rows, filterSummary), outputPath);
-
     private static void WriteTypedCell(IXLCell cell, object? val, ExportColumnKind kind)
     {
         if (val is null)
@@ -468,7 +454,7 @@ public sealed class ExcelExportService(AppSettings settings)
                 break;
 
             default:
-                cell.Value = Convert.ToString(val, CultureInfo.InvariantCulture) ?? string.Empty;
+                cell.Value = ExportSanitizer.SanitizeXmlText(Convert.ToString(val, CultureInfo.InvariantCulture));
                 break;
         }
     }

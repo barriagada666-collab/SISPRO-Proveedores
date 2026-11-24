@@ -125,7 +125,7 @@ public sealed class GroupHistoryDialog : Form
             BackColor = CambiasoTheme.CardBackground,
             Padding = new Padding(10, 8, 10, 8)
         };
-        Button btnClose = CambiasoTheme.CreateButton("Cerrar", AppIcon.Clear, ButtonTone.Secondary, width: 104, height: 30);
+        Button btnClose = CambiasoTheme.CreateButton("Cerrar", AppIcon.Exit, ButtonTone.Secondary, width: 104, height: 30);
         btnClose.Click += (_, _) => Close();
         footer.Controls.Add(btnClose);
 

@@ -22,7 +22,9 @@ Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Prove
   - `AssetTreeRepository.GetPathToRoot` ahora ordena por profundidad recursiva real (`depth DESC`) en lugar de `nivel ASC`, evitando rutas corruptas en nodos heredados con anomalías de nivel; `WorkOrdersForm.ExecuteSearch` filtra por la profundidad real del nodo seleccionado y `SchemaInitializer` normaliza variantes tipográficas históricas de categoría (`MAQUINA`, `EMPRESA`).
 - **Calidad, Empaquetado y Pruebas**:
   - Catálogo `IconCatalog` ampliado a 51 íconos Lucide (`Copy`, `Expand`, `Collapse`).
-  - Debug y Release compilando con **0 errores, 0 advertencias y 0 vulnerabilidades NuGet**; suite ampliada a **59/59 pruebas xUnit aprobadas**; ciclo completo de actualización `v4.0.0 → v4.1.0` y desinstalación verificado en `C:\Temp`.
+  - Endurecimiento integral de exportaciones (`ExportSanitizer`): limpieza centralizada de caracteres de control XML, codificación `Windows-1252` nativa en PDF (preservando `€`, `—`, `–`, tildes y `ñ`), paginación multipágina en documentos PDF de OT extensa, ancho explícito de encabezado en Word con IDs determinísticos de imagen, creación de directorio destino en Excel de OT, y eliminación de 5 envoltorios muertos en `ExcelExportService`.
+  - Endurecimiento UI/Diálogos: protección `!anchor.IsDisposed` en acciones diferidas de `ContextMenuHelper`, filtros `"Árbol de Activos"` / `"Configuración"` + resumen de búsqueda + menú clic derecho en `AuditLogDialog`, validación de empresa y RUT con auditoría y `AcceptButton`/`CancelButton` en `SettingsDialog`, e ícono estándar `AppIcon.Exit` al cerrar `GroupHistoryDialog`.
+  - Debug y Release compilando con **0 errores, 0 advertencias y 0 vulnerabilidades NuGet**; suite ampliada a **60/60 pruebas xUnit aprobadas**; ciclo completo de actualización `v4.0.0 → v4.1.0` y desinstalación verificado en `C:\Temp`.
 
 ## [4.0.0] — 2026-11-23
 
