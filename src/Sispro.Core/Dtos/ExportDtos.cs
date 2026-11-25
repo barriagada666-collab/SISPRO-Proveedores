@@ -10,6 +10,83 @@ public enum ExportColumnKind
     DateTime = 5
 }
 
+public enum WorkOrderExportField
+{
+    NumeroOt = 0,
+    Fecha = 1,
+    TipoOrden = 2,
+    Proveedor = 3,
+    Solicitante = 4,
+    Cantidad = 5,
+    Detalle = 6,
+    RutaActivo = 7,
+    Observacion = 8,
+    ValorNeto = 9,
+    Estado = 10,
+    Firmas = 11
+}
+
+public static class WorkOrderExportFieldCatalog
+{
+    public static readonly WorkOrderExportField[] DefaultSearchGridFields =
+    [
+        WorkOrderExportField.NumeroOt,
+        WorkOrderExportField.Fecha,
+        WorkOrderExportField.Proveedor,
+        WorkOrderExportField.Solicitante,
+        WorkOrderExportField.Cantidad,
+        WorkOrderExportField.Detalle,
+        WorkOrderExportField.Observacion,
+        WorkOrderExportField.ValorNeto,
+        WorkOrderExportField.Estado,
+        WorkOrderExportField.Firmas
+    ];
+
+    public static readonly WorkOrderExportField[] EssentialFields =
+    [
+        WorkOrderExportField.NumeroOt,
+        WorkOrderExportField.Fecha,
+        WorkOrderExportField.Proveedor,
+        WorkOrderExportField.Solicitante,
+        WorkOrderExportField.Detalle,
+        WorkOrderExportField.ValorNeto,
+        WorkOrderExportField.Estado
+    ];
+
+    public static readonly WorkOrderExportField[] AllFields =
+    [
+        WorkOrderExportField.NumeroOt,
+        WorkOrderExportField.Fecha,
+        WorkOrderExportField.TipoOrden,
+        WorkOrderExportField.Proveedor,
+        WorkOrderExportField.Solicitante,
+        WorkOrderExportField.Cantidad,
+        WorkOrderExportField.Detalle,
+        WorkOrderExportField.RutaActivo,
+        WorkOrderExportField.Observacion,
+        WorkOrderExportField.ValorNeto,
+        WorkOrderExportField.Estado,
+        WorkOrderExportField.Firmas
+    ];
+
+    public static string GetDisplayName(WorkOrderExportField field) => field switch
+    {
+        WorkOrderExportField.NumeroOt => "N° OT",
+        WorkOrderExportField.Fecha => "Fecha",
+        WorkOrderExportField.TipoOrden => "Tipo OT",
+        WorkOrderExportField.Proveedor => "Proveedor",
+        WorkOrderExportField.Solicitante => "Solicitante",
+        WorkOrderExportField.Cantidad => "Cant.",
+        WorkOrderExportField.Detalle => "Detalle",
+        WorkOrderExportField.RutaActivo => "Ruta Activo",
+        WorkOrderExportField.Observacion => "Observación",
+        WorkOrderExportField.ValorNeto => "Valor Neto",
+        WorkOrderExportField.Estado => "Estado",
+        WorkOrderExportField.Firmas => "Firmas",
+        _ => field.ToString()
+    };
+}
+
 public sealed record ExportColumn(
     string Header,
     ExportColumnKind Kind = ExportColumnKind.Text,

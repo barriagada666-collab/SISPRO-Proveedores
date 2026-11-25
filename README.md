@@ -1,14 +1,14 @@
-# SISPRO v4.6.2 — Sistema de Gestión de Proveedores, Órdenes de Trabajo y Solicitantes
+# SISPRO v4.6.3 — Sistema de Gestión de Proveedores, Órdenes de Trabajo y Solicitantes
 
 > **Cambiaso Hnos S.A.C. — Departamento Mantención (Placilla, Valparaíso)**  
-> Aplicación de escritorio corporativa en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con **Búsqueda de OT (CRUD completo Externa/Interna)**, **gestión de 6 estados de OT (`Abierta`, `En Curso`, `Modificada`, `Terminada`, `Cerrada`, `Anulada`) al ingresar, editar y por clic derecho**, control de visibilidad **Mostrar valor neto en OT externa**, navegación administrativa centralizada en **Mantenedores** (`Editor de Árbol`, **Configuración con `Probar / Aplicar / Guardar`** en BD y **Mi Clave**), barra superior simplificada (**Cambiar usuario**, **Acerca de**, **Cerrar sesión**), **Importación Access (`.mdb`) incremental, reescritura completa desde cero y limpieza segura de `sispro.db`**, **Firmas al Pie** desde Personal/Usuarios, **Perfiles de Usuarios dinámicos** e instalador **Inno Setup 7**.
+> Aplicación de escritorio corporativa en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con **Búsqueda de OT (CRUD completo Externa/Interna)**, **selección dinámica de columnas a exportar mediante checkboxes sobre los encabezados y ajuste completo de textos sin recortes (Excel, PDF, Word, CSV)**, **gestión de 6 estados de OT (`Abierta`, `En Curso`, `Modificada`, `Terminada`, `Cerrada`, `Anulada`) al ingresar, editar y por clic derecho**, control de visibilidad **Mostrar valor neto en OT externa**, navegación administrativa centralizada en **Mantenedores** (`Editor de Árbol`, **Configuración con `Probar / Aplicar / Guardar`** en BD y **Mi Clave**), barra superior simplificada (**Cambiar usuario**, **Acerca de**, **Cerrar sesión**), **Importación Access (`.mdb`) incremental, reescritura completa desde cero y limpieza segura de `sispro.db`**, **Firmas al Pie** desde Personal/Usuarios, **Perfiles de Usuarios dinámicos** e instalador **Inno Setup 7**.
 
 ---
 
 ## Características Principales
 
 - **Panel de Control y Barra Superior Simplificada:** Barra superior derecha con únicamente **Cambiar usuario** (cambio de cuenta en caliente sin cerrar la aplicación), **Acerca de** (metadatos centralizados de versión y fecha) y **Cerrar sesión**. Dashboard con 5 KPIs clicables, 3 gráficos vectoriales High-DPI y tabla de OTs recientes con columna **Estado** y **clic derecho → Cambiar estado / Visualizar OT**.
-- **Trabajos Externos (`M1`) — Búsqueda CRUD Completa, Estados e Ingreso / Edición:** Pestaña principal **Búsqueda de OT** con barra CRUD completa (**Nuevo**, **Consultar**, **Editar**, **Eliminar**), filtro por **Estado**, menú de **clic derecho → Cambiar estado** (individual o masivo para `Abierta`, `En Curso`, `Modificada`, `Terminada`, `Cerrada` y `Anulada`), selección múltiple y exportación exclusiva de OTs seleccionadas (`.xlsx`, `.csv`, `.pdf`). En **Ingreso / Edición de OT**, selector de **Estado**, soporte para OTs **Externa** e **Interna**, checkbox **Mostrar valor neto en OT externa** (oculta el campo y omite `VALOR NETO` en plantillas PDF/Word/Excel/CSV/Vista Previa **sin borrar datos económicos** en SQLite), **Guardar y Exportar**, **Vista Previa** directa y selector de firmantes (`Jefatura`, `Técnico`, `Supervisor`).
+- **Trabajos Externos (`M1`) — Búsqueda CRUD Completa, Selección Dinámica de Columnas, Estados e Ingreso / Edición:** Pestaña principal **Búsqueda de OT** con barra CRUD completa (**Nuevo**, **Consultar**, **Editar**, **Eliminar**), **checkboxes modernos sobre cada encabezado de columna** (`N° OT`, `Fecha`, `Proveedor`, `Solicitante`, `Cant.`, `Detalle`, `Obs.`, `Valor Neto`, `Estado`, `Firmas`) + menú rápido **`Campos (N/10)`** (incluyendo `Tipo OT` y `Ruta de Activo`) para elegir dinámicamente los campos a exportar en **Excel (`.xlsx`), PDF (`.pdf`), Word (`.docx`) y CSV (`.csv`)** con **ajuste automático multilínea completo de textos (sin recortes `...`)**. Incluye filtro por **Estado**, menú de **clic derecho → Cambiar estado** (individual o masivo), selección múltiple de OTs, soporte para OTs **Externa** e **Interna**, checkbox **Mostrar valor neto en OT externa** (sin borrar datos económicos en SQLite), **Guardar y Exportar**, **Vista Previa** directa y selector de firmantes (`Jefatura`, `Técnico`, `Supervisor`).
 - **Mantenedores Centralizados (`M2`) y Administración:** 7 pestañas gobernadas por RBAC: **Proveedores** (incluye **Importar MDB**), **Solicitantes**, **Firmas**, **Árbol de Activos**, **Editor de Árbol** (exclusivo Administrador), **Configuración** (exclusivo Administrador, con **Probar**, **Aplicar** temporal y **Guardar** centralizado en SQLite `ConfiguracionSistema`) y **Mi Clave** (disponible para todos los usuarios autenticados).
 - **Importación, Reescritura Completa y Limpieza desde Microsoft Access (`.mdb`) (Exclusivo Administrador):** Accesible desde **Mantenedores → Proveedores → `Importar MDB`** y **Mantenedores → Configuración → `Importar MDB`**. Permite analizar el `.mdb` antes de aplicar cambios, importar de forma incremental, **Reescribir todo desde cero** en una sola transacción atómica o **Limpiar `sispro.db`** (conservando Usuarios, Perfiles, Grupos, Activos, Configuración y Auditoría) con respaldo automático previo (`backups/`).
 - **Perfiles, Usuarios y Grupos (Exclusivo Administrador):** Pestaña **Perfiles de Usuarios** para crear/editar perfiles personalizados; **Usuarios y Grupos** con Drag & Drop y acciones por lotes; **Solicitados Por y Firmas Digitales** (`PNG`, `JPG`, `PDF` rasterizado vía `Windows.Data.Pdf`).
@@ -24,7 +24,7 @@
 | Persistencia | `src/Sispro.Data` | `Microsoft.Data.Sqlite 10.0.15` + `SQLitePCLRaw.lib.e_sqlite3 2.1.14` | Esquema WAL idempotente (`ConfiguracionSistema`, `OrdenesTrabajo.mostrar_valor_neto`, `tipo_ot`), respaldos en caliente y 9 repositorios parametrizados. |
 | Negocio y Reportes | `src/Sispro.Services` | `ClosedXML 0.105.1` + `DocumentFormat.OpenXml 3.1.1` + `Windows.Data.Pdf` | Servicios RBAC transaccionales, `SystemConfigService`, `MdbImportService` (`SysWOW64`), `SisproSyncHub`, exportadores `.xlsx`/`.pdf`/`.docx`/`.csv` e impresión. |
 | Interfaz | `src/Sispro.UI` | WinForms `net10.0-windows10.0.19041.0` (`PerMonitorV2`) | Identidad Cambiaso (`#0A263C`, `#0E4163`, `#0089B6`, `#C8A977`), fuentes GDI+ cacheadas, 57 íconos Lucide, `SystemSettingsControl`, `MyPasswordControl`, `AboutDialog`, `WorkOrderDetailDialog` y vistas modulares. |
-| Pruebas | `tests/Sispro.Tests` | `xUnit` | **83 pruebas automatizadas** (Unit, Integration, Sync/Concurrency, Functional incl. Limpieza/Reescritura MDB, Estados OT, Navegación, Configuración, Valor Neto, CRUD OT, Perfiles y Firmantes, UI STA, Regression y Stress). |
+| Pruebas | `tests/Sispro.Tests` | `xUnit` | **86 pruebas automatizadas** (Unit, Integration, Sync/Concurrency, Functional incl. Columnas Dinámicas y Ajuste Completo de Exportación, Limpieza/Reescritura MDB, Estados OT, Navegación, Configuración, Valor Neto, CRUD OT, Perfiles y Firmantes, UI STA, Regression y Stress). |
 
 ---
 
@@ -32,8 +32,8 @@
 
 - **Sistema Operativo:** Windows 10 (19041+) / Windows 11 de 64 bits (`win-x64`).
 - **Instalador oficial autocontenido (no requiere instalar .NET previamente):**
-  1. Descargar `SISPRO_Setup_v4.6.2_win-x64.exe` desde [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
-  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.2: `D36400B36B971CC5599E5D8BCEB97E7A1309EB40BFBC554F1FA2EA0BC00B63DF`).
+  1. Descargar `SISPRO_Setup_v4.6.3_win-x64.exe` desde [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
+  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.3: `FB77252A9A03774B965A9CA9A32C978857E26C93721248D0516C9C4DF86FFA00`).
   3. Ejecutar el asistente (**ruta predeterminada:** `C:\Temp`, modificable). Las actualizaciones y desinstalaciones preservan íntegramente `sispro.db`.
 
 ---
@@ -81,10 +81,10 @@
 dotnet build SISPRO.sln -c Debug
 dotnet build SISPRO.sln -c Release
 
-# Ejecutar las 83 pruebas automatizadas
+# Ejecutar las 86 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build
 
-# Compilar publicación autocontenida win-x64 + instalador Inno Setup 7 (v4.6.2) + SHA-256
+# Compilar publicación autocontenida win-x64 + instalador Inno Setup 7 (v4.6.3) + SHA-256
 .\scripts\Build-Release.ps1
 ```
 
@@ -92,6 +92,7 @@ dotnet test SISPRO.sln -c Release --no-build
 
 ## Documentación, Evidencias e Historial
 
+- [Informe de Entrega `v4.6.3`](docs/INFORME_ENTREGA_v4.6.3.md) · [Informe de Incidencias y Evidencias `v4.6.3`](docs/evidencias/v4.6.3/INFORME_INCIDENCIAS_Y_VALIDACION_v4.6.3.md)
 - [Informe de Entrega `v4.6.2`](docs/INFORME_ENTREGA_v4.6.2.md) · [Informe de Incidencias y Evidencias `v4.6.2`](docs/evidencias/v4.6.2/INFORME_INCIDENCIAS_Y_VALIDACION_v4.6.2.md)
 - [Informe de Entrega `v4.6.1`](docs/INFORME_ENTREGA_v4.6.1.md)
 - [Informe de Entrega `v4.6.0`](docs/INFORME_ENTREGA_v4.6.0.md)

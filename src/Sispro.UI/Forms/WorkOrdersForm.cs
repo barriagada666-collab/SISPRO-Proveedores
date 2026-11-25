@@ -98,6 +98,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly ProgressBar _exportProgress;
     private readonly Label _lblSearchSummary;
     private readonly GridCheckboxSelectionController<WorkOrderSearchRow> _searchSelection;
+    private readonly GridExportColumnHeaderController _searchExportColumns;
     private IReadOnlyList<WorkOrderSearchRow> _lastSearchResults = [];
     private bool _syncSubscribed;
 
@@ -109,8 +110,10 @@ public sealed class WorkOrdersForm : UserControl
     internal Label LblSearchSelectedCount { get; }
     internal Button BtnExportSelectedSearch { get; }
     internal Button BtnClearSearchSelection { get; }
+    internal Button BtnSearchExportColumns { get; }
     internal DataGridView GridSearchResults => _gridSearchResults;
     internal GridCheckboxSelectionController<WorkOrderSearchRow> SearchSelection => _searchSelection;
+    internal GridExportColumnHeaderController SearchExportColumns => _searchExportColumns;
 
     public WorkOrdersForm(SisproApplicationContext ctx, UserSession session)
     {
@@ -460,14 +463,8 @@ public sealed class WorkOrdersForm : UserControl
         _btnClearSearch = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Restablecer filtros y resultados", width: 98, height: 30);
         _btnClearSearch.Click += (_, _) => ClearSearchTab();
 
-        _btnExportSearch = CambiasoTheme.CreateButton("Exportar Lista", AppIcon.Download, ButtonTone.Secondary, _toolTip, "Exportar todos los resultados filtrados a Excel, PDF, Word o CSV", width: 138, height: 30);
-        _btnExportSearch.Click += (_, _) => ExportUiHelper.ShowReportExportMenu(
-            _btnExportSearch,
-            this,
-            _ctx.DocumentExportService,
-            "SISPRO_OrdenesTrabajo",
-            () => DocumentExportService.BuildWorkOrdersReport(_lastSearchResults, BuildSearchFilterSummary()),
-            file => _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Órdenes de Trabajo", "EXPORTAR_OT_LISTA", $"Exportados {_lastSearchResults.Count} registros a {Path.GetFileName(file)}."));
+        _btnExportSearch = CambiasoTheme.CreateButton("Exportar Lista", AppIcon.Download, ButtonTone.Secondary, _toolTip, "Exportar todos los resultados filtrados con las columnas marcadas a Excel, PDF, Word o CSV", width: 138, height: 30);
+        _btnExportSearch.Click += (_, _) => ExportSearchResultsList();
 
         BtnSearchNewOt = CambiasoTheme.CreateButton("Nuevo", AppIcon.Add, ButtonTone.Primary, _toolTip, "Crear una nueva Orden de Trabajo (externa o interna)", width: 96, height: 30);
         BtnSearchNewOt.Enabled = _session.Permisos.IngresoOt;
@@ -505,22 +502,45 @@ public sealed class WorkOrdersForm : UserControl
         };
 
         BtnExportSelectedSearch = CambiasoTheme.CreateButton("Exportar seleccionadas", AppIcon.Download, ButtonTone.Primary, _toolTip,
-            "Exportar únicamente las órdenes de trabajo seleccionadas a Excel (.xlsx), CSV (.csv) o PDF (.pdf)", width: 188, height: 30);
+            "Exportar únicamente las órdenes de trabajo marcadas (y las columnas seleccionadas) a Excel, PDF, Word o CSV", width: 184, height: 30);
         BtnExportSelectedSearch.Enabled = false;
         BtnExportSelectedSearch.Click += (_, _) => ExportSelectedWorkOrders();
 
         BtnClearSearchSelection = CambiasoTheme.CreateButton("Limpiar selección", AppIcon.Eraser, ButtonTone.Secondary, _toolTip,
-            "Desmarcar todas las órdenes de trabajo seleccionadas", width: 168, height: 30);
+            "Desmarcar todas las órdenes de trabajo seleccionadas", width: 150, height: 30);
         BtnClearSearchSelection.Enabled = false;
+
+        BtnSearchExportColumns = CambiasoTheme.CreateButton("Campos (10/10)", AppIcon.Layers, ButtonTone.Secondary, _toolTip,
+            "Elegir qué columnas y campos adicionales se incluirán al exportar (también puede marcar/desmarcar directamente sobre los encabezados de la tabla)", width: 150, height: 30);
+        BtnSearchExportColumns.Name = "btnSearchExportColumns";
+        BtnSearchExportColumns.Margin = new Padding(14, 3, 3, 3);
+        BtnSearchExportColumns.Click += (_, _) => ShowExportColumnsQuickMenu();
 
         _gridSearchResults = new DataGridView { Name = "gridSearchOtResults", Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridSearchResults);
+        _gridSearchResults.ColumnHeadersHeight = 48;
         _searchSelection = new GridCheckboxSelectionController<WorkOrderSearchRow>(
             _gridSearchResults,
             r => r.IdOt,
             ChkSelectAllSearchVisible,
             UpdateSearchSelectionState);
+        _searchExportColumns = new GridExportColumnHeaderController(
+            _gridSearchResults,
+            [
+                (nameof(WorkOrderGridRow.NumeroOt), WorkOrderExportField.NumeroOt),
+                (nameof(WorkOrderGridRow.Fecha), WorkOrderExportField.Fecha),
+                (nameof(WorkOrderGridRow.Proveedor), WorkOrderExportField.Proveedor),
+                (nameof(WorkOrderGridRow.Solicitante), WorkOrderExportField.Solicitante),
+                (nameof(WorkOrderGridRow.Cantidad), WorkOrderExportField.Cantidad),
+                (nameof(WorkOrderGridRow.Detalle), WorkOrderExportField.Detalle),
+                (nameof(WorkOrderGridRow.Observacion), WorkOrderExportField.Observacion),
+                (nameof(WorkOrderGridRow.ValorNeto), WorkOrderExportField.ValorNeto),
+                (nameof(WorkOrderGridRow.Estado), WorkOrderExportField.Estado),
+                (nameof(WorkOrderGridRow.Firmas), WorkOrderExportField.Firmas)
+            ],
+            UpdateExportColumnsButtonState);
         BtnClearSearchSelection.Click += (_, _) => _searchSelection.ClearSelection();
+        UpdateExportColumnsButtonState();
 
         _gridSearchResults.CellDoubleClick += (_, _) => OpenSelectedSearchOrder();
         _gridSearchResults.SelectionChanged += (_, _) => UpdateSearchSelectionState();
@@ -876,7 +896,7 @@ public sealed class WorkOrdersForm : UserControl
         grpFilters.Controls.Add(f2);
         grpFilters.Controls.Add(f1);
 
-        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Gestión y Resultados de OT (CRUD completo · doble clic para editar · clic derecho para cambiar estado)");
+        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Gestión y Resultados de OT (marque columnas a exportar en el encabezado · doble clic editar · clic derecho estado)");
         grpResults.Dock = DockStyle.Fill;
 
         TableLayoutPanel resultsTbl = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
@@ -895,7 +915,7 @@ public sealed class WorkOrdersForm : UserControl
             WrapContents = true,
             Padding = new Padding(6, 4, 6, 4)
         };
-        crudBar.Controls.AddRange([BtnSearchNewOt, BtnSearchConsultOt, BtnSearchEditOt, BtnSearchDeleteOt]);
+        crudBar.Controls.AddRange([BtnSearchNewOt, BtnSearchConsultOt, BtnSearchEditOt, BtnSearchDeleteOt, BtnSearchExportColumns]);
 
         FlowLayoutPanel selBar = new()
         {
@@ -1587,19 +1607,20 @@ public sealed class WorkOrdersForm : UserControl
 
         if (_gridSearchResults.Columns.Count >= 11)
         {
-            _searchSelection.ConfigureDataColumn(0, "N° OT", 9);
-            _searchSelection.ConfigureDataColumn(1, "Fecha", 12, "dd-MM-yyyy");
-            _searchSelection.ConfigureDataColumn(2, "Proveedor", 14);
-            _searchSelection.ConfigureDataColumn(3, "Solicitante", 11);
-            _searchSelection.ConfigureDataColumn(4, "Cant.", 6);
-            _searchSelection.ConfigureDataColumn(5, "Detalle", 16);
-            _searchSelection.ConfigureDataColumn(6, "Obs.", 6);
-            _searchSelection.ConfigureDataColumn(7, "Valor Neto", 10, "$#,##0", DataGridViewContentAlignment.MiddleRight);
-            _searchSelection.ConfigureDataColumn(8, "Estado", 12);
-            _searchSelection.ConfigureDataColumn(9, "Firmas", 10);
+            _searchSelection.ConfigureDataColumn(0, "N° OT", 8.5f);
+            _searchSelection.ConfigureDataColumn(1, "Fecha", 9.5f, "dd-MM-yyyy");
+            _searchSelection.ConfigureDataColumn(2, "Proveedor", 13.5f);
+            _searchSelection.ConfigureDataColumn(3, "Solicitante", 11.5f);
+            _searchSelection.ConfigureDataColumn(4, "Cant.", 7.5f);
+            _searchSelection.ConfigureDataColumn(5, "Detalle", 16.0f);
+            _searchSelection.ConfigureDataColumn(6, "Obs.", 7.5f);
+            _searchSelection.ConfigureDataColumn(7, "Valor Neto", 11.5f, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+            _searchSelection.ConfigureDataColumn(8, "Estado", 10.0f);
+            _searchSelection.ConfigureDataColumn(9, "Firmas", 9.5f);
         }
 
         _searchSelection.EnsureSelectColumnAndSync();
+        _searchExportColumns.ApplyToGrid();
         UpdateSearchSelectionState();
     }
 
@@ -1707,12 +1728,39 @@ public sealed class WorkOrdersForm : UserControl
         DeleteSearchOrder(singleRow.NumeroOt);
     }
 
+    private void ExportSearchResultsList()
+    {
+        if (_searchExportColumns.SelectedFields.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Debe marcar al menos una columna en el encabezado de la tabla para exportar.");
+            return;
+        }
+
+        ExportUiHelper.ShowReportExportMenu(
+            _btnExportSearch,
+            this,
+            _ctx.DocumentExportService,
+            "SISPRO_OrdenesTrabajo",
+            () => DocumentExportService.BuildWorkOrdersReport(_lastSearchResults, BuildSearchFilterSummary(), _searchExportColumns.SelectedFields),
+            file => _ctx.Audit.Log(
+                _session.Usuario.AliasUsuario,
+                "Órdenes de Trabajo",
+                "EXPORTAR_OT_LISTA",
+                $"Exportados {_lastSearchResults.Count} registros ({_searchExportColumns.SelectedFields.Count} campos) a {Path.GetFileName(file)}."));
+    }
+
     private void ExportSelectedWorkOrders()
     {
         IReadOnlyList<int> selectedIds = _searchSelection.SelectedIds;
         if (selectedIds.Count == 0)
         {
             CambiasoTheme.ShowWarning(this, "Debe seleccionar al menos una orden de trabajo mediante su casilla de verificación.");
+            return;
+        }
+
+        if (_searchExportColumns.SelectedFields.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(this, "Debe marcar al menos una columna en el encabezado de la tabla para exportar.");
             return;
         }
 
@@ -1725,7 +1773,71 @@ public sealed class WorkOrdersForm : UserControl
                 _session.Usuario.AliasUsuario,
                 "Órdenes de Trabajo",
                 "EXPORTAR_OT_SELECCIONADAS",
-                $"Exportadas {count} OT(s) seleccionadas a {Path.GetFileName(file)}."));
+                $"Exportadas {count} OT(s) seleccionadas ({_searchExportColumns.SelectedFields.Count} campos) a {Path.GetFileName(file)}."),
+            () => _searchExportColumns.SelectedFields);
+    }
+
+    private void UpdateExportColumnsButtonState()
+    {
+        int gridSel = _searchExportColumns.SelectedGridFieldCount;
+        int gridTotal = _searchExportColumns.GridFieldCount;
+        int extraSel = _searchExportColumns.SelectedExtraFieldCount;
+
+        BtnSearchExportColumns.Text = extraSel > 0
+            ? $"Campos ({gridSel}+{extraSel})"
+            : $"Campos ({gridSel}/{gridTotal})";
+
+        string names = _searchExportColumns.SelectedFields.Count > 0
+            ? string.Join(", ", _searchExportColumns.SelectedFields.Select(WorkOrderExportFieldCatalog.GetDisplayName))
+            : "Ninguno marcado";
+        _toolTip.SetToolTip(
+            BtnSearchExportColumns,
+            $"Campos activos para exportar ({_searchExportColumns.SelectedFields.Count}): {names}.\nTambién puede marcar o desmarcar directamente sobre los encabezados de la tabla.");
+    }
+
+    private void ShowExportColumnsQuickMenu()
+    {
+        List<ToolStripItem> items =
+        [
+            ContextMenuHelper.Item(
+                $"Marcar todas las columnas de la tabla ({_searchExportColumns.GridFieldCount})",
+                AppIcon.Check,
+                CambiasoTheme.Success,
+                () => _searchExportColumns.SelectAllGridFields()),
+            ContextMenuHelper.Item(
+                "Solo campos esenciales (N° OT, Fecha, Proveedor, Solicitante, Detalle, Neto, Estado)",
+                AppIcon.ClipboardCheck,
+                CambiasoTheme.Primary,
+                () => _searchExportColumns.SelectEssentialFields()),
+            ContextMenuHelper.Separator()
+        ];
+
+        foreach ((_, WorkOrderExportField field) in _searchExportColumns.GridMappings)
+        {
+            bool active = _searchExportColumns.IsFieldSelected(field);
+            string display = WorkOrderExportFieldCatalog.GetDisplayName(field);
+            items.Add(ContextMenuHelper.Item(
+                active ? $"✓  {display}" : $"    {display}",
+                active ? AppIcon.Check : AppIcon.Remove,
+                active ? CambiasoTheme.Accent : CambiasoTheme.TextMuted,
+                () => _searchExportColumns.ToggleField(field)));
+        }
+
+        items.Add(ContextMenuHelper.Separator());
+
+        WorkOrderExportField[] extraFields = [WorkOrderExportField.TipoOrden, WorkOrderExportField.RutaActivo];
+        foreach (WorkOrderExportField extra in extraFields)
+        {
+            bool active = _searchExportColumns.IsFieldSelected(extra);
+            string display = WorkOrderExportFieldCatalog.GetDisplayName(extra);
+            items.Add(ContextMenuHelper.Item(
+                active ? $"✓  Campo adicional: {display}" : $"    Campo adicional: {display}",
+                active ? AppIcon.Check : AppIcon.Add,
+                active ? CambiasoTheme.Primary : CambiasoTheme.TextMuted,
+                () => _searchExportColumns.ToggleField(extra)));
+        }
+
+        ContextMenuHelper.ShowBelow(BtnSearchExportColumns, items);
     }
 
     private void ClearSearchTab()
@@ -1997,6 +2109,7 @@ public sealed class WorkOrdersForm : UserControl
                 _syncSubscribed = false;
             }
 
+            _searchExportColumns.Detach();
             _valorNetoFont.Dispose();
             _toolTip.Dispose();
         }

@@ -168,20 +168,74 @@ public sealed class ExcelExportService(AppSettings settings)
             lastTableRow = summaryRow;
         }
 
-        // Bordes, AutoFilter y ajuste de anchos
+        // Bordes, AutoFilter, ajuste completo de texto (WrapText) y altura automática por fila
         IXLRange dataRange = ws.Range(headerRow, 1, lastTableRow, colCount);
         dataRange.Style.Font.FontName = "Segoe UI";
         dataRange.Style.Font.FontSize = 9.5;
+        dataRange.Style.Alignment.WrapText = true;
+        dataRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Top;
+        tblHeader.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
         dataRange.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;
         dataRange.Style.Border.OutsideBorderColor = CambiasoOlive;
         dataRange.Style.Border.InsideBorder = XLBorderStyleValues.Hair;
         dataRange.Style.Border.InsideBorderColor = BorderGray;
         ws.Range(headerRow, 1, Math.Max(headerRow, lastDataRow), colCount).SetAutoFilter();
 
-        ws.Columns(1, colCount).AdjustToContents(headerRow, Math.Min(lastTableRow, headerRow + 250), 11, 54);
-        if (File.Exists(logoPath) && colCount >= 3 && ws.Column(1).Width < 17)
+        double[] finalColWidths = new double[colCount];
+        for (int c = 0; c < colCount; c++)
         {
-            ws.Column(1).Width = 17;
+            ExportColumn col = report.Columns[c];
+            int sampleEnd = Math.Min(lastTableRow, headerRow + 300);
+            int maxLineLen = col.Header.Length + 4;
+            for (int r = firstDataRow; r <= sampleEnd; r++)
+            {
+                string txt = ws.Cell(r, c + 1).GetFormattedString();
+                if (string.IsNullOrEmpty(txt)) continue;
+                foreach (string part in txt.Split('\n'))
+                {
+                    if (part.Length > maxLineLen) maxLineLen = part.Length;
+                }
+            }
+
+            double minW = col.Kind switch
+            {
+                ExportColumnKind.Date => 13.0,
+                ExportColumnKind.DateTime => 18.0,
+                ExportColumnKind.Currency => 15.0,
+                ExportColumnKind.Integer => 10.5,
+                ExportColumnKind.Decimal => 12.5,
+                _ => 13.0
+            };
+            double maxW = col.Kind == ExportColumnKind.Text ? Math.Clamp(col.WidthWeight * 24.0, 24.0, 56.0) : 22.0;
+            double targetW = Math.Clamp(maxLineLen + 3.0, minW, maxW);
+            if (c == 0 && File.Exists(logoPath) && colCount >= 3 && targetW < 17.0)
+            {
+                targetW = 17.0;
+            }
+
+            ws.Column(c + 1).Width = targetW;
+            finalColWidths[c] = targetW;
+        }
+
+        ws.Row(headerRow).Height = 26;
+        for (int r = firstDataRow; r <= lastDataRow; r++)
+        {
+            int maxRowLines = 1;
+            for (int c = 0; c < colCount; c++)
+            {
+                string txt = ws.Cell(r, c + 1).GetFormattedString();
+                if (string.IsNullOrEmpty(txt)) continue;
+                int charsPerLine = Math.Max(8, (int)Math.Floor(finalColWidths[c] * 0.90));
+                int cellLines = 0;
+                foreach (string part in txt.Replace("\r\n", "\n").Split('\n'))
+                {
+                    cellLines += Math.Max(1, (int)Math.Ceiling(part.Length / (double)charsPerLine));
+                }
+
+                if (cellLines > maxRowLines) maxRowLines = cellLines;
+            }
+
+            ws.Row(r).Height = Math.Max(20.0, (maxRowLines * 14.5) + 6.0);
         }
 
         wb.SaveAs(outputPath);

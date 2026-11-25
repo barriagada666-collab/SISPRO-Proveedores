@@ -39,6 +39,7 @@ public static class CambiasoTheme
     public static readonly Font TitleFont = new("Segoe UI", 14.5f, FontStyle.Bold);
     public static readonly Font SectionFont = new("Segoe UI", 10f, FontStyle.Bold);
     public static readonly Font LabelFont = new("Segoe UI", 9f, FontStyle.Bold);
+    public static readonly Font GridHeaderFont = new("Segoe UI", 8.5f, FontStyle.Bold);
     public static readonly Font BodyFont = new("Segoe UI", 9.5f, FontStyle.Regular);
     public static readonly Font SmallFont = new("Segoe UI", 8.5f, FontStyle.Regular);
     public static readonly Font SmallItalicFont = new("Segoe UI", 7.8f, FontStyle.Italic);

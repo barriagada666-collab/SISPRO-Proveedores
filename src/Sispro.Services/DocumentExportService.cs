@@ -61,41 +61,64 @@ public sealed class DocumentExportService(
         }
     }
 
-    public static TabularReportData BuildWorkOrdersReport(IReadOnlyList<WorkOrderSearchRow> rows, string? filterSummary = null) => new()
+    public static TabularReportData BuildWorkOrdersReport(
+        IReadOnlyList<WorkOrderSearchRow> rows,
+        string? filterSummary = null,
+        IReadOnlyList<WorkOrderExportField>? selectedFields = null)
     {
-        Title = "REPORTE DE ÓRDENES DE TRABAJO EXTERNAS",
-        SheetName = "Órdenes de Trabajo",
-        FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Orden cronológico descendente (más recientes primero)" : filterSummary,
-        Landscape = true,
-        Columns =
-        [
-            new("N° OT", ExportColumnKind.Integer, 0.58),
-            new("Fecha", ExportColumnKind.Date, 0.85),
-            new("Proveedor", ExportColumnKind.Text, 1.45),
-            new("Solicitante", ExportColumnKind.Text, 1.05),
-            new("Cant.", ExportColumnKind.Integer, 0.45, SumInFooter: true),
-            new("Detalle del Trabajo", ExportColumnKind.Text, 2.25),
-            new("Ruta de Activo", ExportColumnKind.Text, 1.5),
-            new("Observaciones", ExportColumnKind.Text, 1.35),
-            new("Valor Neto", ExportColumnKind.Currency, 0.95, SumInFooter: true),
-            new("Estado", ExportColumnKind.Text, 0.78),
-            new("Firmas", ExportColumnKind.Text, 1.25)
-        ],
-        Rows = rows.Select(r => new object?[]
-        {
-            r.NumeroOt, r.Fecha, r.Proveedor, r.Solicitante, r.Cantidad,
-            r.Detalle, r.RutaActivo,
-            r.Observacion, r.MostrarValorNeto ? r.ValorNeto : null, r.EstadoDisplay, r.FirmasDisplay
-        }).ToList()
-    };
+        WorkOrderExportField[] fields = ResolveWorkOrderFields(
+            selectedFields,
+            [
+                WorkOrderExportField.NumeroOt,
+                WorkOrderExportField.Fecha,
+                WorkOrderExportField.Proveedor,
+                WorkOrderExportField.Solicitante,
+                WorkOrderExportField.Cantidad,
+                WorkOrderExportField.Detalle,
+                WorkOrderExportField.RutaActivo,
+                WorkOrderExportField.Observacion,
+                WorkOrderExportField.ValorNeto,
+                WorkOrderExportField.Estado,
+                WorkOrderExportField.Firmas
+            ]);
 
-    public static TabularReportData BuildSelectedWorkOrdersReport(IReadOnlyList<WorkOrder> orders, string? filterSummary = null)
+        return new TabularReportData
+        {
+            Title = "REPORTE DE ÓRDENES DE TRABAJO EXTERNAS",
+            SheetName = "Órdenes de Trabajo",
+            FilterSummary = string.IsNullOrWhiteSpace(filterSummary) ? "Orden cronológico descendente (más recientes primero)" : filterSummary,
+            Landscape = true,
+            Columns = fields.Select(f => BuildWorkOrderColumnSpec(f, isSearchList: true)).ToList(),
+            Rows = rows.Select(r => fields.Select(f => ExtractSearchRowField(r, f)).ToArray()).ToList()
+        };
+    }
+
+    public static TabularReportData BuildSelectedWorkOrdersReport(
+        IReadOnlyList<WorkOrder> orders,
+        string? filterSummary = null,
+        IReadOnlyList<WorkOrderExportField>? selectedFields = null)
     {
         List<WorkOrder> distinctOrders = orders
             .Where(o => o.IdOt > 0 || o.NumeroOt > 0)
             .GroupBy(o => o.IdOt > 0 ? o.IdOt : o.NumeroOt)
             .Select(g => g.First())
             .ToList();
+
+        WorkOrderExportField[] fields = ResolveWorkOrderFields(
+            selectedFields,
+            [
+                WorkOrderExportField.NumeroOt,
+                WorkOrderExportField.Fecha,
+                WorkOrderExportField.TipoOrden,
+                WorkOrderExportField.Solicitante,
+                WorkOrderExportField.Proveedor,
+                WorkOrderExportField.RutaActivo,
+                WorkOrderExportField.Detalle,
+                WorkOrderExportField.Observacion,
+                WorkOrderExportField.ValorNeto,
+                WorkOrderExportField.Estado,
+                WorkOrderExportField.Firmas
+            ]);
 
         return new TabularReportData
         {
@@ -105,46 +128,79 @@ public sealed class DocumentExportService(
                 ? $"Registros exportados: {distinctOrders.Count} orden(es) única(s)"
                 : filterSummary,
             Landscape = true,
-            Columns =
-            [
-                new("N° OT", ExportColumnKind.Integer, 0.65),
-                new("Fecha", ExportColumnKind.Date, 0.85),
-                new("Tipo", ExportColumnKind.Text, 0.75),
-                new("Solicitante", ExportColumnKind.Text, 1.2),
-                new("Proveedor", ExportColumnKind.Text, 1.65),
-                new("Activo", ExportColumnKind.Text, 1.6),
-                new("Detalle", ExportColumnKind.Text, 2.4),
-                new("Observaciones", ExportColumnKind.Text, 1.5),
-                new("Valor Neto", ExportColumnKind.Currency, 0.95, SumInFooter: true),
-                new("Estado", ExportColumnKind.Text, 0.75),
-                new("Firmas", ExportColumnKind.Text, 1.25)
-            ],
-            Rows = distinctOrders.Select(o =>
-            {
-                string detalleConsolidado = o.Detalles.Count switch
-                {
-                    0 => string.Empty,
-                    1 => o.Detalles[0].Descripcion,
-                    _ => string.Join(" | ", o.Detalles.Select(d => $"{d.Cantidad}x {d.Descripcion}"))
-                };
-
-                return new object?[]
-                {
-                    o.NumeroOt,
-                    o.FechaOt,
-                    $"OT {o.TipoOrden}",
-                    o.SolicitanteDisplayNombre,
-                    o.NombreProveedor,
-                    o.RutaActivo,
-                    detalleConsolidado,
-                    o.Observacion,
-                    o.MostrarValorNeto ? o.ValorNeto : null,
-                    o.Estado.ToDisplayName(),
-                    o.FirmasSeleccionadas.FormatResumen()
-                };
-            }).ToList()
+            Columns = fields.Select(f => BuildWorkOrderColumnSpec(f, isSearchList: false)).ToList(),
+            Rows = distinctOrders.Select(o => fields.Select(f => ExtractWorkOrderField(o, f)).ToArray()).ToList()
         };
     }
+
+    private static WorkOrderExportField[] ResolveWorkOrderFields(
+        IReadOnlyList<WorkOrderExportField>? requested,
+        WorkOrderExportField[] fallback)
+    {
+        if (requested is null || requested.Count == 0)
+        {
+            return fallback;
+        }
+
+        WorkOrderExportField[] distinct = requested.Distinct().ToArray();
+        return distinct.Length > 0 ? distinct : fallback;
+    }
+
+    private static ExportColumn BuildWorkOrderColumnSpec(WorkOrderExportField field, bool isSearchList) => field switch
+    {
+        WorkOrderExportField.NumeroOt => new("N° OT", ExportColumnKind.Integer, 0.62),
+        WorkOrderExportField.Fecha => new("Fecha", ExportColumnKind.Date, 0.88),
+        WorkOrderExportField.TipoOrden => new("Tipo", ExportColumnKind.Text, 0.78),
+        WorkOrderExportField.Proveedor => new("Proveedor", ExportColumnKind.Text, 1.55),
+        WorkOrderExportField.Solicitante => new("Solicitante", ExportColumnKind.Text, 1.15),
+        WorkOrderExportField.Cantidad => new("Cant.", ExportColumnKind.Integer, 0.50, SumInFooter: true),
+        WorkOrderExportField.Detalle => new(isSearchList ? "Detalle del Trabajo" : "Detalle", ExportColumnKind.Text, 2.65),
+        WorkOrderExportField.RutaActivo => new(isSearchList ? "Ruta de Activo" : "Activo", ExportColumnKind.Text, 1.55),
+        WorkOrderExportField.Observacion => new("Observaciones", ExportColumnKind.Text, 1.50),
+        WorkOrderExportField.ValorNeto => new("Valor Neto", ExportColumnKind.Currency, 0.98, SumInFooter: true),
+        WorkOrderExportField.Estado => new("Estado", ExportColumnKind.Text, 0.82),
+        WorkOrderExportField.Firmas => new("Firmas", ExportColumnKind.Text, 1.25),
+        _ => new(field.ToString(), ExportColumnKind.Text, 1.0)
+    };
+
+    private static object? ExtractSearchRowField(WorkOrderSearchRow r, WorkOrderExportField field) => field switch
+    {
+        WorkOrderExportField.NumeroOt => r.NumeroOt,
+        WorkOrderExportField.Fecha => r.Fecha,
+        WorkOrderExportField.TipoOrden => $"OT {r.TipoOrden}",
+        WorkOrderExportField.Proveedor => r.Proveedor,
+        WorkOrderExportField.Solicitante => r.Solicitante,
+        WorkOrderExportField.Cantidad => r.Cantidad,
+        WorkOrderExportField.Detalle => r.Detalle,
+        WorkOrderExportField.RutaActivo => r.RutaActivo,
+        WorkOrderExportField.Observacion => r.Observacion,
+        WorkOrderExportField.ValorNeto => r.MostrarValorNeto ? r.ValorNeto : null,
+        WorkOrderExportField.Estado => r.EstadoDisplay,
+        WorkOrderExportField.Firmas => r.FirmasDisplay,
+        _ => string.Empty
+    };
+
+    private static object? ExtractWorkOrderField(WorkOrder o, WorkOrderExportField field) => field switch
+    {
+        WorkOrderExportField.NumeroOt => o.NumeroOt,
+        WorkOrderExportField.Fecha => o.FechaOt,
+        WorkOrderExportField.TipoOrden => $"OT {o.TipoOrden}",
+        WorkOrderExportField.Proveedor => o.NombreProveedor,
+        WorkOrderExportField.Solicitante => o.SolicitanteDisplayNombre,
+        WorkOrderExportField.Cantidad => o.Detalles.Count > 0 ? o.Detalles.Sum(static d => d.Cantidad) : 0,
+        WorkOrderExportField.Detalle => o.Detalles.Count switch
+        {
+            0 => string.Empty,
+            1 => o.Detalles[0].Descripcion,
+            _ => string.Join("\n", o.Detalles.Select(static d => $"{d.Cantidad}x {d.Descripcion}"))
+        },
+        WorkOrderExportField.RutaActivo => o.RutaActivo,
+        WorkOrderExportField.Observacion => o.Observacion,
+        WorkOrderExportField.ValorNeto => o.MostrarValorNeto ? o.ValorNeto : null,
+        WorkOrderExportField.Estado => o.Estado.ToDisplayName(),
+        WorkOrderExportField.Firmas => o.FirmasSeleccionadas.FormatResumen(),
+        _ => string.Empty
+    };
 
     public static TabularReportData BuildRequestersReport(IReadOnlyList<Requester> requesters, string? filterSummary = null) => new()
     {

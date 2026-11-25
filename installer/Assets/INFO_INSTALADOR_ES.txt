@@ -1,27 +1,32 @@
-﻿INFORMACIÓN DE LA VERSIÓN — SISPRO v4.6.2 (.NET 10)
+﻿INFORMACIÓN DE LA VERSIÓN — SISPRO v4.6.3 (.NET 10)
 ================================================================================
 
 NOVEDADES Y CAPACIDADES INCLUIDAS EN ESTA VERSIÓN (25-11-2026)
 --------------------------------------------------------------------------------
+• Selección dinámica de campos a exportar en Búsqueda de OT:
+  - Checkboxes modernos directamente sobre los encabezados de columna de la
+    tabla (N° OT, Fecha, Proveedor, Solicitante, Cant., Detalle, Obs.,
+    Valor Neto, Estado y Firmas) para elegir con un clic qué columnas se
+    incluyen al exportar, sin alterar el ordenamiento al hacer clic en el título.
+  - Botón rápido "Campos (N/10)" con perfiles predefinidos ("Marcar todas",
+    "Solo campos esenciales") y campos opcionales adicionales (Tipo OT y
+    Ruta de Activo).
+  - Aplicado a "Exportar seleccionadas" y "Exportar Lista" en Excel (.xlsx),
+    PDF (.pdf), Word (.docx) y CSV (.csv).
+• Ajuste automático completo de celdas y texto sin recortes ("...") al exportar:
+  - PDF corporativo con ajuste multilínea inteligente por ancho proporcional,
+    altura de fila dinámica, encabezados completos y paginación multipágina.
+  - Excel (.xlsx) con ajuste de texto (WrapText) y altura de filas calculada
+    automáticamente para visualizar detalles y observaciones completas.
+  - Word (.docx) con tabla de anchos proporcionales fijos y párrafos completos.
 • Importación Microsoft Access (.mdb) avanzada:
-  - Modo incremental (agregar nuevos / actualizar existentes preservando datos
-    propios de SISPRO y firmas digitales).
-  - Modo "Reescribir todo desde cero al importar" (limpia atómicamente
-    Proveedores, Solicitantes y OTs e importa todo el contenido del MDB en una
-    sola transacción SQLite con respaldo previo automático).
-  - Acción "Limpiar sispro.db" para dejar la base operativa lista para una
-    importación limpia desde cero, conservando intactos Usuarios, Perfiles,
-    Grupos, Árbol de Activos, Configuración del Sistema y Auditoría.
-• Gestión completa de 6 estados de OT: Abierta, En Curso, Modificada, Terminada,
-  Cerrada y Anulada, editables al ingresar, al modificar y mediante clic derecho
-  (individual o masivo) desde Búsqueda de OT y Panel de Control.
-• Búsqueda de OT con CRUD completo (Nuevo, Consultar, Editar, Eliminar), filtro
-  por Estado, soporte de OTs Externas e Internas y control "Mostrar valor neto
-  en OT externa" sin borrar datos económicos en BD.
-• Menú Mantenedores centralizado: Proveedores, Solicitantes, Firmas Digitales,
-  Árbol de Activos (10 niveles), Editor de Árbol, Configuración del sistema
-  (Probar / Aplicar / Guardar en BD) y Mi Clave.
-• Barra superior simplificada: Cambiar usuario, Acerca de y Cerrar sesión.
+  - Modo incremental, modo "Reescribir todo desde cero al importar" (atómico
+    con respaldo previo automático) y acción "Limpiar sispro.db".
+• Gestión completa de 6 estados de OT (Abierta, En Curso, Modificada, Terminada,
+  Cerrada, Anulada) en ingreso, edición y clic derecho individual o masivo.
+• Menú Mantenedores centralizado (Proveedores, Solicitantes, Firmas Digitales,
+  Árbol de Activos 10 niveles, Editor de Árbol, Configuración del sistema y Mi Clave)
+  y barra superior simplificada (Cambiar usuario, Acerca de, Cerrar sesión).
 
 REQUISITOS DEL SISTEMA Y ACTUALIZACIÓN SEGURA
 --------------------------------------------------------------------------------

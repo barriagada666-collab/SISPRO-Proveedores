@@ -1,10 +1,13 @@
+using System.Drawing;
 using System.Text;
 using ClosedXML.Excel;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
 using Sispro.Services;
+using Sispro.UI.Forms;
 using Xunit;
 
 namespace Sispro.Tests.Functional;
@@ -303,5 +306,363 @@ public sealed class MultiFormatExportTests
                 Directory.Delete(outDir, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void DynamicFieldSelection_ExportsOnlySelectedFieldsInOrder_AcrossExcelPdfWordAndCsv()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        AppSettings settings = new();
+        DocumentExportService exportService = new(
+            new ExcelExportService(settings),
+            new PdfExportService(settings),
+            new WordExportService(settings),
+            new CsvExportService());
+        string outDir = Path.Combine(Path.GetTempPath(), $"sispro_dyn_cols_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outDir);
+
+        try
+        {
+            IReadOnlyList<WorkOrderSearchRow> searchRows =
+            [
+                new WorkOrderSearchRow
+                {
+                    IdOt = 10,
+                    NumeroOt = 14815,
+                    Fecha = new DateTime(2026, 11, 18),
+                    Proveedor = "DAPREMAQ",
+                    Solicitante = "Marcelo Silva",
+                    Cantidad = 3,
+                    Detalle = "Extensión de arriendo grúa horquilla 2.5 ton",
+                    Observacion = "Obs interna confidencial",
+                    ValorNeto = 350000m,
+                    MostrarValorNeto = true,
+                    Estado = WorkOrderStatus.Abierta,
+                    FirmasSeleccionadas = SignatureOption.AmbasConSolicitante
+                }
+            ];
+
+            WorkOrder[] selectedOrders =
+            [
+                new WorkOrder
+                {
+                    IdOt = 10,
+                    NumeroOt = 14815,
+                    TipoOrden = "Externa",
+                    FechaOt = new DateTime(2026, 11, 18),
+                    NombreProveedor = "DAPREMAQ",
+                    NombreSolicitante = "Marcelo Silva",
+                    RutaActivo = "CAMBIASO HNOS S.A.C. \\ PLANTA PE \\ GRÚAS",
+                    Observacion = "Obs interna confidencial",
+                    ValorNeto = 350000m,
+                    MostrarValorNeto = true,
+                    Estado = WorkOrderStatus.Abierta,
+                    FirmasSeleccionadas = SignatureOption.JefaturaYTecnico,
+                    Detalles =
+                    [
+                        new WorkOrderDetail { Cantidad = 1, Descripcion = "Arriendo grúa horquilla" },
+                        new WorkOrderDetail { Cantidad = 4, Descripcion = "Horas operador adicional" }
+                    ]
+                }
+            ];
+
+            WorkOrderExportField[] subset =
+            [
+                WorkOrderExportField.NumeroOt,
+                WorkOrderExportField.Fecha,
+                WorkOrderExportField.Proveedor,
+                WorkOrderExportField.Detalle,
+                WorkOrderExportField.ValorNeto,
+                WorkOrderExportField.Estado
+            ];
+
+            TabularReportData listReport = DocumentExportService.BuildWorkOrdersReport(searchRows, "Filtro prueba", subset);
+            Assert.Equal(["N° OT", "Fecha", "Proveedor", "Detalle del Trabajo", "Valor Neto", "Estado"], listReport.Columns.Select(c => c.Header));
+
+            string xlsx = Path.Combine(outDir, "subset_list.xlsx");
+            string pdf = Path.Combine(outDir, "subset_list.pdf");
+            string docx = Path.Combine(outDir, "subset_list.docx");
+            string csv = Path.Combine(outDir, "subset_list.csv");
+
+            exportService.ExportReport(listReport, ExportFormat.Excel, xlsx);
+            exportService.ExportReport(listReport, ExportFormat.Pdf, pdf);
+            exportService.ExportReport(listReport, ExportFormat.Word, docx);
+            exportService.ExportReport(listReport, ExportFormat.Csv, csv);
+
+            using (XLWorkbook wb = new(xlsx))
+            {
+                IXLWorksheet ws = wb.Worksheet(1);
+                string[] headers = Enumerable.Range(1, 6).Select(i => ws.Cell(5, i).GetString()).ToArray();
+                Assert.Equal(["N° OT", "Fecha", "Proveedor", "Detalle del Trabajo", "Valor Neto", "Estado"], headers);
+                Assert.Equal(string.Empty, ws.Cell(5, 7).GetString());
+            }
+
+            Encoding win1252 = Encoding.GetEncoding(1252);
+            string pdfText = win1252.GetString(File.ReadAllBytes(pdf));
+            Assert.Contains("Valor Neto", pdfText);
+            Assert.DoesNotContain("Solicitante", pdfText);
+            Assert.DoesNotContain("Observaciones", pdfText);
+            Assert.DoesNotContain("Firmas", pdfText);
+
+            using (WordprocessingDocument doc = WordprocessingDocument.Open(docx, false))
+            {
+                string bodyText = doc.MainDocumentPart!.Document.Body!.InnerText;
+                Assert.Contains("Valor Neto", bodyText);
+                Assert.DoesNotContain("Solicitante", bodyText);
+                Assert.DoesNotContain("Firmas", bodyText);
+            }
+
+            string csvHeader = File.ReadAllLines(csv, Encoding.UTF8)[0];
+            Assert.Equal("N° OT;Fecha;Proveedor;Detalle del Trabajo;Valor Neto;Estado", csvHeader);
+
+            // Exportación de seleccionadas incluyendo campos opcionales (Tipo OT, Ruta Activo, Cant.)
+            WorkOrderExportField[] customSelected =
+            [
+                WorkOrderExportField.NumeroOt,
+                WorkOrderExportField.TipoOrden,
+                WorkOrderExportField.Cantidad,
+                WorkOrderExportField.Detalle,
+                WorkOrderExportField.RutaActivo,
+                WorkOrderExportField.Firmas
+            ];
+            TabularReportData selReport = DocumentExportService.BuildSelectedWorkOrdersReport(selectedOrders, "1 OT", customSelected);
+            Assert.Equal(["N° OT", "Tipo", "Cant.", "Detalle", "Activo", "Firmas"], selReport.Columns.Select(c => c.Header));
+            Assert.Equal(5, selReport.Rows[0][2]); // 1 + 4
+            Assert.Contains("Arriendo grúa horquilla", selReport.Rows[0][3]?.ToString());
+            Assert.Contains("Horas operador adicional", selReport.Rows[0][3]?.ToString());
+            Assert.Contains("PLANTA PE", selReport.Rows[0][4]?.ToString());
+            Assert.Equal("Jefatura, Técnico", selReport.Rows[0][5]?.ToString());
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+            {
+                Directory.Delete(outDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void ExportAutoFitWrapping_NeverTruncatesLongText_AcrossPdfExcelAndWord_AndPaginatesCleanly()
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        AppSettings settings = new();
+        DocumentExportService exportService = new(
+            new ExcelExportService(settings),
+            new PdfExportService(settings),
+            new WordExportService(settings),
+            new CsvExportService());
+        string outDir = Path.Combine(Path.GetTempPath(), $"sispro_wrap_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(outDir);
+
+        try
+        {
+            const string longDetailMarker = "FIN_DETALLE_COMPLETO_9988";
+            const string longObsMarker = "OBS_COMPLETA_SIN_RECORTE_7766";
+            const string longDetailText =
+                "Extensión de arriendo grúa horquilla 2.5 toneladas con operador certificado en planta Placilla, " +
+                "incluye mantención preventiva de horquillas, revisión hidráulica completa y entrega certificada — " +
+                longDetailMarker;
+            const string longObsText =
+                "Coordinar ingreso por portería principal con 24 horas de anticipación y adjuntar certificado — " +
+                longObsMarker;
+
+            List<WorkOrderSearchRow> rows = Enumerable.Range(0, 26)
+                .Select(i => new WorkOrderSearchRow
+                {
+                    IdOt = 100 + i,
+                    NumeroOt = 14800 + i,
+                    Fecha = new DateTime(2026, 11, 18),
+                    Proveedor = i % 2 == 0 ? "DAPREMAQ SERVICIOS INDUSTRIALES SPA" : "INGERSOLL RAND CHILE LTDA",
+                    Solicitante = "Marcelo Silva Morgado",
+                    Cantidad = i + 1,
+                    Detalle = i == 0 ? longDetailText : $"Realizar mantención preventiva de 4000 horas a compresor principal línea {i} con cambio de filtros, aceite sintético y pruebas de carga.",
+                    Observacion = i == 0 ? longObsText : "Revisar informes de vibraciones y temperatura.",
+                    ValorNeto = 450000m + (i * 15000m),
+                    MostrarValorNeto = true,
+                    Estado = WorkOrderStatus.EnCurso,
+                    FirmasSeleccionadas = SignatureOption.AmbasConSolicitante
+                })
+                .ToList();
+
+            TabularReportData report = DocumentExportService.BuildWorkOrdersReport(
+                rows,
+                "Prueba ajuste automático completo",
+                WorkOrderExportFieldCatalog.DefaultSearchGridFields);
+
+            string pdfPath = Path.Combine(outDir, "wrap.pdf");
+            string xlsxPath = Path.Combine(outDir, "wrap.xlsx");
+            string docxPath = Path.Combine(outDir, "wrap.docx");
+
+            exportService.ExportReport(report, ExportFormat.Pdf, pdfPath);
+            exportService.ExportReport(report, ExportFormat.Excel, xlsxPath);
+            exportService.ExportReport(report, ExportFormat.Word, docxPath);
+
+            // 1. PDF: 100% del texto largo completo sin elipsis '...', encabezados completos y multipágina real
+            Encoding win1252 = Encoding.GetEncoding(1252);
+            string pdfText = win1252.GetString(File.ReadAllBytes(pdfPath));
+            Assert.StartsWith("%PDF-1.4", pdfText);
+            Assert.Contains("Valor Neto", pdfText);
+            Assert.Contains("Observaciones", pdfText);
+            // Extraer texto literal de operadores PDF (...) Tj (excluyendo bytes binarios JPEG del logo)
+            string pdfJoinedWords = string.Join(" ",
+                System.Text.RegularExpressions.Regex.Matches(pdfText, @"\((?<t>(?:\\.|[^\\)])*)\) Tj")
+                    .Select(m => m.Groups["t"].Value.Replace(@"\(", "(").Replace(@"\)", ")").Replace(@"\\", @"\")));
+            Assert.DoesNotContain("Valor Ne...", pdfJoinedWords);
+            Assert.DoesNotContain("…", pdfJoinedWords);
+            Assert.DoesNotContain("...", pdfJoinedWords);
+            string pdfCompact = pdfJoinedWords.Replace(" ", string.Empty);
+            Assert.Contains(longDetailMarker, pdfCompact);
+            Assert.Contains(longObsMarker, pdfCompact);
+            Assert.Contains("18-11-2026", pdfJoinedWords);
+            Assert.Contains("Jefatura,", pdfJoinedWords);
+            Assert.Contains("Técnico,", pdfJoinedWords);
+            Assert.Contains("Supervisor", pdfJoinedWords);
+            Assert.Contains("Página 1 de ", pdfText);
+            Assert.Contains("Página 2 de ", pdfText);
+            Assert.DoesNotContain("/Count 1 ", pdfText);
+
+            // 2. Excel: WrapText activo y altura de fila expandida para el texto largo
+            using (XLWorkbook wb = new(xlsxPath))
+            {
+                IXLWorksheet ws = wb.Worksheet(1);
+                Assert.True(ws.Cell(5, 6).Style.Alignment.WrapText);
+                Assert.True(ws.Cell(6, 6).Style.Alignment.WrapText);
+                Assert.Contains(longDetailMarker, ws.Cell(6, 6).GetString());
+                Assert.Contains(longObsMarker, ws.Cell(6, 7).GetString());
+                Assert.True(ws.Row(6).Height > 28.0, $"Expected wrapped row height > 28, got {ws.Row(6).Height}");
+            }
+
+            // 3. Word: texto largo íntegro y anchos proporcionales que suman exactamente 5000 (100%)
+            using (WordprocessingDocument doc = WordprocessingDocument.Open(docxPath, false))
+            {
+                Body body = doc.MainDocumentPart!.Document.Body!;
+                Assert.Contains(longDetailMarker, body.InnerText);
+                Assert.Contains(longObsMarker, body.InnerText);
+
+                Table dataTable = body.Elements<Table>().Last();
+                TableRow headerRow = dataTable.Elements<TableRow>().First();
+                int sumPct = headerRow.Elements<TableCell>()
+                    .Select(c => int.Parse(c.TableCellProperties!.TableCellWidth!.Width!.Value!, System.Globalization.CultureInfo.InvariantCulture))
+                    .Sum();
+                Assert.Equal(5000, sumPct);
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(outDir))
+            {
+                Directory.Delete(outDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void SearchGridColumnHeaderCheckBoxes_ToggleExportFieldsWithoutDisruptingSort_AndSyncUiState()
+    {
+        using TempTestDatabase temp = new();
+        SisproApplicationContext ctx = temp.Context;
+        UserSession admin = ctx.AuthService.Login("admin", "Admin2026!").Session!;
+
+        int provId = ctx.MaintainerService.SaveProvider(admin, new Provider { Nombre = "DAPREMAQ SPA" });
+        int solId = ctx.MaintainerService.SaveRequester(admin, new Requester { Alias = "M Silva", Nombre = "Marcelo", ApellidoPaterno = "Silva", Activo = true });
+        IReadOnlyList<AssetNode> roots = ctx.AssetTree.GetChildren(null, includeInactive: true);
+        int idN1 = roots.Count > 0
+            ? roots[0].IdActivo
+            : ctx.AssetTree.Create(new AssetNode { Descripcion = "CAMBIASO", Categoria = AssetNodeTypes.Empresa, Nivel = 1, Activo = true });
+        IReadOnlyList<AssetNode> plants = ctx.AssetTree.GetChildren(idN1, includeInactive: false);
+        int idN2 = plants.Count > 0 ? plants[0].IdActivo : ctx.AssetTreeService.AddChild(admin, idN1, "PLANTA PE", AssetNodeTypes.Planta);
+
+        ctx.WorkOrderService.Create(admin, new WorkOrder
+        {
+            NumeroOt = 88001,
+            IdProv = provId,
+            IdSol = solId,
+            FechaOt = new DateTime(2026, 11, 20),
+            ValorNeto = 120000m,
+            IdNivel = 2,
+            IdN1 = idN1,
+            IdN2 = idN2,
+            Detalles = [new WorkOrderDetail { Cantidad = 1, Descripcion = "Primera OT de prueba" }]
+        });
+        ctx.WorkOrderService.Create(admin, new WorkOrder
+        {
+            NumeroOt = 88002,
+            IdProv = provId,
+            IdSol = solId,
+            FechaOt = new DateTime(2026, 11, 21),
+            ValorNeto = 240000m,
+            IdNivel = 2,
+            IdN1 = idN1,
+            IdN2 = idN2,
+            Detalles = [new WorkOrderDetail { Cantidad = 2, Descripcion = "Segunda OT de prueba" }]
+        });
+
+        TempTestDatabase.RunOnStaThread(() =>
+        {
+            using Form host = new()
+            {
+                StartPosition = FormStartPosition.Manual,
+                Location = new Point(-2000, -2000),
+                Size = new Size(1366, 768),
+                ShowInTaskbar = false
+            };
+            host.Show();
+            using WorkOrdersForm form = new(ctx, admin);
+            host.Controls.Add(form);
+            form.OpenSearchTab();
+            Application.DoEvents();
+
+            Assert.Equal(10, form.SearchExportColumns.GridFieldCount);
+            Assert.Equal(10, form.SearchExportColumns.SelectedFields.Count);
+            Assert.Equal("Campos (10/10)", form.BtnSearchExportColumns.Text);
+            Assert.NotNull(form.BtnSearchExportColumns.Image);
+            Assert.True(form.GridSearchResults.ColumnHeadersHeight >= 46);
+
+            DataGridViewColumn numCol = form.GridSearchResults.Columns.Cast<DataGridViewColumn>().First(c => c.DataPropertyName == "NumeroOt");
+            DataGridViewColumn obsCol = form.GridSearchResults.Columns.Cast<DataGridViewColumn>().First(c => c.DataPropertyName == "Observacion");
+            DataGridViewColumn sigCol = form.GridSearchResults.Columns.Cast<DataGridViewColumn>().First(c => c.DataPropertyName == "Firmas");
+
+            int firstBeforeClick = Convert.ToInt32(form.GridSearchResults.Rows[0].Cells[numCol.Index].Value, System.Globalization.CultureInfo.InvariantCulture);
+
+            // Clic en zona inferior de checkbox (y=32) desmarca columnas SIN alterar el orden de las filas
+            form.SearchExportColumns.HandleHeaderClick(obsCol.Index, 32);
+            form.SearchExportColumns.HandleHeaderClick(sigCol.Index, 32);
+
+            Assert.Equal(8, form.SearchExportColumns.SelectedFields.Count);
+            Assert.False(form.SearchExportColumns.IsFieldSelected(WorkOrderExportField.Observacion));
+            Assert.False(form.SearchExportColumns.IsFieldSelected(WorkOrderExportField.Firmas));
+            Assert.Equal("Campos (8/10)", form.BtnSearchExportColumns.Text);
+            Assert.Equal(firstBeforeClick, Convert.ToInt32(form.GridSearchResults.Rows[0].Cells[numCol.Index].Value, System.Globalization.CultureInfo.InvariantCulture));
+
+            // Clic en zona superior de título (y=10) ordena la columna SIN desmarcar el checkbox
+            form.SearchExportColumns.HandleHeaderClick(numCol.Index, 10);
+            Assert.True(form.SearchExportColumns.IsFieldSelected(WorkOrderExportField.NumeroOt));
+            Assert.Equal(SortOrder.Ascending, numCol.HeaderCell.SortGlyphDirection);
+            Assert.Equal(88001, Convert.ToInt32(form.GridSearchResults.Rows[0].Cells[numCol.Index].Value, System.Globalization.CultureInfo.InvariantCulture));
+
+            form.SearchExportColumns.HandleHeaderClick(numCol.Index, 10);
+            Assert.Equal(SortOrder.Descending, numCol.HeaderCell.SortGlyphDirection);
+            Assert.Equal(88002, Convert.ToInt32(form.GridSearchResults.Rows[0].Cells[numCol.Index].Value, System.Globalization.CultureInfo.InvariantCulture));
+
+            // Activar campo adicional (RutaActivo) + presets
+            form.SearchExportColumns.ToggleField(WorkOrderExportField.RutaActivo);
+            Assert.Equal("Campos (8+1)", form.BtnSearchExportColumns.Text);
+            Assert.Contains(WorkOrderExportField.RutaActivo, form.SearchExportColumns.SelectedFields);
+
+            form.SearchExportColumns.SelectEssentialFields();
+            Assert.Equal(WorkOrderExportFieldCatalog.EssentialFields.Length, form.SearchExportColumns.SelectedFields.Count);
+            Assert.Equal("Campos (7/10)", form.BtnSearchExportColumns.Text);
+
+            form.SearchExportColumns.SelectAllGridFields();
+            Assert.Equal(10, form.SearchExportColumns.SelectedGridFieldCount);
+            Assert.Equal("Campos (10/10)", form.BtnSearchExportColumns.Text);
+
+            // Validar pintado GDI+ completo del grid con checkboxes de encabezado sin excepciones
+            using Bitmap bmp = new(form.Width, form.Height);
+            form.DrawToBitmap(bmp, new Rectangle(0, 0, form.Width, form.Height));
+
+            host.Hide();
+        });
     }
 }

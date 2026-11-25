@@ -50,14 +50,24 @@ public sealed class WordExportService(AppSettings settings)
         // 1. Banner de encabezado corporativo
         AppendCorporateBanner(mainPart, body, report.Title, report.Subtitle, report.FilterSummary, report.Rows.Count, logoPath);
 
-        // 2. Tabla de datos
-        Table table = CreateStyledTable();
+        // 2. Tabla de datos con anchos proporcionales inteligentes y ajuste completo de texto (sin recortes)
+        Table table = CreateStyledTable(fixedLayout: true);
+        int[] colWidthPcts = ComputeProportionalWidthPcts(report.Columns, report.Rows);
 
         // Encabezado repetible
         TableRow headerRow = new(new TableRowProperties(new TableHeader(), new CantSplit()));
-        foreach (ExportColumn col in report.Columns)
+        for (int c = 0; c < report.Columns.Count; c++)
         {
-            headerRow.Append(CreateCell(col.Header, PrimaryHex, "FFFFFF", bold: true, fontSizeHalfPt: "17", JustificationValues.Left));
+            ExportColumn col = report.Columns[c];
+            headerRow.Append(CreateCellWithWidth(
+                col.Header,
+                PrimaryHex,
+                "FFFFFF",
+                bold: true,
+                fontSizeHalfPt: "17",
+                JustificationValues.Left,
+                colWidthPcts[c].ToString(CultureInfo.InvariantCulture),
+                TableVerticalAlignmentValues.Center));
         }
         table.Append(headerRow);
 
@@ -83,7 +93,15 @@ public sealed class WordExportService(AppSettings settings)
                 JustificationValues align = col.Kind is ExportColumnKind.Integer or ExportColumnKind.Decimal or ExportColumnKind.Currency
                     ? JustificationValues.Right
                     : JustificationValues.Left;
-                tr.Append(CreateCell(text, bg, TextHex, bold: false, fontSizeHalfPt: "16", align));
+                tr.Append(CreateCellWithWidth(
+                    text,
+                    bg,
+                    TextHex,
+                    bold: false,
+                    fontSizeHalfPt: "16",
+                    align,
+                    colWidthPcts[c].ToString(CultureInfo.InvariantCulture),
+                    TableVerticalAlignmentValues.Top));
             }
 
             table.Append(tr);
@@ -98,7 +116,15 @@ public sealed class WordExportService(AppSettings settings)
                     ? $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})"
                     : (report.Columns[c].SumInFooter ? FormatValue(sums[c], report.Columns[c].Kind) : string.Empty);
                 JustificationValues align = c == 0 ? JustificationValues.Left : JustificationValues.Right;
-                totalRow.Append(CreateCell(txt, TotalHex, PrimaryDarkHex, bold: true, fontSizeHalfPt: "16", align));
+                totalRow.Append(CreateCellWithWidth(
+                    txt,
+                    TotalHex,
+                    PrimaryDarkHex,
+                    bold: true,
+                    fontSizeHalfPt: "16",
+                    align,
+                    colWidthPcts[c].ToString(CultureInfo.InvariantCulture),
+                    TableVerticalAlignmentValues.Center));
             }
             table.Append(totalRow);
         }
@@ -311,11 +337,82 @@ public sealed class WordExportService(AppSettings settings)
         bool bold,
         string fontSizeHalfPt,
         JustificationValues align,
-        string widthPct)
+        string widthPct,
+        TableVerticalAlignmentValues? vAlign = null)
     {
-        TableCell cell = CreateCell(text, fillHex, textHex, bold, fontSizeHalfPt, align);
+        TableCell cell = CreateCell(text, fillHex, textHex, bold, fontSizeHalfPt, align, vAlign);
         cell.TableCellProperties!.PrependChild(new TableCellWidth { Width = widthPct, Type = TableWidthUnitValues.Pct });
         return cell;
+    }
+
+    private static int[] ComputeProportionalWidthPcts(IReadOnlyList<ExportColumn> columns, IReadOnlyList<object?[]> rows)
+    {
+        int n = columns.Count;
+        if (n == 0)
+        {
+            return [];
+        }
+
+        double[] weights = new double[n];
+        for (int c = 0; c < n; c++)
+        {
+            ExportColumn col = columns[c];
+            double w = Math.Max(0.45, col.WidthWeight);
+            if (col.Kind == ExportColumnKind.Text)
+            {
+                int maxLen = col.Header.Length;
+                int limit = Math.Min(rows.Count, 200);
+                for (int r = 0; r < limit; r++)
+                {
+                    object?[] row = rows[r];
+                    if (c >= row.Length || row[c] is null)
+                    {
+                        continue;
+                    }
+
+                    string s = ExportSanitizer.SanitizeXmlText(row[c]?.ToString());
+                    if (s.Length > maxLen)
+                    {
+                        maxLen = s.Length;
+                    }
+                }
+
+                if (maxLen > 45)
+                {
+                    w *= Math.Min(1.65, 1.0 + ((maxLen - 45) / 140.0));
+                }
+            }
+
+            weights[c] = w;
+        }
+
+        double total = weights.Sum();
+        int[] pcts = new int[n];
+        int assigned = 0;
+        for (int c = 0; c < n; c++)
+        {
+            int p = Math.Max(220, (int)Math.Round(5000.0 * (weights[c] / total)));
+            pcts[c] = p;
+            assigned += p;
+        }
+
+        // Ajustar diferencia de redondeo sobre la columna más ancha para que sume exactamente 5000 (100%)
+        int diff = 5000 - assigned;
+        if (diff != 0)
+        {
+            int widestIdx = 0;
+            for (int c = 1; c < n; c++)
+            {
+                if (pcts[c] > pcts[widestIdx])
+                {
+                    widestIdx = c;
+                }
+            }
+
+            pcts[widestIdx] = Math.Max(220, pcts[widestIdx] + diff);
+        }
+
+        return pcts;
     }
 
     private void AppendCorporateBanner(
@@ -410,8 +507,9 @@ public sealed class WordExportService(AppSettings settings)
         body.Append(secProps);
     }
 
-    private static Table CreateStyledTable() =>
-        new(new TableProperties(
+    private static Table CreateStyledTable(bool fixedLayout = false)
+    {
+        TableProperties props = new(
             new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct },
             new TableBorders(
                 new TopBorder { Val = BorderValues.Single, Color = PrimaryHex, Size = 6 },
@@ -419,7 +517,14 @@ public sealed class WordExportService(AppSettings settings)
                 new LeftBorder { Val = BorderValues.Single, Color = BorderHex, Size = 4 },
                 new RightBorder { Val = BorderValues.Single, Color = BorderHex, Size = 4 },
                 new InsideHorizontalBorder { Val = BorderValues.Single, Color = BorderHex, Size = 4 },
-                new InsideVerticalBorder { Val = BorderValues.Single, Color = BorderHex, Size = 4 })));
+                new InsideVerticalBorder { Val = BorderValues.Single, Color = BorderHex, Size = 4 }));
+        if (fixedLayout)
+        {
+            props.Append(new TableLayout { Type = TableLayoutValues.Fixed });
+        }
+
+        return new Table(props);
+    }
 
     private static TableCell CreateCell(
         string text,
@@ -427,15 +532,16 @@ public sealed class WordExportService(AppSettings settings)
         string textHex,
         bool bold,
         string fontSizeHalfPt,
-        JustificationValues align)
+        JustificationValues align,
+        TableVerticalAlignmentValues? vAlign = null)
     {
         TableCellProperties props = new(
-            new TableCellVerticalAlignment { Val = TableVerticalAlignmentValues.Center },
+            new TableCellVerticalAlignment { Val = vAlign ?? TableVerticalAlignmentValues.Center },
             new TableCellMargin(
                 new TopMargin { Width = "70", Type = TableWidthUnitValues.Dxa },
                 new BottomMargin { Width = "70", Type = TableWidthUnitValues.Dxa },
-                new LeftMargin { Width = "90", Type = TableWidthUnitValues.Dxa },
-                new RightMargin { Width = "90", Type = TableWidthUnitValues.Dxa }));
+                new LeftMargin { Width = "85", Type = TableWidthUnitValues.Dxa },
+                new RightMargin { Width = "85", Type = TableWidthUnitValues.Dxa }));
 
         if (!string.IsNullOrEmpty(fillHex))
         {
@@ -443,7 +549,8 @@ public sealed class WordExportService(AppSettings settings)
         }
 
         TableCell cell = new(props);
-        string[] lines = text.Split('\n');
+        string normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        string[] lines = normalized.Split('\n');
         foreach (string line in lines)
         {
             cell.Append(CreateStyledParagraph(line, textHex, fontSizeHalfPt, bold, "0", align));

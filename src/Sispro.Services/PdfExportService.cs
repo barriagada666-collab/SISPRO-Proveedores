@@ -42,139 +42,243 @@ public sealed class PdfExportService(AppSettings settings)
         // Carta US: 612 x 792 pt (Horizontal: 792 x 612 pt)
         double pageW = report.Landscape ? 792 : 612;
         double pageH = report.Landscape ? 612 : 792;
-        double marginX = 32;
-        double marginTop = 28;
-        double marginBottom = 36;
+        double marginX = 26;
+        double marginTop = 26;
+        double marginBottom = 34;
         double contentW = pageW - (marginX * 2);
 
-        double totalWeight = Math.Max(1.0, report.Columns.Sum(c => Math.Max(0.3, c.WidthWeight)));
-        double[] colWidths = report.Columns.Select(c => contentW * (Math.Max(0.3, c.WidthWeight) / totalWeight)).ToArray();
+        int colCount = report.Columns.Count;
+        if (colCount == 0)
+        {
+            throw new InvalidOperationException("Debe seleccionar al menos una columna para generar el reporte PDF.");
+        }
 
-        double headerBannerH = 66;
-        double tableHeaderH = 22;
-        double rowH = 18;
-        double bodyTopY = pageH - marginTop - headerBannerH - 18;
-        double bodyBottomY = marginBottom + 24;
+        double[] colWidths = ComputeSmartColumnWidths(report.Columns, report.Rows, contentW);
+
+        const double headerFontSize = 7.8;
+        const double headerLineH = 9.8;
+        const double cellFontSize = 7.6;
+        const double cellLineH = 9.6;
+        const double cellPadX = 3.5;
+        const double cellPadY = 4.0;
+        const double minRowH = 17.5;
+
+        // Encabezados multi-línea (nunca se truncan)
+        List<string>[] headerLines = new List<string>[colCount];
+        int maxHeaderLines = 1;
+        for (int c = 0; c < colCount; c++)
+        {
+            headerLines[c] = WrapTextToWidth(report.Columns[c].Header, Math.Max(14, colWidths[c] - (cellPadX * 2)), headerFontSize);
+            maxHeaderLines = Math.Max(maxHeaderLines, headerLines[c].Count);
+        }
+
+        double headerBannerH = 64;
+        List<string> filterLines = WrapTextToWidth($"Filtros: {report.FilterSummary}", contentW - 4, 7.8);
+        if (filterLines.Count > 2)
+        {
+            filterLines = [filterLines[0], string.Join(" ", filterLines.Skip(1))];
+        }
+
+        double filterBlockH = (filterLines.Count * 10.0) + 6.0;
+        double tableHeaderH = Math.Max(22.0, (maxHeaderLines * headerLineH) + 8.0);
+        double bodyTopY = pageH - marginTop - headerBannerH - filterBlockH;
+        double bodyBottomY = marginBottom + 22;
+        double maxRowAreaH = Math.Max(48.0, bodyTopY - tableHeaderH - bodyBottomY);
 
         bool hasTotals = report.Columns.Any(c => c.SumInFooter) && report.Rows.Count > 0;
-        int totalRowsCount = report.Rows.Count + (hasTotals ? 1 : 0);
-        int rowsPerPage = Math.Max(1, (int)Math.Floor((bodyTopY - tableHeaderH - bodyBottomY) / rowH));
-        int totalPages = Math.Max(1, (int)Math.Ceiling(Math.Max(1, totalRowsCount) / (double)rowsPerPage));
+        decimal[] sums = new decimal[colCount];
 
-        decimal[] sums = new decimal[report.Columns.Count];
-        if (hasTotals)
+        // 1. Precalcular el ajuste multi-línea de cada fila para mostrar TODO el texto completo sin truncar
+        List<PreparedTabularRow> preparedRows = new(report.Rows.Count + (hasTotals ? 1 : 0));
+        for (int i = 0; i < report.Rows.Count; i++)
         {
-            foreach (object?[] r in report.Rows)
+            object?[] row = report.Rows[i];
+            List<string>[] cellLines = new List<string>[colCount];
+            int maxLines = 1;
+
+            for (int c = 0; c < colCount; c++)
             {
-                for (int c = 0; c < report.Columns.Count && c < r.Length; c++)
+                object? raw = c < row.Length ? row[c] : null;
+                ExportColumn col = report.Columns[c];
+                if (hasTotals && col.SumInFooter && ExportSanitizer.TryToDecimal(raw, out decimal d))
                 {
-                    if (report.Columns[c].SumInFooter && ExportSanitizer.TryToDecimal(r[c], out decimal d))
-                    {
-                        sums[c] += d;
-                    }
+                    sums[c] += d;
                 }
+
+                string text = FormatDisplayValue(raw, col.Kind);
+                cellLines[c] = WrapTextToWidth(text, Math.Max(14, colWidths[c] - (cellPadX * 2)), cellFontSize);
+                maxLines = Math.Max(maxLines, cellLines[c].Count);
+            }
+
+            // Si una fila supera el alto útil de una página entera, dividirla limpiamente en segmentos sin perder texto
+            int maxLinesPerSlice = Math.Max(3, (int)Math.Floor((maxRowAreaH - (cellPadY * 2)) / cellLineH));
+            for (int offset = 0; offset < maxLines; offset += maxLinesPerSlice)
+            {
+                int sliceLinesCount = Math.Min(maxLinesPerSlice, maxLines - offset);
+                List<string>[] sliceCells = new List<string>[colCount];
+                for (int c = 0; c < colCount; c++)
+                {
+                    sliceCells[c] = offset < cellLines[c].Count
+                        ? cellLines[c].Skip(offset).Take(sliceLinesCount).ToList()
+                        : [string.Empty];
+                }
+
+                double sliceH = Math.Max(minRowH, (sliceLinesCount * cellLineH) + (cellPadY * 2));
+                preparedRows.Add(new PreparedTabularRow(sliceCells, sliceH, IsTotal: false, IsAlternate: i % 2 == 1));
             }
         }
 
-        List<string> pageStreams = [];
-        string emissionText = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count.ToString("N0", ClCulture)}";
-        string filterLine = $"Filtros: {TruncateText(report.FilterSummary, contentW - 10, 8)}";
+        if (hasTotals)
+        {
+            List<string>[] totCells = new List<string>[colCount];
+            int maxTotLines = 1;
+            for (int c = 0; c < colCount; c++)
+            {
+                string cellText = c == 0
+                    ? $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})"
+                    : (report.Columns[c].SumInFooter ? FormatDisplayValue(sums[c], report.Columns[c].Kind) : string.Empty);
+                totCells[c] = WrapTextToWidth(cellText, Math.Max(14, colWidths[c] - (cellPadX * 2)), 7.9);
+                maxTotLines = Math.Max(maxTotLines, totCells[c].Count);
+            }
 
+            double totH = Math.Max(20.0, (maxTotLines * 10.0) + (cellPadY * 2));
+            preparedRows.Add(new PreparedTabularRow(totCells, totH, IsTotal: true, IsAlternate: false));
+        }
+
+        // 2. Paginar dinámicamente según la altura real de cada fila
+        List<List<PreparedTabularRow>> pages = [];
+        List<PreparedTabularRow> currentPage = [];
+        double remainingH = maxRowAreaH;
+
+        foreach (PreparedTabularRow pRow in preparedRows)
+        {
+            if (currentPage.Count > 0 && pRow.Height > remainingH)
+            {
+                pages.Add(currentPage);
+                currentPage = [];
+                remainingH = maxRowAreaH;
+            }
+
+            currentPage.Add(pRow);
+            remainingH -= pRow.Height;
+        }
+
+        if (currentPage.Count > 0 || pages.Count == 0)
+        {
+            pages.Add(currentPage);
+        }
+
+        int totalPages = pages.Count;
+        List<string> pageStreams = new(totalPages);
+        string emissionText = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count.ToString("N0", ClCulture)}";
+
+        // 3. Renderizar cada página
         for (int p = 0; p < totalPages; p++)
         {
             StringBuilder sb = new();
 
-            // 1. Banner corporativo superior
+            // Banner corporativo superior
             DrawCorporateHeader(sb, pageW, pageH, marginX, marginTop, headerBannerH, contentW, report.Title, report.Subtitle, emissionText, logo is not null);
 
-            // Línea de filtros
+            // Línea(s) de filtros
             sb.AppendLine(TextMutedFill);
-            DrawText(sb, "F1", 8, marginX, pageH - marginTop - headerBannerH - 11, filterLine);
+            double filterY = pageH - marginTop - headerBannerH - 10;
+            foreach (string fl in filterLines)
+            {
+                DrawText(sb, "F1", 7.8, marginX, filterY, fl);
+                filterY -= 10.0;
+            }
 
-            // 2. Encabezado de tabla
+            // Encabezado de tabla (multi-línea completo)
             double curY = bodyTopY;
             sb.AppendLine(PrimaryFill);
             sb.AppendLine(Fmt($"{marginX} {curY - tableHeaderH} {contentW} {tableHeaderH} re f"));
 
             double x = marginX;
             sb.AppendLine(WhiteFill);
-            for (int c = 0; c < report.Columns.Count; c++)
+            for (int c = 0; c < colCount; c++)
             {
-                string header = TruncateText(report.Columns[c].Header, colWidths[c] - 8, 8.2);
-                DrawText(sb, "F2", 8.2, x + 4, curY - 14.5, header);
+                List<string> hLines = headerLines[c];
+                bool rightAlign = report.Columns[c].Kind is ExportColumnKind.Integer or ExportColumnKind.Decimal or ExportColumnKind.Currency;
+                double startTextY = curY - ((tableHeaderH - (hLines.Count * headerLineH)) / 2.0) - 7.5;
+                for (int li = 0; li < hLines.Count; li++)
+                {
+                    string hLine = hLines[li];
+                    double tx = rightAlign
+                        ? Math.Max(x + cellPadX, x + colWidths[c] - cellPadX - EstimateHelveticaWidth(hLine, headerFontSize))
+                        : x + cellPadX;
+                    DrawText(sb, "F2", headerFontSize, tx, startTextY - (li * headerLineH), hLine);
+                }
+
                 x += colWidths[c];
             }
 
             curY -= tableHeaderH;
 
-            // 3. Filas de datos en esta página
-            int startIdx = p * rowsPerPage;
-            int endIdx = Math.Min(report.Rows.Count, startIdx + rowsPerPage);
-
-            for (int i = startIdx; i < endIdx; i++)
+            // Filas de la página actual
+            foreach (PreparedTabularRow pRow in pages[p])
             {
-                object?[] row = report.Rows[i];
-                if ((i - startIdx) % 2 == 1)
+                double rh = pRow.Height;
+                if (pRow.IsTotal)
                 {
-                    sb.AppendLine(SubtleRowFill);
-                    sb.AppendLine(Fmt($"{marginX} {curY - rowH} {contentW} {rowH} re f"));
+                    sb.AppendLine(TotalRowFill);
+                    sb.AppendLine(Fmt($"{marginX} {curY - rh} {contentW} {rh} re f"));
+                    sb.AppendLine("0.8 w");
+                    sb.AppendLine(AccentStroke);
+                    sb.AppendLine(Fmt($"{marginX} {curY} m {marginX + contentW} {curY} l S"));
                 }
-
-                // Borde inferior sutil
-                sb.AppendLine("0.4 w");
-                sb.AppendLine(BorderStroke);
-                sb.AppendLine(Fmt($"{marginX} {curY - rowH} m {marginX + contentW} {curY - rowH} l S"));
-
-                x = marginX;
-                sb.AppendLine(TextPrimaryFill);
-                for (int c = 0; c < report.Columns.Count; c++)
+                else
                 {
-                    object? raw = c < row.Length ? row[c] : null;
-                    string text = FormatDisplayValue(raw, report.Columns[c].Kind);
-                    string clipped = TruncateText(text, colWidths[c] - 8, 7.8);
-                    bool rightAlign = report.Columns[c].Kind is ExportColumnKind.Integer or ExportColumnKind.Decimal or ExportColumnKind.Currency;
-                    double tx = rightAlign
-                        ? Math.Max(x + 4, x + colWidths[c] - 4 - EstimateTextWidth(clipped, 7.8))
-                        : x + 4;
-                    DrawText(sb, "F1", 7.8, tx, curY - 12.5, clipped);
-                    x += colWidths[c];
-                }
-
-                curY -= rowH;
-            }
-
-            // 4. Fila de totales en última página
-            bool renderTotalsHere = hasTotals && p == totalPages - 1;
-            if (renderTotalsHere)
-            {
-                sb.AppendLine(TotalRowFill);
-                sb.AppendLine(Fmt($"{marginX} {curY - rowH} {contentW} {rowH} re f"));
-                sb.AppendLine("0.8 w");
-                sb.AppendLine(AccentStroke);
-                sb.AppendLine(Fmt($"{marginX} {curY} m {marginX + contentW} {curY} l S"));
-
-                x = marginX;
-                sb.AppendLine(PrimaryDarkFill);
-                for (int c = 0; c < report.Columns.Count; c++)
-                {
-                    string cellText = c == 0
-                        ? $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})"
-                        : (report.Columns[c].SumInFooter ? FormatDisplayValue(sums[c], report.Columns[c].Kind) : string.Empty);
-
-                    if (!string.IsNullOrEmpty(cellText))
+                    if (pRow.IsAlternate)
                     {
-                        string clipped = TruncateText(cellText, colWidths[c] - 8, 8.0);
-                        bool rightAlign = c > 0;
-                        double tx = rightAlign
-                            ? Math.Max(x + 4, x + colWidths[c] - 4 - EstimateTextWidth(clipped, 8.0))
-                            : x + 4;
-                        DrawText(sb, "F2", 8.0, tx, curY - 12.5, clipped);
+                        sb.AppendLine(SubtleRowFill);
+                        sb.AppendLine(Fmt($"{marginX} {curY - rh} {contentW} {rh} re f"));
+                    }
+
+                    sb.AppendLine("0.35 w");
+                    sb.AppendLine(BorderStroke);
+                    sb.AppendLine(Fmt($"{marginX} {curY - rh} m {marginX + contentW} {curY - rh} l S"));
+                }
+
+                x = marginX;
+                sb.AppendLine(pRow.IsTotal ? PrimaryDarkFill : TextPrimaryFill);
+                string fontTag = pRow.IsTotal ? "F2" : "F1";
+                double fSize = pRow.IsTotal ? 7.9 : cellFontSize;
+                double lHeight = pRow.IsTotal ? 10.0 : cellLineH;
+
+                for (int c = 0; c < colCount; c++)
+                {
+                    // Separador vertical muy suave entre columnas
+                    if (c > 0 && !pRow.IsTotal)
+                    {
+                        sb.AppendLine("0.25 w");
+                        sb.AppendLine(BorderStroke);
+                        sb.AppendLine(Fmt($"{x} {curY} m {x} {curY - rh} l S"));
+                        sb.AppendLine(TextPrimaryFill);
+                    }
+
+                    List<string> lines = pRow.Cells[c];
+                    bool rightAlign = pRow.IsTotal
+                        ? c > 0
+                        : report.Columns[c].Kind is ExportColumnKind.Integer or ExportColumnKind.Decimal or ExportColumnKind.Currency;
+
+                    double ly = curY - cellPadY - 7.4;
+                    for (int li = 0; li < lines.Count; li++)
+                    {
+                        string lineText = lines[li];
+                        if (!string.IsNullOrEmpty(lineText))
+                        {
+                            double tx = rightAlign
+                                ? Math.Max(x + cellPadX, x + colWidths[c] - cellPadX - EstimateHelveticaWidth(lineText, fSize))
+                                : x + cellPadX;
+                            DrawText(sb, fontTag, fSize, tx, ly - (li * lHeight), lineText);
+                        }
                     }
 
                     x += colWidths[c];
                 }
 
-                curY -= rowH;
+                curY -= rh;
             }
 
             // Marco exterior de tabla
@@ -182,9 +286,8 @@ public sealed class PdfExportService(AppSettings settings)
             sb.AppendLine(BorderStroke);
             sb.AppendLine(Fmt($"{marginX} {curY} {contentW} {bodyTopY - curY} re S"));
 
-            // 5. Pie de página con numeración
+            // Pie de página con numeración exacta
             DrawFooter(sb, pageW, marginX, marginBottom, p + 1, totalPages, report.FooterNote);
-
             pageStreams.Add(sb.ToString());
         }
 
@@ -814,7 +917,205 @@ public sealed class PdfExportService(AppSettings settings)
         ExportSanitizer.FormatDisplayValue(val, kind, ClCulture);
 
     private static double EstimateTextWidth(string text, double fontSize) =>
-        text.Length * fontSize * 0.51;
+        EstimateHelveticaWidth(text, fontSize);
+
+    private static double EstimateHelveticaWidth(string text, double fontSize)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        double units = 0;
+        foreach (char ch in text)
+        {
+            units += ch switch
+            {
+                ' ' or 'i' or 'l' or 'I' or '!' or '.' or ',' or ':' or ';' or '\'' or '|' => 0.28,
+                'j' or 't' or 'r' or 'f' or '(' or ')' or '[' or ']' or '-' or '/' or '\\' => 0.34,
+                'W' or 'M' or 'm' or 'w' or '@' or '%' or 'Ñ' or 'Ó' or 'Á' or 'É' or 'Ú' => 0.72,
+                >= 'A' and <= 'Z' => 0.63,
+                >= '0' and <= '9' => 0.56,
+                _ => 0.52
+            };
+        }
+
+        return units * fontSize;
+    }
+
+    private static double[] ComputeSmartColumnWidths(
+        IReadOnlyList<ExportColumn> columns,
+        IReadOnlyList<object?[]> rows,
+        double contentW)
+    {
+        int n = columns.Count;
+        double[] minWidths = new double[n];
+        double[] weights = new double[n];
+        bool hasTextColumns = columns.Any(static c => c.Kind == ExportColumnKind.Text);
+
+        int sampleCount = Math.Min(rows.Count, 120);
+        for (int c = 0; c < n; c++)
+        {
+            ExportColumn col = columns[c];
+            double maxValW = 0;
+            double avgLen = 0;
+            int maxLen = 0;
+            int nonEmpty = 0;
+
+            for (int r = 0; r < sampleCount; r++)
+            {
+                if (c < rows[r].Length && rows[r][c] is not null)
+                {
+                    string s = FormatDisplayValue(rows[r][c], col.Kind);
+                    if (!string.IsNullOrWhiteSpace(s))
+                    {
+                        nonEmpty++;
+                        avgLen += s.Length;
+                        if (s.Length > maxLen) maxLen = s.Length;
+                        if (col.Kind != ExportColumnKind.Text)
+                        {
+                            double w = EstimateHelveticaWidth(s, 7.6);
+                            if (w > maxValW) maxValW = w;
+                        }
+                    }
+                }
+            }
+
+            if (nonEmpty > 0) avgLen /= nonEmpty;
+
+            double fullHeaderW = EstimateHelveticaWidth(col.Header, 7.8) + 10.0;
+            double headerWordMin = col.Header
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(w => EstimateHelveticaWidth(w, 7.8) + 8.0)
+                .DefaultIfEmpty(30.0)
+                .Max();
+
+            if (col.Kind != ExportColumnKind.Text)
+            {
+                // Columnas estructuradas (N° OT, Fecha, Cant., Valor Neto): ancho ajustado exacto sin desperdiciar espacio
+                (double floorW, double ceilW) = col.Kind switch
+                {
+                    ExportColumnKind.Date => (52.0, 62.0),
+                    ExportColumnKind.DateTime => (72.0, 86.0),
+                    ExportColumnKind.Currency => (56.0, 78.0),
+                    ExportColumnKind.Integer => (32.0, 50.0),
+                    ExportColumnKind.Decimal => (44.0, 66.0),
+                    _ => (40.0, 68.0)
+                };
+                double needed = Math.Max(maxValW + 10.0, Math.Min(fullHeaderW, ceilW));
+                minWidths[c] = Math.Clamp(needed, floorW, ceilW);
+                weights[c] = hasTextColumns ? Math.Max(0.05, col.WidthWeight * 0.08) : Math.Max(0.25, col.WidthWeight);
+            }
+            else
+            {
+                minWidths[c] = Math.Max(44.0, Math.Min(headerWordMin, 76.0));
+                double contentBoost = 1.0;
+                if (nonEmpty > 0)
+                {
+                    if (maxLen > 90 || avgLen > 45) contentBoost = 2.05;
+                    else if (maxLen > 50 || avgLen > 24) contentBoost = 1.45;
+                    else if (maxLen <= 14 && avgLen <= 12) contentBoost = 0.42;
+                }
+                else
+                {
+                    contentBoost = 0.55;
+                }
+
+                weights[c] = Math.Max(0.25, col.WidthWeight) * contentBoost;
+            }
+        }
+
+        double totalMin = minWidths.Sum();
+        if (totalMin >= contentW)
+        {
+            double scale = contentW / totalMin;
+            return minWidths.Select(w => w * scale).ToArray();
+        }
+
+        double extra = contentW - totalMin;
+        double totalWeight = Math.Max(0.01, weights.Sum());
+        double[] finalW = new double[n];
+        for (int c = 0; c < n; c++)
+        {
+            finalW[c] = minWidths[c] + (extra * (weights[c] / totalWeight));
+        }
+
+        return finalW;
+    }
+
+    private static List<string> WrapTextToWidth(string text, double maxWidthPt, double fontSize)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return [string.Empty];
+        }
+
+        double safeMaxW = Math.Max(16.0, maxWidthPt);
+        List<string> lines = [];
+        string[] paragraphs = text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+        foreach (string rawParagraph in paragraphs)
+        {
+            string paragraph = rawParagraph.Trim();
+            if (paragraph.Length == 0)
+            {
+                continue;
+            }
+
+            string[] words = paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            StringBuilder current = new();
+
+            foreach (string word in words)
+            {
+                string candidate = current.Length == 0 ? word : $"{current} {word}";
+                if (EstimateHelveticaWidth(candidate, fontSize) <= safeMaxW)
+                {
+                    if (current.Length > 0) current.Append(' ');
+                    current.Append(word);
+                    continue;
+                }
+
+                if (current.Length > 0)
+                {
+                    lines.Add(current.ToString());
+                    current.Clear();
+                }
+
+                // Si una palabra individual supera el ancho de la columna, dividirla sin perder caracteres
+                if (EstimateHelveticaWidth(word, fontSize) <= safeMaxW)
+                {
+                    current.Append(word);
+                }
+                else
+                {
+                    StringBuilder chunk = new();
+                    foreach (char ch in word)
+                    {
+                        chunk.Append(ch);
+                        if (EstimateHelveticaWidth(chunk.ToString(), fontSize) > safeMaxW && chunk.Length > 1)
+                        {
+                            chunk.Length--;
+                            lines.Add(chunk.ToString());
+                            chunk.Clear();
+                            chunk.Append(ch);
+                        }
+                    }
+
+                    if (chunk.Length > 0)
+                    {
+                        current.Append(chunk);
+                    }
+                }
+            }
+
+            if (current.Length > 0)
+            {
+                lines.Add(current.ToString());
+            }
+        }
+
+        return lines.Count > 0 ? lines : [string.Empty];
+    }
 
     private static string TruncateText(string text, double maxWidthPt, double fontSize)
     {
@@ -824,45 +1125,30 @@ public sealed class PdfExportService(AppSettings settings)
         }
 
         string singleLine = text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
-        int maxChars = Math.Max(3, (int)Math.Floor(maxWidthPt / (fontSize * 0.53)));
-        if (singleLine.Length <= maxChars)
+        if (EstimateHelveticaWidth(singleLine, fontSize) <= maxWidthPt)
         {
             return singleLine;
         }
 
-        return string.Concat(singleLine.AsSpan(0, maxChars - 1), "…");
-    }
-
-    private static List<string> WrapText(string text, double maxWidthPt, double fontSize)
-    {
-        int maxChars = Math.Max(12, (int)Math.Floor(maxWidthPt / (fontSize * 0.52)));
-        string[] words = text.Replace("\r\n", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        List<string> lines = [];
-        StringBuilder current = new();
-
-        foreach (string word in words)
+        StringBuilder sb = new();
+        double ellipsisW = EstimateHelveticaWidth("…", fontSize);
+        foreach (char ch in singleLine)
         {
-            if (current.Length + word.Length + 1 > maxChars && current.Length > 0)
+            if (EstimateHelveticaWidth(sb.ToString() + ch, fontSize) + ellipsisW > maxWidthPt && sb.Length > 0)
             {
-                lines.Add(current.ToString());
-                current.Clear();
+                break;
             }
 
-            if (current.Length > 0)
-            {
-                current.Append(' ');
-            }
-
-            current.Append(word);
+            sb.Append(ch);
         }
 
-        if (current.Length > 0)
-        {
-            lines.Add(current.ToString());
-        }
-
-        return lines.Count > 0 ? lines : [string.Empty];
+        return sb.Append('…').ToString();
     }
+
+    private static List<string> WrapText(string text, double maxWidthPt, double fontSize) =>
+        WrapTextToWidth(text, maxWidthPt, fontSize);
+
+    private sealed record PreparedTabularRow(List<string>[] Cells, double Height, bool IsTotal, bool IsAlternate);
 
     private static string EscapePdfText(string text)
     {

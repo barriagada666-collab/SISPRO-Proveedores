@@ -39,16 +39,20 @@ public static class ExportUiHelper
         IWin32Window owner,
         DocumentExportService exportService,
         Func<IReadOnlyList<WorkOrder>> ordersLoader,
-        Action<string, int>? onCompleted = null)
+        Action<string, int>? onCompleted = null,
+        Func<IReadOnlyList<WorkOrderExportField>>? fieldsProvider = null)
     {
         ContextMenuHelper.ShowBelow(anchor,
         [
             ContextMenuHelper.Item("Exportar seleccionadas a Excel (.xlsx)", AppIcon.Excel, CambiasoTheme.Success,
-                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Excel, ordersLoader, onCompleted)),
-            ContextMenuHelper.Item("Exportar seleccionadas a CSV (.csv)", AppIcon.Download, CambiasoTheme.Accent,
-                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Csv, ordersLoader, onCompleted)),
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Excel, ordersLoader, onCompleted, fieldsProvider)),
             ContextMenuHelper.Item("Exportar seleccionadas a PDF (.pdf)", AppIcon.FileText, CambiasoTheme.Danger,
-                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Pdf, ordersLoader, onCompleted))
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Pdf, ordersLoader, onCompleted, fieldsProvider)),
+            ContextMenuHelper.Item("Exportar seleccionadas a Word (.docx)", AppIcon.FileText, CambiasoTheme.Primary,
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Word, ordersLoader, onCompleted, fieldsProvider)),
+            ContextMenuHelper.Separator(),
+            ContextMenuHelper.Item("Exportar seleccionadas a CSV (.csv)", AppIcon.Download, CambiasoTheme.Accent,
+                () => RunSelectedWorkOrdersExport(owner, exportService, ExportFormat.Csv, ordersLoader, onCompleted, fieldsProvider))
         ]);
     }
 
@@ -57,8 +61,16 @@ public static class ExportUiHelper
         DocumentExportService exportService,
         ExportFormat format,
         Func<IReadOnlyList<WorkOrder>> ordersLoader,
-        Action<string, int>? onCompleted)
+        Action<string, int>? onCompleted,
+        Func<IReadOnlyList<WorkOrderExportField>>? fieldsProvider)
     {
+        IReadOnlyList<WorkOrderExportField>? selectedFields = fieldsProvider?.Invoke();
+        if (selectedFields is not null && selectedFields.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(owner, "Debe marcar al menos una columna en el encabezado de la tabla para exportar.");
+            return;
+        }
+
         IReadOnlyList<WorkOrder> orders = ordersLoader();
         List<WorkOrder> distinctOrders = orders
             .Where(o => o.IdOt > 0 || o.NumeroOt > 0)
@@ -77,12 +89,17 @@ public static class ExportUiHelper
             ExportFormat.Excel => "Excel (.xlsx)",
             ExportFormat.Csv => "CSV (.csv)",
             ExportFormat.Pdf => "PDF (.pdf)",
+            ExportFormat.Word => "Word (.docx)",
             _ => format.ToString()
         };
 
+        string fieldsNotice = selectedFields is not null
+            ? $"\nCampos ({selectedFields.Count}): {string.Join(", ", selectedFields.Select(WorkOrderExportFieldCatalog.GetDisplayName))}"
+            : string.Empty;
+
         if (!CambiasoTheme.Confirm(
                 owner,
-                $"Se exportarán exactamente {distinctOrders.Count:N0} orden(es) de trabajo seleccionada(s) a {formatLabel}.\n\n¿Desea continuar?"))
+                $"Se exportarán exactamente {distinctOrders.Count:N0} orden(es) de trabajo seleccionada(s) a {formatLabel}.{fieldsNotice}\n\n¿Desea continuar?"))
         {
             return;
         }
@@ -103,7 +120,8 @@ public static class ExportUiHelper
         {
             TabularReportData report = DocumentExportService.BuildSelectedWorkOrdersReport(
                 distinctOrders,
-                $"OT seleccionadas: {distinctOrders.Count:N0} orden(es) única(s)");
+                $"OT seleccionadas: {distinctOrders.Count:N0} orden(es) única(s)",
+                selectedFields);
             exportService.ExportReport(report, format, sfd.FileName);
             onCompleted?.Invoke(sfd.FileName, distinctOrders.Count);
             CambiasoTheme.ShowInfo(owner, $"Se exportaron {distinctOrders.Count:N0} orden(es) seleccionada(s):\n{sfd.FileName}");
@@ -145,6 +163,12 @@ public static class ExportUiHelper
         Action<string>? onCompleted)
     {
         TabularReportData report = reportBuilder();
+        if (report.Columns.Count == 0)
+        {
+            CambiasoTheme.ShowWarning(owner, "Debe marcar al menos una columna en el encabezado de la tabla para exportar.");
+            return;
+        }
+
         if (report.Rows.Count == 0)
         {
             CambiasoTheme.ShowWarning(owner, "No hay registros visibles para exportar con los filtros actuales.");

@@ -2,7 +2,7 @@
 ================================================================================
 
 Software:      SISPRO — Sistema de Gestión de Proveedores y Órdenes de Trabajo
-Versión:       4.6.2 (.NET 10 · Windows x64)
+Versión:       4.6.3 (.NET 10 · Windows x64)
 Fecha:         25-11-2026
 Organización:  Cambiaso Hnos S.A.C. — Departamento Mantención
 Ubicación:     Virginia Bravo Letelier N°777, Placilla, Valparaíso, Chile

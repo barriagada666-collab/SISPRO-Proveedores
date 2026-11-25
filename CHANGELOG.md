@@ -2,6 +2,25 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.6.3] — 2026-11-25
+
+### Agregado y Mejorado
+- **Selección Dinámica de Columnas a Exportar en Búsqueda de OT (`ExportDtos`, `GridExportColumnHeaderController`, `WorkOrdersForm`, `ExportUiHelper`, `DocumentExportService`)**:
+  - Incorporados checkboxes vectoriales modernos en dos zonas (`48 px`) directamente sobre los encabezados de las 10 columnas de **Búsqueda de OT** (`N° OT`, `Fecha`, `Proveedor`, `Solicitante`, `Cant.`, `Detalle`, `Obs.`, `Valor Neto`, `Estado` y `Firmas`): clic en la casilla inferior activa/desactiva el campo para exportación sin alterar el ordenamiento; clic en el título superior ordena ascendente/descendente.
+  - Nuevo botón rápido **`Campos (N/10)`** en la barra de acciones con perfiles predefinidos (`Marcar todas`, `Solo campos esenciales`), alternancia individual y campos adicionales opcionales (`Tipo OT` y `Ruta de Activo`).
+  - Integrado tanto en **Exportar seleccionadas** (ampliado con **Word `.docx`** junto a `.xlsx`, `.pdf` y `.csv`) como en **Exportar Lista**, respetando exactamente los campos seleccionados y conservando compatibilidad total con invocaciones previas.
+- **Ajuste Automático Completo de Celdas y Textos sin Recortes al Exportar (`PdfExportService`, `ExcelExportService`, `WordExportService`)**:
+  - **PDF**: reemplazado el truncamiento de 1 línea (`…`) por distribución inteligente de anchos (`ComputeSmartColumnWidths`), ajuste multilínea completo en encabezados y celdas (`WrapTextToWidth`), altura dinámica por fila y paginación multipágina exacta (`Página X de Y`).
+  - **Excel (`.xlsx`)**: activado `WrapText = true` en encabezados y datos con cálculo automático de anchos y alturas de fila para visualizar detalles y observaciones completos.
+  - **Word (`.docx`)**: aplicado layout de tabla fijo con porcentajes proporcionales exactos (`5000 Pct`), alineación superior y saltos multilínea preservados.
+
+### Verificado
+- **Compilación y Análisis Estático**: `Debug` y `Release` (`--no-incremental`) con `0` errores, `0` advertencias, `0` supresiones y `0` vulnerabilidades NuGet.
+- **Suite Automatizada (`Release`)**: `86 / 86` pruebas `xUnit` aprobadas (`0` fallidas, `0` omitidas), incluyendo 3 nuevas pruebas funcionales y STA UI sobre selección de columnas, envoltura completa sin recortes y encabezados interactivos.
+- **Instalador `SISPRO_Setup_v4.6.3_win-x64.exe` (Inno Setup `7.1.1`)**: `58.045.042` bytes (`SHA-256`: `FB77252A9A03774B965A9CA9A32C978857E26C93721248D0516C9C4DF86FFA00`), validadas instalación silenciosa (`4.6.3.0`), preservación bit a bit de `Data\sispro.db` en actualización y desinstalación limpia.
+
+---
+
 ## [4.6.2] — 2026-11-25
 
 ### Agregado y Mejorado

@@ -1,6 +1,6 @@
 #define MyAppName "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"
 #define MyAppShortName "SISPRO"
-#define MyAppVersion "4.6.2"
+#define MyAppVersion "4.6.3"
 #define MyAppPublisher "Cambiaso Hnos S.A.C."
 #define MyAppExeName "SISPRO.exe"
 #define MyAppURL "https://github.com/barriagada666-collab/SISPRO-Proveedores"
@@ -52,7 +52,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
 WelcomeLabel1=Bienvenido al Asistente de Instalación de [name]
-WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nDesarrollado para Cambiaso Hnos S.A.C. — Departamento Mantención.%nRuta predeterminada: C:\Temp (modificable durante la instalación).%n%nIncluye gestión integral de órdenes de trabajo externas e internas, 6 estados configurables con clic derecho, visibilidad de valor neto, mantenedores y configuración centralizada en BD, importación Access (.mdb), firmas digitales, árbol de activos y control RBAC.%n%nLas actualizaciones preservan íntegramente su base de datos sispro.db.
+WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nDesarrollado para Cambiaso Hnos S.A.C. — Departamento Mantención.%nRuta predeterminada: C:\Temp (modificable durante la instalación).%n%nIncluye gestión integral de órdenes de trabajo externas e internas, 6 estados configurables con clic derecho, selección dinámica de columnas a exportar con ajuste completo de textos (Excel, PDF, Word, CSV), visibilidad de valor neto, mantenedores y configuración centralizada en BD, importación Access (.mdb), firmas digitales, árbol de activos y control RBAC.%n%nLas actualizaciones preservan íntegramente su base de datos sispro.db.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
