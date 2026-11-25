@@ -95,7 +95,7 @@ public sealed class WordExportService(AppSettings settings)
             for (int c = 0; c < report.Columns.Count; c++)
             {
                 string txt = c == 0
-                    ? $"TOTAL ({report.Rows.Count:N0})"
+                    ? $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})"
                     : (report.Columns[c].SumInFooter ? FormatValue(sums[c], report.Columns[c].Kind) : string.Empty);
                 JustificationValues align = c == 0 ? JustificationValues.Left : JustificationValues.Right;
                 totalRow.Append(CreateCell(txt, TotalHex, PrimaryDarkHex, bold: true, fontSizeHalfPt: "16", align));
@@ -180,7 +180,7 @@ public sealed class WordExportService(AppSettings settings)
         string obsText = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
         summaryTable.Append(new TableRow(
             CreateCellWithWidth($"Observaciones: {obsText}", ZebraHex, TextHex, false, "17", JustificationValues.Left, "3500"),
-            CreateCellWithWidth($"VALOR NETO\n$ {order.ValorNeto:N0}", GoldHex, PrimaryDarkHex, true, "22", JustificationValues.Right, "1500")));
+            CreateCellWithWidth($"VALOR NETO\n$ {order.ValorNeto.ToString("N0", ClCulture)}", GoldHex, PrimaryDarkHex, true, "22", JustificationValues.Right, "1500")));
         body.Append(summaryTable);
 
         // Firmas dinámicas al pie (se omiten completamente si ninguna está seleccionada)
@@ -360,7 +360,7 @@ public sealed class WordExportService(AppSettings settings)
         textCell.Append(CreateStyledParagraph(title, "FFFFFF", "26", bold: true, spaceBefore: "0"));
         string sub = string.IsNullOrWhiteSpace(subtitle) ? $"{settings.CompanyName} — {settings.CompanyDepartment}" : subtitle;
         textCell.Append(CreateStyledParagraph(sub, GoldHex, "18", bold: false, spaceBefore: "40"));
-        textCell.Append(CreateStyledParagraph($"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {rowCount:N0}", "D4E3EE", "16", bold: false, spaceBefore: "40"));
+        textCell.Append(CreateStyledParagraph($"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {rowCount.ToString("N0", ClCulture)}", "D4E3EE", "16", bold: false, spaceBefore: "40"));
         tr.Append(textCell);
 
         banner.Append(tr);

@@ -12,6 +12,7 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class ExcelExportService(AppSettings settings)
 {
+    private static readonly CultureInfo ClCulture = new("es-CL");
     private static readonly XLColor CambiasoNavy = XLColor.FromHtml("#0A263C");
     private static readonly XLColor CambiasoOlive = XLColor.FromHtml("#0E4163");
     private static readonly XLColor CambiasoGold = XLColor.FromHtml("#C8A977");
@@ -84,7 +85,7 @@ public sealed class ExcelExportService(AppSettings settings)
         subRange.Style.Font.FontColor = CambiasoGold;
 
         IXLRange metaRange = ws.Range(3, textStartCol, 3, colCount).Merge();
-        metaRange.Value = ExportSanitizer.SanitizeXmlText($"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count:N0}  |  Filtros: {report.FilterSummary}");
+        metaRange.Value = ExportSanitizer.SanitizeXmlText($"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count.ToString("N0", ClCulture)}  |  Filtros: {report.FilterSummary}");
         metaRange.Style.Font.FontName = "Segoe UI";
         metaRange.Style.Font.FontSize = 8.5;
         metaRange.Style.Font.FontColor = XLColor.FromHtml("#D4E3EE");
@@ -145,7 +146,7 @@ public sealed class ExcelExportService(AppSettings settings)
         if (report.Rows.Count > 0 && hasSums)
         {
             int summaryRow = lastDataRow + 1;
-            ws.Cell(summaryRow, 1).Value = $"TOTAL ({report.Rows.Count:N0})";
+            ws.Cell(summaryRow, 1).Value = $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})";
             for (int c = 0; c < report.Columns.Count; c++)
             {
                 if (report.Columns[c].SumInFooter)

@@ -32,7 +32,7 @@
 
 ## 2. Validación Real del Instalador Inno Setup (`v4.4.0`) y Upgrade desde `v4.3.0`
 
-- **Compilación Inno Setup `6.7.3`:** Exitosa (`SISPRO_Setup_v4.4.0_win-x64.exe`, `57.895.568` bytes, SHA-256 `6F04BB17609D17AE6026DCB2FE2493E8673729AE9C49655D5CD8578A9715B1C8`).
+- **Compilación Inno Setup `6.7.3`:** Exitosa (`SISPRO_Setup_v4.4.0_win-x64.exe`, `57.891.351` bytes, SHA-256 `3D0962B22EFC1144C03DB61D5B068C9EF3FAAB54B036E3B191A75E3ED3ADB878`).
 - **Instalación base `v4.3.0` en `C:\Temp\SISPRO_QA_v440`:** `V430_EXIT=0`, `EXE_VER=4.3.0.0`, `DB_HASH1=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`.
 - **Actualización silenciosa `v4.3.0 → v4.4.0`:** `V440_UPGRADE_EXIT=0`, `EXE_VER=4.4.0.0`, `DB_HASH2=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`, `DB_PRESERVED=True`.
 - **Desinstalación silenciosa:** `UNINS_EXIT=0`, `EXE_EXISTS=False`, `DB_EXISTS=True`, `QA_CLEANUP_DONE=True` (`Data\sispro.db` preservada íntegra por política `uninsneveruninstall`).

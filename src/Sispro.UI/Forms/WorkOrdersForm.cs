@@ -18,6 +18,7 @@ namespace Sispro.UI.Forms;
 /// </summary>
 public sealed class WorkOrdersForm : UserControl
 {
+    private static readonly CultureInfo ClCulture = new("es-CL");
     private readonly SisproApplicationContext _ctx;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
@@ -1161,7 +1162,7 @@ public sealed class WorkOrdersForm : UserControl
             _dtFechaOt.Value = order.FechaOt;
             TxtObservacionEntry.Text = order.Observacion;
             TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
-            TxtValorNetoEntry.Text = $"$ {order.ValorNeto:N0}";
+            TxtValorNetoEntry.Text = $"$ {order.ValorNeto.ToString("N0", ClCulture)}";
             ApplyEntrySelectedSignature(order.FirmasSeleccionadas);
             SelectOrderSignersInEntryCombos(order);
         }
@@ -1511,7 +1512,7 @@ public sealed class WorkOrdersForm : UserControl
         if (WorkOrderService.TryParseNetValue(TxtValorNetoEntry.Text, out decimal valor) && valor >= 0m)
         {
             TxtValorNetoEntry.BackColor = Color.FromArgb(255, 250, 236);
-            TxtValorNetoEntry.Text = $"$ {valor:N0}";
+            TxtValorNetoEntry.Text = $"$ {valor.ToString("N0", ClCulture)}";
         }
         else
         {
@@ -1784,7 +1785,7 @@ public sealed class WorkOrdersForm : UserControl
         SyncPrintRequesterInfo();
         _txtPrintSolNombre.Text = order.SolicitanteDisplayNombre;
         _txtPrintSolActivo.Text = !string.IsNullOrWhiteSpace(order.RutaActivo) ? order.RutaActivo : _assetTree.CurrentBreadcrumb;
-        _lblPrintMetaSummary.Text = $"Valor Neto: $ {order.ValorNeto:N0}";
+        _lblPrintMetaSummary.Text = $"Valor Neto: $ {order.ValorNeto.ToString("N0", ClCulture)}";
         _toolTip.SetToolTip(_lblPrintMetaSummary,
             string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones adicionales" : $"Observación: {order.Observacion}");
         _printDetails.Clear();

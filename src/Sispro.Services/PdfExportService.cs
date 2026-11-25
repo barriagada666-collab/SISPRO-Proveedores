@@ -77,7 +77,7 @@ public sealed class PdfExportService(AppSettings settings)
         }
 
         List<string> pageStreams = [];
-        string emissionText = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count:N0}";
+        string emissionText = $"Emitido: {DateTime.Now:dd-MM-yyyy HH:mm}  |  Registros: {report.Rows.Count.ToString("N0", ClCulture)}";
         string filterLine = $"Filtros: {TruncateText(report.FilterSummary, contentW - 10, 8)}";
 
         for (int p = 0; p < totalPages; p++)
@@ -158,7 +158,7 @@ public sealed class PdfExportService(AppSettings settings)
                 for (int c = 0; c < report.Columns.Count; c++)
                 {
                     string cellText = c == 0
-                        ? $"TOTAL ({report.Rows.Count:N0})"
+                        ? $"TOTAL ({report.Rows.Count.ToString("N0", ClCulture)})"
                         : (report.Columns[c].SumInFooter ? FormatDisplayValue(sums[c], report.Columns[c].Kind) : string.Empty);
 
                     if (!string.IsNullOrEmpty(cellText))
@@ -417,7 +417,7 @@ public sealed class PdfExportService(AppSettings settings)
 
         sb.AppendLine(PrimaryDarkFill);
         DrawText(sb, "F2", 7.8, netX + 8, y - 13, "VALOR NETO");
-        string netStr = $"$ {order.ValorNeto:N0}";
+        string netStr = $"$ {order.ValorNeto.ToString("N0", ClCulture)}";
         DrawText(sb, "F2", 13.5, netX + 8, y - 30, TruncateText(netStr, netBoxW - 16, 13.5));
 
         y -= summaryH;

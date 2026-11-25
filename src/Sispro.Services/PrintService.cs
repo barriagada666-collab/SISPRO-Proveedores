@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Printing;
+using System.Globalization;
 using Sispro.Core.Dtos;
 using Sispro.Core.Entities;
 using Sispro.Core.Enums;
@@ -11,6 +12,7 @@ namespace Sispro.Services;
 /// </summary>
 public sealed class PrintService(AppSettings settings)
 {
+    private static readonly CultureInfo ClCulture = new("es-CL");
     private static readonly Color CambiasoNavy = Color.FromArgb(10, 38, 60);
     private static readonly Color CambiasoGreen = Color.FromArgb(14, 65, 99);
     private static readonly Color CambiasoGold = Color.FromArgb(200, 169, 119);
@@ -203,7 +205,7 @@ public sealed class PrintService(AppSettings settings)
                 using Font netValueFont = new("Segoe UI", 13.5f, FontStyle.Bold);
                 using StringFormat rightAlign = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
                 g.DrawString("VALOR NETO", netTitleFont, navyBrush, netRect.X + 8, netRect.Y + 5);
-                g.DrawString($"$ {order.ValorNeto:N0}", netValueFont, navyBrush,
+                g.DrawString($"$ {order.ValorNeto.ToString("N0", ClCulture)}", netValueFont, navyBrush,
                     new RectangleF(netRect.X + 8, netRect.Y + 18, netRect.Width - 16, summaryH - 22), rightAlign);
 
                 y += summaryH + 6;
