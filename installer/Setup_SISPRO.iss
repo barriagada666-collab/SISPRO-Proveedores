@@ -1,6 +1,6 @@
 #define MyAppName "SISPRO — Gestión de Proveedores y Órdenes de Trabajo"
 #define MyAppShortName "SISPRO"
-#define MyAppVersion "4.4.0"
+#define MyAppVersion "4.5.0"
 #define MyAppPublisher "Cambiaso Hnos S.A.C."
 #define MyAppExeName "SISPRO.exe"
 #define MyAppURL "https://github.com/barriagada666-collab/SISPRO-Proveedores"

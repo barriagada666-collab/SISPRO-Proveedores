@@ -48,6 +48,7 @@ public sealed class MaintainersForm : UserControl
     private readonly Button _btnProvActivate;
     private readonly Button _btnProvDeactivate;
     private readonly Button _btnProvDelete;
+    private readonly Button _btnProvImportMdb;
     private readonly Button _btnProvClearSel;
     private IReadOnlyList<Provider> _providers = [];
     private int _selectedProvId;
@@ -140,6 +141,11 @@ public sealed class MaintainersForm : UserControl
 
         _btnProvDelete = CreateActionBtn("Eliminar", AppIcon.Delete, ButtonTone.Danger, "Verificar dependencias y eliminar proveedores compatibles (solo Administrador)");
         _btnProvDelete.Click += (_, _) => DeleteProvider();
+
+        _btnProvImportMdb = CreateActionBtn("Importar MDB", AppIcon.Upload, ButtonTone.Secondary, "Comparar e importar proveedores desde base Access (.mdb) (solo Administrador)");
+        _btnProvImportMdb.Visible = _isAdmin;
+        _btnProvImportMdb.Enabled = _isAdmin;
+        _btnProvImportMdb.Click += (_, _) => OpenMdbImportDialog();
 
         _btnProvClearSel = CreateActionBtn("Limpiar Sel.", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar casillas marcadas");
 
@@ -316,7 +322,7 @@ public sealed class MaintainersForm : UserControl
     {
         TableLayoutPanel layout = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 186));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -334,7 +340,7 @@ public sealed class MaintainersForm : UserControl
         f.Controls.AddRange([r1, r2, r3, r4]);
         grpForm.Controls.Add(f);
 
-        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 4, 0, 2) };
+        FlowLayoutPanel bar = new() { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Padding = new Padding(0, 4, 0, 2) };
         Button btnSave = CreateActionBtn("Guardar", AppIcon.Save, ButtonTone.Primary, "Guardar proveedor nuevo o modificado");
         btnSave.Click += (_, _) => SaveProvider();
         Button btnClear = CreateActionBtn("Nuevo / Limpiar", AppIcon.Eraser, ButtonTone.Secondary, "Limpiar ficha para nuevo proveedor");
@@ -347,7 +353,7 @@ public sealed class MaintainersForm : UserControl
             "SISPRO_Proveedores",
             () => DocumentExportService.BuildProvidersReport(_providers, string.IsNullOrWhiteSpace(_txtProvSearch.Text) ? "Catálogo completo" : $"Filtro: {_txtProvSearch.Text}"));
 
-        bar.Controls.AddRange([btnSave, btnClear, _btnProvConsultOt, _btnProvReassign, _btnProvActivate, _btnProvDeactivate, _btnProvDelete, btnExcel]);
+        bar.Controls.AddRange([btnSave, btnClear, _btnProvConsultOt, _btnProvReassign, _btnProvActivate, _btnProvDeactivate, _btnProvDelete, btnExcel, _btnProvImportMdb]);
 
         FlowLayoutPanel filterBar = new() { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 2, 0, 2) };
         filterBar.Controls.AddRange([_chkSelectAllProv, _lblProvSelectedCount, _btnProvClearSel, Wrap("Buscar:", _txtProvSearch)]);
@@ -847,6 +853,23 @@ public sealed class MaintainersForm : UserControl
         finally
         {
             _suppressTreeSync = false;
+        }
+    }
+
+    private void OpenMdbImportDialog()
+    {
+        if (!_isAdmin)
+        {
+            CambiasoTheme.ShowWarning(this, "La importación desde bases Access (.mdb) requiere perfil Administrador.");
+            return;
+        }
+
+        using MdbImportDialog dlg = new(_ctx, _session);
+        dlg.ShowDialog(FindForm());
+        if (dlg.LastResult is not null)
+        {
+            LoadProviders();
+            CatalogsChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 

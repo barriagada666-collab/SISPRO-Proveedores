@@ -140,3 +140,8 @@ public interface IAuditRepository
     IReadOnlyList<AuditEntry> Search(AuditSearchFilter filter);
     DashboardMetrics GetDashboardMetrics();
 }
+
+public interface IMdbTableReader
+{
+    MdbSnapshot ReadSnapshot(string mdbPath);
+}

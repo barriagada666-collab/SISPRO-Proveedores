@@ -119,6 +119,8 @@ public sealed class SisproApplicationContext : IDisposable
     public CsvExportService CsvExportService { get; private set; }
     public DocumentExportService DocumentExportService { get; private set; }
     public PrintService PrintService { get; private set; }
+    public IMdbTableReader MdbTableReader { get; private set; }
+    public MdbImportService MdbImportService { get; private set; }
 
     public UserSession? CurrentSession { get; set; }
 
@@ -151,6 +153,8 @@ public sealed class SisproApplicationContext : IDisposable
         CsvExportService = new CsvExportService();
         DocumentExportService = new DocumentExportService(ExcelExportService, PdfExportService, WordExportService, CsvExportService);
         PrintService = new PrintService(settings);
+        MdbTableReader = new Jet32MdbTableReader();
+        MdbImportService = new MdbImportService(ConnectionFactory, Providers, Requesters, Audit, MdbTableReader, SyncHub, Users);
     }
 
     public void ReloadDatabase(string newDatabasePath)
@@ -184,6 +188,8 @@ public sealed class SisproApplicationContext : IDisposable
         CsvExportService = new CsvExportService();
         DocumentExportService = new DocumentExportService(ExcelExportService, PdfExportService, WordExportService, CsvExportService);
         PrintService = new PrintService(Settings);
+        MdbTableReader ??= new Jet32MdbTableReader();
+        MdbImportService = new MdbImportService(ConnectionFactory, Providers, Requesters, Audit, MdbTableReader, SyncHub, Users);
 
         SyncHub.Publish(Sispro.Core.Enums.DataChangeKind.All, "RECARGAR_BASE_DATOS");
     }

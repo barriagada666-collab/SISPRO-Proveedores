@@ -187,6 +187,9 @@ public sealed class WinFormsUiAuditTests
             using MaintainersForm directMaintainers = new(temp.Context, admin);
             Assert.Equal(4, directMaintainers.TabControlMain.TabPages.Count);
             AssertAllButtonsValid(directMaintainers, "MaintainersForm.Direct4Tabs");
+
+            using MdbImportDialog mdbDlg = new(temp.Context, admin, string.Empty);
+            AssertAllButtonsValid(mdbDlg, "MdbImportDialog");
         });
     }
 

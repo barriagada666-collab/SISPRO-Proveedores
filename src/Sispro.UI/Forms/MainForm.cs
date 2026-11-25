@@ -67,7 +67,9 @@ public sealed class MainForm : Form
         _session = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Text = $"SISPRO v4.4 — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        Version? asmVer = typeof(MainForm).Assembly.GetName().Version;
+        string shortVer = asmVer is not null ? $"{asmVer.Major}.{asmVer.Minor}" : "4.5";
+        Text = $"SISPRO v{shortVer} — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);

@@ -73,8 +73,14 @@ public sealed class SettingsDialog : Form
         btnBackup.Location = new Point(18, 215);
         btnBackup.Click += (_, _) => BackupDatabase();
 
+        Button btnImportMdb = CambiasoTheme.CreateButton("Importar MDB", AppIcon.Upload, ButtonTone.Secondary, _toolTip, "Comparar e importar proveedores desde archivo Access (.mdb)", width: 162, height: 34);
+        btnImportMdb.Location = new Point(178, 215);
+        btnImportMdb.Enabled = AuthService.IsAdministrator(_ctx.CurrentSession, _ctx.Users);
+        btnImportMdb.Click += (_, _) => OpenMdbImport();
+
         body.Controls.Add(grid);
         body.Controls.Add(btnBackup);
+        body.Controls.Add(btnImportMdb);
 
         FlowLayoutPanel footer = new()
         {
@@ -160,6 +166,18 @@ public sealed class SettingsDialog : Form
         {
             CambiasoTheme.ShowError(this, $"Error al respaldar la base de datos: {ex.Message}");
         }
+    }
+
+    private void OpenMdbImport()
+    {
+        if (_ctx.CurrentSession is null || !AuthService.IsAdministrator(_ctx.CurrentSession, _ctx.Users))
+        {
+            CambiasoTheme.ShowWarning(this, "La importación desde bases Access (.mdb) requiere una sesión de Administrador.");
+            return;
+        }
+
+        using MdbImportDialog dlg = new(_ctx, _ctx.CurrentSession);
+        dlg.ShowDialog(this);
     }
 
     private void SaveSettings()

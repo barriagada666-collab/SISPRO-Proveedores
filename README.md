@@ -1,7 +1,7 @@
-# SISPRO v4.4.0 — Sistema de Gestión de Proveedores, Trabajos Externos y Solicitantes
+# SISPRO v4.5.0 — Sistema de Gestión de Proveedores, Trabajos Externos y Solicitantes
 
 > **Cambiaso Hnos S.A.C. — Departamento Mantención (Placilla, Valparaíso)**  
-> Aplicación de escritorio corporativa desarrollada en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con gestión integral de Trabajos Externos (OT) con **Observación**, **Valor Neto (CLP)** destacado, **Guardar y Exportar / Vista Previa directa**, **visualización de OT con clic derecho**, selector de **Firmas al Pie (`Jefatura`, `Técnico`, `Supervisor`) desde Personal y Usuarios**, **búsqueda/exportación masiva exclusiva de OTs seleccionadas** (`.xlsx`, `.csv`, `.pdf`), **Solicitado Por** con **Firma Digital** (`PNG`, `JPG`, `PDF`), gestión masiva e integridad referencial en los 4 Mantenedores, **Gestión Dinámica de Perfiles de Usuarios**, Usuarios y Grupos e instalador **Inno Setup 6**.
+> Aplicación de escritorio corporativa desarrollada en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con gestión integral de Trabajos Externos (OT) con **Observación**, **Valor Neto (CLP)** destacado, **Guardar y Exportar / Vista Previa directa**, **visualización de OT con clic derecho**, selector de **Firmas al Pie (`Jefatura`, `Técnico`, `Supervisor`) desde Personal y Usuarios**, **búsqueda/exportación masiva exclusiva de OTs seleccionadas** (`.xlsx`, `.csv`, `.pdf`), **Importación y Comparación Access (`.mdb`) -> SQLite**, **Solicitado Por** con **Firma Digital** (`PNG`, `JPG`, `PDF`), gestión masiva e integridad referencial en los 4 Mantenedores, **Gestión Dinámica de Perfiles de Usuarios**, Usuarios y Grupos e instalador **Inno Setup 7**.
 
 ---
 
@@ -28,7 +28,7 @@
 | Persistencia | `src/Sispro.Data` | `Microsoft.Data.Sqlite 10.0.15` + `SQLitePCLRaw.lib.e_sqlite3 2.1.14` | Esquema idempotente WAL, migración automática de `Solicitantes`, `Niveles` (perfiles) y `OrdenesTrabajo` (`observacion`, `valor_neto`, `firmas_mask`, `firma_jefatura`, `firma_tecnico`, `firma_supervisor`), y 8 repositorios parametrizados. |
 | Negocio y Reportes | `src/Sispro.Services` | `ClosedXML 0.105.1` + `DocumentFormat.OpenXml 3.1.1` + `Windows.Data.Pdf` | Servicios transaccionales RBAC (`UserProfileService`, `AssetTreeService`, `SignatureFileService`, `WorkOrderService`, etc.), `SisproSyncHub`, `ExportSanitizer` y exportadores Excel/PDF/Word/CSV e impresión. |
 | Interfaz | `src/Sispro.UI` | WinForms `net10.0-windows10.0.19041.0` (`PerMonitorV2`) | Identidad Cambiaso (`#0A263C`, `#0E4163`, `#0089B6`, `#C8A977`), 55 íconos Lucide (`IconCatalog` aislado por hilo STA), `ContextMenuHelper`, `GridCheckboxSelectionController<T>`, `UserProfileManagerControl`, `SignatureManagerControl`, `RequesterManagerControl`, `MaintainerDependenciesDialog`, `ExportUiHelper.ShowWorkOrderPreview` y vistas modulares. |
-| Pruebas | `tests/Sispro.Tests` | `xUnit` | **68 pruebas** (Unit, Integration, Functional incl. Perfiles de Usuarios y Catálogo de Firmantes, Exportación Masiva/Valor Neto/Firmas/Dependencias, Solicitantes/Firmas, Tree Admin, ContextMenu & Grid Sort/Pagination STA, UI Audit, Regression, Stress). |
+| Pruebas | `tests/Sispro.Tests` | `xUnit` | **74 pruebas** (Unit, Integration, Functional incl. Importación Access `.mdb` / Jet32 y análisis de diferencias, Perfiles de Usuarios, Catálogo de Firmantes, Exportación Masiva/Valor Neto/Firmas/Dependencias, Solicitantes/Firmas, Tree Admin, ContextMenu & Grid Sort/Pagination STA, UI Audit, Regression, Stress). |
 
 ---
 
@@ -36,7 +36,7 @@
 
 - **Sistema Operativo:** Windows 10 (19041+) / Windows 11 (64 bits, `win-x64`).
 - **Instalador oficial (autocontenido — no requiere instalar .NET previamente):**
-  1. Descargar `SISPRO_Setup_v4.4.0_win-x64.exe` desde la sección [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
+  1. Descargar `SISPRO_Setup_v4.5.0_win-x64.exe` desde la sección [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
   2. Ejecutar el asistente de instalación. **Ruta predeterminada:** `C:\Temp` (modificable por el usuario durante la instalación).
   3. El instalador configura accesos directos, ícono corporativo multi-resolución y copia la base de datos inicial solo si no existe (las actualizaciones y desinstalaciones preservan los datos).
 
@@ -112,7 +112,9 @@ La base operativa `data/sispro.db` mantiene íntegramente los datos migrados de 
 
 | Catálogo y Vista Previa de Firmas Digitales | Auditoría y Fechas |
 |---|---|
-| ![Mantenedores Firmas](docs/screenshots/13_mantenedores_firmas.png) | ![Auditoría](docs/screenshots/08_auditoria_fechas.png) |
+| ![Mantenedores](docs/screenshots/05_mantenedores.png) | ![Usuarios RBAC](docs/screenshots/06_usuarios_rbac.png) |
+| ![Mantenedores Firmas](docs/screenshots/13_mantenedores_firmas.png) | ![Importar Access MDB](docs/screenshots/15_importar_mdb.png) |
+| ![Auditoría](docs/screenshots/08_auditoria_fechas.png) | ![Generar Imprimir OT](docs/screenshots/11_generar_imprimir_ot.png) |
 
 ---
 
@@ -123,10 +125,10 @@ La base operativa `data/sispro.db` mantiene íntegramente los datos migrados de 
 dotnet build SISPRO.sln -c Debug
 dotnet build SISPRO.sln -c Release
 
-# Ejecutar las 68 pruebas automatizadas
+# Ejecutar todas las pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build
 
-# Compilar publicación autocontenida win-x64 + instalador Inno Setup v4.4.0 + SHA-256
+# Compilar publicación autocontenida win-x64 + instalador Inno Setup v4.5.0 + SHA-256
 .\scripts\Build-Release.ps1
 ```
 

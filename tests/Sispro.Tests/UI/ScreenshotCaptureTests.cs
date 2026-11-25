@@ -129,6 +129,17 @@ public sealed class ScreenshotCaptureTests
                 auditDlg.Hide();
             }
 
+            using (Sispro.UI.Dialogs.MdbImportDialog mdbDlg = new(temp.Context, admin))
+            {
+                mdbDlg.ShowInTaskbar = false;
+                mdbDlg.StartPosition = FormStartPosition.Manual;
+                mdbDlg.Location = new Point(-2000, -2000);
+                mdbDlg.Show();
+                Application.DoEvents();
+                SaveFormBitmap(mdbDlg, Path.Combine(outDir, "15_importar_mdb.png"));
+                mdbDlg.Hide();
+            }
+
             main.Hide();
         });
     }
