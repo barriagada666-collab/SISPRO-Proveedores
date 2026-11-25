@@ -92,6 +92,7 @@ dotnet test SISPRO.sln -c Release --no-build
 
 ## Documentación, Versionado e Historial
 
+- [Informe de Entrega `v4.6.0`](docs/INFORME_ENTREGA_v4.6.0.md)
 - [Informe de Entrega `v4.5.0`](docs/INFORME_ENTREGA_v4.5.0.md)
 - [Informe de Entrega `v4.4.0`](docs/INFORME_ENTREGA_v4.4.0.md)
 - [Informe de Entrega `v4.3.0`](docs/INFORME_ENTREGA_v4.3.0.md)
