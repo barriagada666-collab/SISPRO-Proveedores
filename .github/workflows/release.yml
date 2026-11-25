@@ -32,13 +32,17 @@ jobs:
       - name: Ensure Inno Setup 6 is installed
         shell: pwsh
         run: |
+          $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
           $candidates = @(
             "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
             "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-            "C:\Program Files\Inno Setup 6\ISCC.exe"
-          )
+            "C:\Program Files\Inno Setup 6\ISCC.exe",
+            ($isccCmd?.Source)
+          ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
           if (-not ($candidates | Where-Object { Test-Path $_ })) {
             choco install innosetup -y --no-progress
+            $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+            if ($isccCmd) { $candidates += $isccCmd.Source }
           }
           $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $iscc) {
@@ -82,15 +86,16 @@ jobs:
             $baseNotes = "## SISPRO $tagName (.NET 10)`n`nInstalador corporativo autocontenido para Windows x64."
           }
 
-          @"
-$baseNotes
-
----
-
-### Artefactos Adjuntos (`$tagName`)
-- **Instalador:** ``SISPRO_Setup_v${appVer}_win-x64.exe`` ($sizeBytes bytes)
-- **SHA-256:** ``$sha``
-"@ | Set-Content -Path $notesPath -Encoding UTF8
+          $notesLines = @(
+            $baseNotes.TrimEnd(),
+            "",
+            "---",
+            "",
+            "### Artefactos Publicados ($tagName)",
+            "- **Instalador:** ``SISPRO_Setup_v${appVer}_win-x64.exe`` ($sizeBytes bytes)",
+            "- **SHA-256:** ``$sha``"
+          )
+          ($notesLines -join "`n") | Set-Content -Path $notesPath -Encoding UTF8
 
           $prevEap = $ErrorActionPreference
           $ErrorActionPreference = 'Continue'
