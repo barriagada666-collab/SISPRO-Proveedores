@@ -33,7 +33,7 @@
 - **Sistema Operativo:** Windows 10 (19041+) / Windows 11 de 64 bits (`win-x64`).
 - **Instalador oficial autocontenido (no requiere instalar .NET previamente):**
   1. Descargar `SISPRO_Setup_v4.6.1_win-x64.exe` desde [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
-  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.1: `8D332C855CBB6CECB85D543C8A327401CBCFF8BD2C49C2E222DD5AFF409CA77D`).
+  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.1: `0AFB5E7D908CF5B614886FAF226A57A957E34310C4BC259BF2C44FE59412D605`).
   3. Ejecutar el asistente (**ruta predeterminada:** `C:\Temp`, modificable). Las actualizaciones y desinstalaciones preservan íntegramente `sispro.db`.
 
 ---

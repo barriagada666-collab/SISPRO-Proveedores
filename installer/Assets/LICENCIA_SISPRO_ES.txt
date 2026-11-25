@@ -1,0 +1,51 @@
+﻿ACUERDO DE LICENCIA Y USO DEL SOFTWARE — SISPRO
+================================================================================
+
+Software:      SISPRO — Sistema de Gestión de Proveedores y Órdenes de Trabajo
+Versión:       4.6.1 (.NET 10 · Windows x64)
+Fecha:         25-11-2026
+Organización:  Cambiaso Hnos S.A.C. — Departamento Mantención
+Ubicación:     Virginia Bravo Letelier N°777, Placilla, Valparaíso, Chile
+Copyright:     © 2026 Cambiaso Hnos S.A.C. Todos los derechos reservados.
+
+--------------------------------------------------------------------------------
+1. CONCESIÓN DE LICENCIA DE USO CORPORATIVO
+--------------------------------------------------------------------------------
+El presente software ("SISPRO") ha sido desarrollado para la gestión operativa
+y administrativa de proveedores, órdenes de trabajo externas e internas, árbol
+de activos industriales, solicitantes, firmas digitales y control de acceso por
+roles (RBAC) de Cambiaso Hnos S.A.C.
+
+Se autoriza su instalación, ejecución y uso corporativo en los equipos
+designados por la organización, bajo los lineamientos de seguridad informática
+del Departamento de Mantención.
+
+--------------------------------------------------------------------------------
+2. SEGURIDAD, CONFIDENCIALIDAD Y TRAZABILIDAD
+--------------------------------------------------------------------------------
+• El acceso al sistema está protegido por credenciales individuales almacenadas
+  mediante PBKDF2-HMAC-SHA256 y control de permisos por perfil (RBAC).
+• Toda operación administrativa, creación, modificación, cambio de estado,
+  eliminación o cambio de usuario queda registrada en la bitácora de auditoría.
+• El usuario se compromete a mantener la confidencialidad de su contraseña y
+  utilizar la opción "Cambiar usuario" o "Cerrar sesión" al finalizar su turno.
+
+--------------------------------------------------------------------------------
+3. INTEGRIDAD Y PRESERVACIÓN DE DATOS
+--------------------------------------------------------------------------------
+• La base de datos SQLite (sispro.db) contiene información operativa propiedad
+  exclusiva de Cambiaso Hnos S.A.C.
+• Las actualizaciones y desinstalaciones de SISPRO preservan íntegramente el
+  archivo sispro.db existente sin eliminar información histórica.
+• Se recomienda realizar respaldos periódicos desde Mantenedores → Configuración
+  → "Respaldar BD".
+
+--------------------------------------------------------------------------------
+4. RESPONSABILIDAD Y SOPORTE
+--------------------------------------------------------------------------------
+El software se suministra "tal cual" para operación interna corporativa. Ante
+consultas técnicas, incidencias o solicitudes de mejora, contactar al
+Departamento de Mantención de Cambiaso Hnos S.A.C.
+
+Al seleccionar "Acepto el acuerdo" y continuar con la instalación, usted declara
+haber leído y aceptado los términos precedentes.

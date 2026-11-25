@@ -14,15 +14,16 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
-AppCopyright=Copyright © 2026 {#MyAppPublisher}
-AppComments=Sistema corporativo de gestión de proveedores, órdenes de trabajo externas, activos y usuarios (.NET 10).
+AppCopyright=Copyright © 2026 {#MyAppPublisher} — Departamento Mantención
+AppComments=Sistema corporativo de gestión de proveedores, órdenes de trabajo externas e internas, estados, activos, configuración centralizada y usuarios (.NET 10).
 DefaultDirName=C:\Temp
 DisableDirPage=no
 DirExistsWarning=no
 UsePreviousAppDir=yes
 DefaultGroupName=Cambiaso\SISPRO
 AllowNoIcons=yes
-LicenseFile=..\LICENSE
+LicenseFile=Assets\LICENCIA_SISPRO_ES.txt
+InfoBeforeFile=Assets\INFO_INSTALADOR_ES.txt
 OutputDir=Output
 OutputBaseFilename=SISPRO_Setup_v{#MyAppVersion}_win-x64
 SetupIconFile=..\src\Sispro.UI\Assets\sispro.ico
@@ -43,15 +44,15 @@ RestartApplications=no
 VersionInfoVersion={#MyAppVersion}.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoProductName={#MyAppShortName}
-VersionInfoDescription=Instalador de SISPRO v{#MyAppVersion} (.NET 10)
-VersionInfoCopyright=Copyright © 2026 {#MyAppPublisher}
+VersionInfoDescription=Instalador Corporativo de SISPRO v{#MyAppVersion} (.NET 10)
+VersionInfoCopyright=Copyright © 2026 {#MyAppPublisher} — Departamento Mantención
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [Messages]
 WelcomeLabel1=Bienvenido al Asistente de Instalación de [name]
-WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nRuta predeterminada: C:\Temp (modificable durante la instalación).%nIncluye gestión integral de órdenes de trabajo externas, exportación masiva, firmas digitales, árbol de activos y control de usuarios y permisos.
+WelcomeLabel2=Este asistente instalará [name/ver] en su equipo.%n%nDesarrollado para Cambiaso Hnos S.A.C. — Departamento Mantención.%nRuta predeterminada: C:\Temp (modificable durante la instalación).%n%nIncluye gestión integral de órdenes de trabajo externas e internas, 6 estados configurables con clic derecho, visibilidad de valor neto, mantenedores y configuración centralizada en BD, importación Access (.mdb), firmas digitales, árbol de activos y control RBAC.%n%nLas actualizaciones preservan íntegramente su base de datos sispro.db.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked

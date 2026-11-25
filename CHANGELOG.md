@@ -9,11 +9,12 @@ Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Prove
   - Catálogo ampliado de estados de OT con compatibilidad histórica en SQLite: **Abierta**, **En Curso**, **Modificada**, **Terminada**, **Cerrada** y **Anulada**, con colores semánticos e íconos Lucide en todas las vistas y exportaciones.
   - **Cambio de estado por clic derecho**: submenú **`Cambiar estado`** en **Búsqueda de OT** (soporta actualización individual y masiva sobre OTs seleccionadas con checkbox) y en la tabla de **Últimas Órdenes de Trabajo** del Dashboard (incorporando columna `Estado`), protegido por RBAC (`MenuOrdenesTrabajo && IngresoOt`), auditado (`CAMBIAR_ESTADO_OT` / `CAMBIAR_ESTADO_OT_LOTE`) y sincronizado en vivo vía `SisproSyncHub`.
   - **Selector de estado al ingresar y editar OT**: nuevo campo `Estado:` (`CmbEstadoEntry`) en **Ingreso / Edición de OT** y filtro combinable por **Estado** en **Búsqueda de OT**.
+  - **Instalador corporativo en español (`Setup_SISPRO.iss`, `LICENCIA_SISPRO_ES.txt`, `INFO_INSTALADOR_ES.txt`, `wizard_banner.bmp`)**: Acuerdo de Licencia en español, pantalla informativa de novedades y requisitos de `v4.6.1`, textos de bienvenida actualizados y banner `Versión 4.6.1`.
 
 ### Verificado
 - **Compilación y Calidad**: `Debug` y `Release` con `0` errores y `0` advertencias.
 - **Suite Automatizada (`Release`)**: `81 / 81` pruebas `xUnit` aprobadas (`WorkOrderStatus_CreateEditRightClickMenuAndBatchUpdate_SupportsAllSixStatusesWithRbacAndAudit` + regresión completa) e inspección visual de capturas actualizadas.
-- **Instalador `SISPRO_Setup_v4.6.1_win-x64.exe` (Inno Setup `7.1.1`)**: `57.992.607` bytes (`SHA-256`: `8D332C855CBB6CECB85D543C8A327401CBCFF8BD2C49C2E222DD5AFF409CA77D`).
+- **Instalador `SISPRO_Setup_v4.6.1_win-x64.exe` (Inno Setup `7.1.1`)**: `57.994.042` bytes (`SHA-256`: `0AFB5E7D908CF5B614886FAF226A57A957E34310C4BC259BF2C44FE59412D605`).
 
 ---
 

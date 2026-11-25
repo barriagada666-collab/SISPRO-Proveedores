@@ -29,11 +29,15 @@
 - Nuevo selector **`Estado:`** (`CmbEstadoEntry`) en **Ingreso / Edición de OT**, disponible tanto al crear una nueva orden (predeterminado en `Abierta`) como al cargar y modificar una orden existente (**Modificar** y **Guardar y Exportar**).
 - Nuevo filtro combinable por **Estado** en **Búsqueda de OT**.
 
+### 4. Información y Licencia Corporativa en Español en el Instalador
+- Reemplazada la licencia en inglés por el **Acuerdo de Licencia Corporativo en español** (`installer/Assets/LICENCIA_SISPRO_ES.txt`) de Cambiaso Hnos S.A.C. — Departamento Mantención.
+- Incorporada página previa de **Información de la Versión** (`installer/Assets/INFO_INSTALADOR_ES.txt`), textos actualizados en `Setup_SISPRO.iss` y banner `Versión 4.6.1` (`wizard_banner.bmp`).
+
 ---
 
 ## Verificación de Calidad
 
 - **Compilación `Debug` y `Release`**: `0` errores, `0` advertencias (`TreatWarningsAsErrors=true`, `WarningLevel=9999`).
 - **Suite Automatizada (`Release`)**: **`81 / 81` pruebas `xUnit` aprobadas** (`0` fallos, `0` omitidas), incluyendo `WorkOrderStatus_CreateEditRightClickMenuAndBatchUpdate_SupportsAllSixStatusesWithRbacAndAudit` y auditoría visual de pantallas.
-- **Instalador Windows x64 (Inno Setup `7.1.1`)**: `SISPRO_Setup_v4.6.1_win-x64.exe` (`57.992.607` bytes).
-- **Integridad `SHA-256`**: `8D332C855CBB6CECB85D543C8A327401CBCFF8BD2C49C2E222DD5AFF409CA77D`.
+- **Instalador Windows x64 (Inno Setup `7.1.1`)**: `SISPRO_Setup_v4.6.1_win-x64.exe` (`57.994.042` bytes).
+- **Integridad `SHA-256`**: `0AFB5E7D908CF5B614886FAF226A57A957E34310C4BC259BF2C44FE59412D605`.

@@ -1,0 +1,26 @@
+﻿INFORMACIÓN DE LA VERSIÓN — SISPRO v4.6.1 (.NET 10)
+================================================================================
+
+NOVEDADES Y CAPACIDADES INCLUIDAS EN ESTA VERSIÓN (25-11-2026)
+--------------------------------------------------------------------------------
+• Gestión completa de 6 estados de OT: Abierta, En Curso, Modificada, Terminada,
+  Cerrada y Anulada, editables al ingresar, al modificar y mediante clic derecho
+  (individual o masivo) desde Búsqueda de OT y Panel de Control.
+• Búsqueda de OT con CRUD completo (Nuevo, Consultar, Editar, Eliminar), filtro
+  por Estado, soporte de OTs Externas e Internas y exportación masiva selectiva
+  a Excel (.xlsx), PDF (.pdf), Word (.docx) y CSV (.csv).
+• Control "Mostrar valor neto en OT externa": permite ocultar o mostrar el valor
+  neto en pantalla y documentos generados sin borrar el valor guardado en BD.
+• Menú Mantenedores centralizado: Proveedores (con Importar Access .mdb),
+  Solicitantes, Firmas Digitales (PNG/JPG/PDF), Árbol de Activos (10 niveles),
+  Editor de Árbol, Configuración del sistema (Probar / Aplicar / Guardar en BD)
+  y Mi Clave.
+• Barra superior simplificada: Cambiar usuario (sin cerrar el programa),
+  Acerca de y Cerrar sesión.
+
+REQUISITOS DEL SISTEMA Y ACTUALIZACIÓN SEGURA
+--------------------------------------------------------------------------------
+• Sistema operativo: Windows 10 (19041+) o Windows 11 de 64 bits (x64).
+• Paquete autocontenido (.NET 10): no requiere descargas adicionales.
+• Actualizaciones seguras: si ya posee una versión anterior instalada, su base
+  de datos sispro.db y toda su información histórica se mantendrán intactas.
