@@ -19,6 +19,7 @@ public sealed class MdbImportDialog : Form
     private readonly TextBox _txtMdbPath;
     private readonly Button _btnBrowse;
     private readonly Button _btnAnalyze;
+    private readonly Button _btnCleanDb;
     private readonly Button _btnApply;
     private readonly Button _btnClose;
 
@@ -30,6 +31,7 @@ public sealed class MdbImportDialog : Form
     private readonly Label _kpiExtraVal;
     private readonly Label _kpiExtraSub;
 
+    private readonly CheckBox _chkRewriteAll;
     private readonly CheckBox _chkInsertNew;
     private readonly CheckBox _chkUpdateExisting;
     private readonly CheckBox _chkOverwriteEmpty;
@@ -44,13 +46,17 @@ public sealed class MdbImportDialog : Form
 
     private MdbImportPreview? _currentPreview;
     private bool _isBusy;
+    private bool _suppressRewriteAnalysis;
 
     public MdbImportResult? LastResult { get; private set; }
+    public MdbDatabaseCleanResult? LastCleanResult { get; private set; }
 
     internal Button BtnBrowse => _btnBrowse;
     internal Button BtnAnalyze => _btnAnalyze;
+    internal Button BtnCleanDb => _btnCleanDb;
     internal Button BtnApply => _btnApply;
     internal Button BtnClose => _btnClose;
+    internal CheckBox ChkRewriteAll => _chkRewriteAll;
     internal DataGridView GridDiff => _gridDiff;
 
     public MdbImportDialog(SisproApplicationContext ctx, UserSession session, string? initialMdbPath = null)
@@ -170,11 +176,34 @@ public sealed class MdbImportDialog : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 2
+            RowCount = 3
         };
         optLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         optLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         optLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        optLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        Panel rewriteStrip = new()
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            BackColor = Color.FromArgb(254, 242, 242),
+            Padding = new Padding(8, 5, 8, 5),
+            Margin = new Padding(0, 0, 0, 5)
+        };
+        _chkRewriteAll = new CheckBox
+        {
+            Name = "chkMdbRewriteAll",
+            Text = "Reescribir todo desde cero al importar (limpia Proveedores, Solicitantes y OTs de sispro.db e importa todo el MDB; conserva Usuarios, Activos y Configuración)",
+            Checked = false,
+            AutoSize = true,
+            Font = CambiasoTheme.LabelFont,
+            ForeColor = CambiasoTheme.Danger,
+            Margin = Padding.Empty
+        };
+        _toolTip.SetToolTip(_chkRewriteAll, "Limpia atómicamente Proveedores, Solicitantes y Órdenes de Trabajo de sispro.db y carga desde cero el contenido completo del archivo .mdb.");
+        _chkRewriteAll.CheckedChanged += async (_, _) => await OnRewriteAllToggledAsync();
+        rewriteStrip.Controls.Add(_chkRewriteAll);
 
         FlowLayoutPanel optFlow = new()
         {
@@ -188,7 +217,7 @@ public sealed class MdbImportDialog : Form
         _chkUpdateExisting = new CheckBox { Text = "Actualizar datos de existentes", Checked = true, AutoSize = true, Margin = new Padding(0, 3, 14, 2) };
         _chkOverwriteEmpty = new CheckBox { Text = "Sobrescribir con vacíos del MDB", Checked = false, AutoSize = true, Margin = new Padding(0, 3, 14, 2) };
         _chkSyncRequesters = new CheckBox { Text = "Sincronizar solicitantes", Checked = true, AutoSize = true, Margin = new Padding(0, 3, 14, 2) };
-        _chkSyncWorkOrders = new CheckBox { Text = "Importar también OTs nuevas detectadas", Checked = false, AutoSize = true, Margin = new Padding(0, 3, 14, 2) };
+        _chkSyncWorkOrders = new CheckBox { Text = "Importar también OTs detectadas", Checked = false, AutoSize = true, Margin = new Padding(0, 3, 14, 2) };
         _chkBackupFirst = new CheckBox { Text = "Respaldar sispro.db antes de aplicar", Checked = true, AutoSize = true, Margin = new Padding(0, 3, 10, 2) };
 
         _chkInsertNew.CheckedChanged += (_, _) => UpdateApplyStateAndSummary();
@@ -197,7 +226,7 @@ public sealed class MdbImportDialog : Form
         _chkSyncWorkOrders.CheckedChanged += (_, _) => UpdateApplyStateAndSummary();
         _chkOverwriteEmpty.CheckedChanged += async (_, _) =>
         {
-            if (_currentPreview is not null && !_isBusy)
+            if (!_suppressRewriteAnalysis && _currentPreview is not null && !_isBusy)
             {
                 await RunAnalysisAsync();
             }
@@ -241,8 +270,9 @@ public sealed class MdbImportDialog : Form
         filterFlow.Controls.Add(new Label { Text = "Buscar:", AutoSize = true, Margin = new Padding(0, 5, 4, 0), ForeColor = CambiasoTheme.TextMuted });
         filterFlow.Controls.Add(_txtFilterText);
 
-        optLayout.Controls.Add(optFlow, 0, 0);
-        optLayout.Controls.Add(filterFlow, 0, 1);
+        optLayout.Controls.Add(rewriteStrip, 0, 0);
+        optLayout.Controls.Add(optFlow, 0, 1);
+        optLayout.Controls.Add(filterFlow, 0, 2);
         grpOptions.Controls.Add(optLayout);
 
         // Grilla de diferencias
@@ -278,20 +308,24 @@ public sealed class MdbImportDialog : Form
         FlowLayoutPanel btnPanel = new()
         {
             Dock = DockStyle.Right,
-            Width = 370,
+            Width = 540,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false
         };
 
-        _btnClose = CambiasoTheme.CreateButton("Cerrar", AppIcon.Cancel, ButtonTone.Secondary, _toolTip, "Cerrar ventana", width: 112, height: 34);
+        _btnClose = CambiasoTheme.CreateButton("Cerrar", AppIcon.Cancel, ButtonTone.Secondary, _toolTip, "Cerrar ventana", width: 104, height: 34);
         _btnClose.Click += (_, _) => Close();
 
-        _btnApply = CambiasoTheme.CreateButton("Actualizar BD desde MDB", AppIcon.Save, ButtonTone.Primary, _toolTip, "Aplicar los cambios analizados a la base de datos SQLite", width: 224, height: 34);
+        _btnApply = CambiasoTheme.CreateButton("Actualizar BD desde MDB", AppIcon.Save, ButtonTone.Primary, _toolTip, "Aplicar los cambios analizados a la base de datos SQLite", width: 232, height: 34);
         _btnApply.Enabled = false;
         _btnApply.Click += async (_, _) => await ApplyImportAsync();
 
+        _btnCleanDb = CambiasoTheme.CreateButton("Limpiar sispro.db", AppIcon.Delete, ButtonTone.Danger, _toolTip, "Limpiar Proveedores, Solicitantes y OTs de sispro.db para importar limpio desde cero (conserva Usuarios, Activos y Configuración)", width: 174, height: 34);
+        _btnCleanDb.Click += async (_, _) => await CleanDatabaseAsync();
+
         btnPanel.Controls.Add(_btnClose);
         btnPanel.Controls.Add(_btnApply);
+        btnPanel.Controls.Add(_btnCleanDb);
 
         footer.Controls.Add(_lblStatus);
         footer.Controls.Add(btnPanel);
@@ -461,13 +495,123 @@ public sealed class MdbImportDialog : Form
 
     private MdbImportOptions BuildOptions() => new()
     {
-        InsertNewProviders = _chkInsertNew.Checked,
-        UpdateExistingProviders = _chkUpdateExisting.Checked,
-        OverwriteWithEmptyValues = _chkOverwriteEmpty.Checked,
+        InsertNewProviders = _chkRewriteAll.Checked || _chkInsertNew.Checked,
+        UpdateExistingProviders = _chkRewriteAll.Checked || _chkUpdateExisting.Checked,
+        OverwriteWithEmptyValues = _chkRewriteAll.Checked || _chkOverwriteEmpty.Checked,
         SyncNewRequesters = _chkSyncRequesters.Checked,
         SyncNewWorkOrders = _chkSyncWorkOrders.Checked,
-        CreateBackupBeforeApply = _chkBackupFirst.Checked
+        CreateBackupBeforeApply = _chkBackupFirst.Checked,
+        RewriteAllFromMdb = _chkRewriteAll.Checked
     };
+
+    private async Task OnRewriteAllToggledAsync()
+    {
+        bool rewrite = _chkRewriteAll.Checked;
+        _suppressRewriteAnalysis = true;
+        try
+        {
+            if (rewrite)
+            {
+                _chkInsertNew.Checked = true;
+                _chkUpdateExisting.Checked = true;
+                _chkOverwriteEmpty.Checked = true;
+                _chkSyncRequesters.Checked = true;
+                _chkSyncWorkOrders.Checked = true;
+                _chkBackupFirst.Checked = true;
+                _btnApply.Text = "Reescribir BD desde MDB";
+                _btnApply.BackColor = CambiasoTheme.Danger;
+                _btnApply.FlatAppearance.MouseOverBackColor = CambiasoTheme.DangerHover;
+            }
+            else
+            {
+                _chkOverwriteEmpty.Checked = false;
+                _btnApply.Text = "Actualizar BD desde MDB";
+                _btnApply.BackColor = CambiasoTheme.Primary;
+                _btnApply.FlatAppearance.MouseOverBackColor = CambiasoTheme.PrimaryHover;
+            }
+
+            _chkInsertNew.Enabled = !rewrite && !_isBusy;
+            _chkUpdateExisting.Enabled = !rewrite && !_isBusy;
+            _chkOverwriteEmpty.Enabled = !rewrite && !_isBusy;
+        }
+        finally
+        {
+            _suppressRewriteAnalysis = false;
+        }
+
+        UpdateApplyStateAndSummary();
+        if (_currentPreview is not null && !_isBusy)
+        {
+            await RunAnalysisAsync();
+        }
+    }
+
+    private async Task CleanDatabaseAsync()
+    {
+        try
+        {
+            OperationalDatabaseCounts counts = _ctx.MdbImportService.GetOperationalCounts(_session);
+            if (counts.ProvidersCount == 0 && counts.RequestersCount == 0 && counts.WorkOrdersCount == 0)
+            {
+                CambiasoTheme.ShowInfo(this, "La base de datos operativa sispro.db ya se encuentra limpia (0 proveedores, 0 solicitantes, 0 OTs). Puede importar directamente desde su archivo .mdb.");
+                return;
+            }
+
+            string confirmMsg =
+                "ATENCIÓN: Se limpiarán los datos operativos actuales de sispro.db para realizar una importación limpia desde cero:\n\n" +
+                $"• Proveedores a eliminar: {counts.ProvidersCount:N0}\n" +
+                $"• Solicitantes a eliminar: {counts.RequestersCount:N0}\n" +
+                $"• Órdenes de trabajo a eliminar: {counts.WorkOrdersCount:N0} ({counts.WorkOrderDetailsCount:N0} ítems de detalle)\n\n" +
+                "Se conservarán intactos: Usuarios, Perfiles, Grupos, Árbol de Activos, Configuración del Sistema y Auditoría.\n" +
+                $"Respaldo automático previo: {(_chkBackupFirst.Checked ? "Sí (carpeta backups)" : "No")}\n\n" +
+                "¿Confirma que desea limpiar sispro.db ahora?";
+
+            if (!CambiasoTheme.Confirm(this, confirmMsg, "Confirmar Limpieza de sispro.db"))
+            {
+                return;
+            }
+
+            SetBusy(true, "Respaldando y limpiando datos operativos de sispro.db...");
+            bool createBackup = _chkBackupFirst.Checked;
+            MdbDatabaseCleanResult cleanRes = await Task.Run(() => _ctx.MdbImportService.CleanOperationalDatabase(_session, createBackup));
+            if (IsDisposed) return;
+
+            LastCleanResult = cleanRes;
+            string infoMsg = "Limpieza de sispro.db completada correctamente:\n\n" + cleanRes.BuildSummaryText();
+            if (!string.IsNullOrWhiteSpace(cleanRes.BackupPath))
+            {
+                infoMsg += $"\n\nRespaldo previo guardado en:\n{cleanRes.BackupPath}";
+            }
+
+            CambiasoTheme.ShowInfo(this, infoMsg);
+
+            if (!string.IsNullOrWhiteSpace(_txtMdbPath.Text.Trim()) && File.Exists(_txtMdbPath.Text.Trim()))
+            {
+                await RunAnalysisAsync();
+            }
+            else
+            {
+                _currentPreview = null;
+                ResetKpis();
+                _gridDiff.Rows.Clear();
+                UpdateApplyStateAndSummary();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (!IsDisposed)
+            {
+                CambiasoTheme.ShowError(this, $"Error al limpiar sispro.db:\n{ex.Message}");
+            }
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                SetBusy(false);
+            }
+        }
+    }
 
     private async Task RunAnalysisAsync()
     {
@@ -573,7 +717,20 @@ public sealed class MdbImportDialog : Form
         if (_currentPreview is null)
         {
             _btnApply.Enabled = false;
-            _lblStatus.Text = "Presione 'Analizar MDB' para comparar el archivo Access contra su base de datos actual.";
+            _lblStatus.Text = _chkRewriteAll.Checked
+                ? "Modo REESCRITURA COMPLETA activo. Presione 'Analizar MDB' para previsualizar la importación desde cero."
+                : "Presione 'Analizar MDB' para comparar el archivo Access contra su base de datos actual.";
+            return;
+        }
+
+        if (_chkRewriteAll.Checked)
+        {
+            int provAll = _currentPreview.MdbProvidersTotal;
+            int reqAll = _chkSyncRequesters.Checked ? _currentPreview.MdbRequestersTotal : 0;
+            int otAll = _chkSyncWorkOrders.Checked ? _currentPreview.MdbWorkOrdersTotal : 0;
+            _btnApply.Enabled = !_isBusy && (provAll + reqAll + otAll > 0 || _currentPreview.DbProvidersBefore + _currentPreview.DbWorkOrdersBefore > 0);
+            _lblStatus.Text =
+                $"REESCRITURA COMPLETA: limpiará BD actual y cargará {provAll} prov., {reqAll} sol. y {otAll} OTs desde el MDB.";
             return;
         }
 
@@ -597,26 +754,48 @@ public sealed class MdbImportDialog : Form
             return;
         }
 
-        int provAdd = _chkInsertNew.Checked ? _currentPreview.NewProvidersCount : 0;
-        int provUpd = _chkUpdateExisting.Checked ? _currentPreview.UpdatedProvidersCount : 0;
-        int reqChanges = _chkSyncRequesters.Checked ? _currentPreview.NewOrUpdatedRequesters.Count : 0;
-        int otAdd = _chkSyncWorkOrders.Checked ? _currentPreview.NewWorkOrdersCount : 0;
+        bool fullRewrite = _chkRewriteAll.Checked;
+        string confirmMsg;
+        string confirmTitle;
+        if (fullRewrite)
+        {
+            int reqCount = _chkSyncRequesters.Checked ? _currentPreview.MdbRequestersTotal : 0;
+            int otCount = _chkSyncWorkOrders.Checked ? _currentPreview.MdbWorkOrdersTotal : 0;
+            int detCount = _chkSyncWorkOrders.Checked ? _currentPreview.NewWorkOrderDetailsCount : 0;
+            confirmTitle = "Confirmar REESCRITURA COMPLETA desde MDB";
+            confirmMsg =
+                $"ATENCIÓN — REESCRITURA LIMPIA DESDE CERO:\n{_currentPreview.MdbPath}\n\n" +
+                $"Se eliminarán los datos operativos actuales de sispro.db ({_currentPreview.DbProvidersBefore:N0} prov., {_currentPreview.DbRequestersBefore:N0} sol., {_currentPreview.DbWorkOrdersBefore:N0} OTs) y se importarán desde cero:\n" +
+                $"• Proveedores del MDB: {_currentPreview.MdbProvidersTotal:N0}\n" +
+                $"• Solicitantes del MDB: {reqCount:N0}\n" +
+                $"• Órdenes de trabajo del MDB: {otCount:N0} ({detCount:N0} ítems)\n\n" +
+                "Conservados intactos: Usuarios, Perfiles, Grupos, Árbol de Activos, Configuración y Auditoría.\n" +
+                $"• Respaldo previo automático: {(_chkBackupFirst.Checked ? "Sí" : "No")}\n\n" +
+                "¿Confirma que desea reescribir toda la base operativa ahora?";
+        }
+        else
+        {
+            int provAdd = _chkInsertNew.Checked ? _currentPreview.NewProvidersCount : 0;
+            int provUpd = _chkUpdateExisting.Checked ? _currentPreview.UpdatedProvidersCount : 0;
+            int reqChanges = _chkSyncRequesters.Checked ? _currentPreview.NewOrUpdatedRequesters.Count : 0;
+            int otAdd = _chkSyncWorkOrders.Checked ? _currentPreview.NewWorkOrdersCount : 0;
+            confirmTitle = "Confirmar importación MDB";
+            confirmMsg =
+                $"Se aplicará la actualización desde:\n{_currentPreview.MdbPath}\n\n" +
+                $"• Proveedores nuevos a agregar: {provAdd}\n" +
+                $"• Proveedores existentes a actualizar: {provUpd}\n" +
+                $"• Solicitantes nuevos/actualizados: {reqChanges}\n" +
+                $"• Órdenes de trabajo nuevas a importar: {otAdd} ({(_chkSyncWorkOrders.Checked ? _currentPreview.NewWorkOrderDetailsCount : 0)} ítems)\n" +
+                $"• Respaldo previo automático: {(_chkBackupFirst.Checked ? "Sí" : "No")}\n\n" +
+                "¿Desea actualizar su base de datos ahora?";
+        }
 
-        string confirmMsg =
-            $"Se aplicará la actualización desde:\n{_currentPreview.MdbPath}\n\n" +
-            $"• Proveedores nuevos a agregar: {provAdd}\n" +
-            $"• Proveedores existentes a actualizar: {provUpd}\n" +
-            $"• Solicitantes nuevos/actualizados: {reqChanges}\n" +
-            $"• Órdenes de trabajo nuevas a importar: {otAdd} ({(_chkSyncWorkOrders.Checked ? _currentPreview.NewWorkOrderDetailsCount : 0)} ítems)\n" +
-            $"• Respaldo previo automático: {(_chkBackupFirst.Checked ? "Sí" : "No")}\n\n" +
-            "¿Desea actualizar su base de datos ahora?";
-
-        if (!CambiasoTheme.Confirm(this, confirmMsg, "Confirmar importación MDB"))
+        if (!CambiasoTheme.Confirm(this, confirmMsg, confirmTitle))
         {
             return;
         }
 
-        SetBusy(true, "Aplicando cambios y actualizando sispro.db...");
+        SetBusy(true, fullRewrite ? "Respaldando, limpiando y reescribiendo sispro.db desde MDB..." : "Aplicando cambios y actualizando sispro.db...");
         try
         {
             MdbImportOptions opts = BuildOptions();
@@ -661,8 +840,12 @@ public sealed class MdbImportDialog : Form
         UseWaitCursor = busy;
         _btnBrowse.Enabled = !busy;
         _btnAnalyze.Enabled = !busy;
+        _btnCleanDb.Enabled = !busy;
         _btnClose.Enabled = !busy;
-        _chkOverwriteEmpty.Enabled = !busy;
+        _chkRewriteAll.Enabled = !busy;
+        _chkInsertNew.Enabled = !busy && !_chkRewriteAll.Checked;
+        _chkUpdateExisting.Enabled = !busy && !_chkRewriteAll.Checked;
+        _chkOverwriteEmpty.Enabled = !busy && !_chkRewriteAll.Checked;
         if (busy)
         {
             _btnApply.Enabled = false;

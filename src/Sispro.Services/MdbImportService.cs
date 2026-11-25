@@ -21,6 +21,49 @@ public sealed class MdbImportService(
     SisproSyncHub? syncHub = null,
     IUserRepository? users = null)
 {
+    public OperationalDatabaseCounts GetOperationalCounts(UserSession session)
+    {
+        AuthService.EnsureAdministrator(session, users, audit, "Importación MDB", "Consultar conteos operativos de la base de datos");
+        return ReadOperationalCounts();
+    }
+
+    public MdbDatabaseCleanResult CleanOperationalDatabase(UserSession session, bool createBackup = true)
+    {
+        AuthService.EnsureAdministrator(session, users, audit, "Importación MDB", "Limpiar datos operativos de sispro.db para importación limpia");
+        OperationalDatabaseCounts before = ReadOperationalCounts();
+
+        string? backupPath = null;
+        if (createBackup)
+        {
+            backupPath = CreateSafetyBackup("sispro_pre_limpieza");
+        }
+
+        if (before.ProvidersCount + before.RequestersCount + before.WorkOrdersCount + before.WorkOrderDetailsCount > 0)
+        {
+            using SqliteConnection conn = factory.OpenConnection();
+            using SqliteTransaction tx = conn.BeginTransaction();
+            ClearOperationalTables(conn, tx);
+            tx.Commit();
+        }
+
+        string detail =
+            $"Limpieza operativa de sispro.db: -{before.ProvidersCount} proveedores, -{before.RequestersCount} solicitantes, " +
+            $"-{before.WorkOrdersCount} OTs (-{before.WorkOrderDetailsCount} ítems). Conservados: Usuarios, Grupos, Activos, Configuración y Auditoría." +
+            (backupPath is not null ? $" | Respaldo: {Path.GetFileName(backupPath)}" : string.Empty);
+
+        audit.Log(session.Usuario.AliasUsuario, "Importación MDB", "LIMPIAR_BD_OPERATIVA", detail);
+        syncHub?.Publish(DataChangeKind.Catalogs | DataChangeKind.WorkOrders | DataChangeKind.Audit, "LIMPIAR_BD_OPERATIVA");
+
+        return new MdbDatabaseCleanResult
+        {
+            BackupPath = backupPath,
+            ProvidersDeleted = before.ProvidersCount,
+            RequestersDeleted = before.RequestersCount,
+            WorkOrdersDeleted = before.WorkOrdersCount,
+            WorkOrderDetailsDeleted = before.WorkOrderDetailsCount
+        };
+    }
+
     public MdbImportPreview AnalyzeMdb(UserSession session, string mdbPath, MdbImportOptions? options = null)
     {
         AuthService.EnsureAdministrator(session, users, audit, "Importación MDB", "Analizar archivo Access (.mdb)");
@@ -32,25 +75,25 @@ public sealed class MdbImportService(
     {
         AuthService.EnsureAdministrator(session, users, audit, "Importación MDB", "Importar y actualizar base de datos desde Access (.mdb)");
         MdbImportOptions effectiveOptions = options ?? new MdbImportOptions();
+        bool fullRewrite = effectiveOptions.RewriteAllFromMdb;
         (MdbImportPreview preview, MdbSnapshot snapshot) = BuildAnalysis(mdbPath, effectiveOptions);
 
-        int plannedProvInserts = effectiveOptions.InsertNewProviders ? preview.NewProvidersCount : 0;
-        int plannedProvUpdates = effectiveOptions.UpdateExistingProviders ? preview.UpdatedProvidersCount : 0;
+        int plannedProvInserts = (fullRewrite || effectiveOptions.InsertNewProviders) ? preview.NewProvidersCount : 0;
+        int plannedProvUpdates = (!fullRewrite && effectiveOptions.UpdateExistingProviders) ? preview.UpdatedProvidersCount : 0;
         int plannedReqChanges = effectiveOptions.SyncNewRequesters ? preview.NewOrUpdatedRequesters.Count : 0;
         int plannedOtInserts = effectiveOptions.SyncNewWorkOrders ? preview.NewWorkOrdersCount : 0;
 
-        bool willModifyDatabase = plannedProvInserts + plannedProvUpdates + plannedReqChanges + plannedOtInserts > 0;
+        bool willModifyDatabase = fullRewrite || (plannedProvInserts + plannedProvUpdates + plannedReqChanges + plannedOtInserts > 0);
 
         string? backupPath = null;
         if (willModifyDatabase && effectiveOptions.CreateBackupBeforeApply)
         {
-            string dbDir = Path.GetDirectoryName(factory.DatabasePath) ?? AppContext.BaseDirectory;
-            string backupDir = Path.Combine(dbDir, "backups");
-            Directory.CreateDirectory(backupDir);
-            backupPath = Path.Combine(backupDir, $"sispro_pre_mdb_{DateTime.Now:yyyyMMdd_HHmmss}.db");
-            factory.BackupTo(backupPath);
+            backupPath = CreateSafetyBackup(fullRewrite ? "sispro_pre_mdb_rewrite" : "sispro_pre_mdb");
         }
 
+        int clearedProviders = 0;
+        int clearedRequesters = 0;
+        int clearedWorkOrders = 0;
         int insertedProviders = 0;
         int updatedProviders = 0;
         int insertedRequesters = 0;
@@ -59,32 +102,42 @@ public sealed class MdbImportService(
         int insertedOtDetails = 0;
         List<string> warnings = [.. preview.Warnings];
 
-        Dictionary<string, Provider> existingProvidersByName = providers
-            .GetAll(includeInactive: true)
-            .GroupBy(p => Clean(p.Nombre), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Provider> existingProvidersByName = fullRewrite
+            ? new Dictionary<string, Provider>(StringComparer.OrdinalIgnoreCase)
+            : providers
+                .GetAll(includeInactive: true)
+                .GroupBy(p => Clean(p.Nombre), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         Dictionary<int, int> legacyProvIdToSqlId = new();
-        foreach (MdbProviderRow raw in snapshot.Providers)
+        if (!fullRewrite)
         {
-            string key = Clean(raw.Nombre);
-            if (raw.LegacyIdProv > 0 && existingProvidersByName.TryGetValue(key, out Provider? existingProv))
+            foreach (MdbProviderRow raw in snapshot.Providers)
             {
-                legacyProvIdToSqlId[raw.LegacyIdProv] = existingProv.IdProv;
+                string key = Clean(raw.Nombre);
+                if (raw.LegacyIdProv > 0 && existingProvidersByName.TryGetValue(key, out Provider? existingProv))
+                {
+                    legacyProvIdToSqlId[raw.LegacyIdProv] = existingProv.IdProv;
+                }
             }
         }
 
-        Dictionary<string, Requester> existingRequestersByAlias = requesters
-            .GetAll(includeInactive: true)
-            .GroupBy(r => Clean(r.Alias), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Requester> existingRequestersByAlias = fullRewrite
+            ? new Dictionary<string, Requester>(StringComparer.OrdinalIgnoreCase)
+            : requesters
+                .GetAll(includeInactive: true)
+                .GroupBy(r => Clean(r.Alias), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         Dictionary<int, int> legacySolIdToSqlId = new();
-        foreach (MdbRequesterRow req in snapshot.Requesters)
+        if (!fullRewrite)
         {
-            if (req.LegacyIdSol > 0 && existingRequestersByAlias.TryGetValue(Clean(req.Alias), out Requester? existingReq))
+            foreach (MdbRequesterRow req in snapshot.Requesters)
             {
-                legacySolIdToSqlId[req.LegacyIdSol] = existingReq.IdSol;
+                if (req.LegacyIdSol > 0 && existingRequestersByAlias.TryGetValue(Clean(req.Alias), out Requester? existingReq))
+                {
+                    legacySolIdToSqlId[req.LegacyIdSol] = existingReq.IdSol;
+                }
             }
         }
 
@@ -93,10 +146,19 @@ public sealed class MdbImportService(
             using SqliteConnection conn = factory.OpenConnection();
             using SqliteTransaction tx = conn.BeginTransaction();
 
+            // 0. Si se seleccionó reescritura completa, limpiar tablas operativas atómicamente dentro de la misma transacción
+            if (fullRewrite)
+            {
+                clearedProviders = preview.DbProvidersBefore;
+                clearedRequesters = preview.DbRequestersBefore;
+                clearedWorkOrders = preview.DbWorkOrdersBefore;
+                ClearOperationalTables(conn, tx);
+            }
+
             // 1. Proveedores (nuevos + actualización de campos)
             foreach (MdbProviderDiffItem diff in preview.ProviderDiffs)
             {
-                if (diff.Action == MdbDiffAction.Nuevo && effectiveOptions.InsertNewProviders)
+                if (diff.Action == MdbDiffAction.Nuevo && (fullRewrite || effectiveOptions.InsertNewProviders))
                 {
                     using SqliteCommand insertCmd = conn.CreateCommand();
                     insertCmd.Transaction = tx;
@@ -128,7 +190,8 @@ public sealed class MdbImportService(
                         Activo = true
                     };
                 }
-                else if (diff.Action == MdbDiffAction.Actualizar &&
+                else if (!fullRewrite &&
+                         diff.Action == MdbDiffAction.Actualizar &&
                          effectiveOptions.UpdateExistingProviders &&
                          diff.TargetIdProv.HasValue)
                 {
@@ -162,13 +225,18 @@ public sealed class MdbImportService(
                 }
             }
 
-            // 2. Solicitantes (nuevos / datos complementarios, preservando firma digital)
+            // 2. Solicitantes (nuevos / datos complementarios, preservando firma digital en modo incremental)
             if (effectiveOptions.SyncNewRequesters)
             {
                 foreach (MdbRequesterRow req in preview.NewOrUpdatedRequesters)
                 {
                     string aliasKey = Clean(req.Alias);
-                    if (existingRequestersByAlias.TryGetValue(aliasKey, out Requester? existingReq))
+                    if (string.IsNullOrWhiteSpace(aliasKey))
+                    {
+                        continue;
+                    }
+
+                    if (!fullRewrite && existingRequestersByAlias.TryGetValue(aliasKey, out Requester? existingReq))
                     {
                         string nom = PickField(req.Nombre, existingReq.Nombre, effectiveOptions.OverwriteWithEmptyValues);
                         string pat = PickField(req.ApellidoPaterno, existingReq.ApellidoPaterno, effectiveOptions.OverwriteWithEmptyValues);
@@ -196,7 +264,7 @@ public sealed class MdbImportService(
                         updSol.ExecuteNonQuery();
                         updatedRequesters++;
                     }
-                    else
+                    else if (!existingRequestersByAlias.ContainsKey(aliasKey))
                     {
                         string nom = string.IsNullOrWhiteSpace(req.Nombre) ? aliasKey : Clean(req.Nombre);
                         string pat = string.IsNullOrWhiteSpace(req.ApellidoPaterno) ? aliasKey : Clean(req.ApellidoPaterno);
@@ -217,10 +285,31 @@ public sealed class MdbImportService(
 
                         int newSolId = Convert.ToInt32(insSol.ExecuteScalar(), CultureInfo.InvariantCulture);
                         insertedRequesters++;
+                        existingRequestersByAlias[aliasKey] = new Requester
+                        {
+                            IdSol = newSolId,
+                            Alias = aliasKey,
+                            Nombre = nom,
+                            ApellidoPaterno = pat,
+                            ApellidoMaterno = Clean(req.ApellidoMaterno),
+                            Telefono = Clean(req.Telefono),
+                            Correo = Clean(req.Correo),
+                            Activo = true
+                        };
                         if (req.LegacyIdSol > 0)
                         {
                             legacySolIdToSqlId[req.LegacyIdSol] = newSolId;
                         }
+                    }
+                }
+
+                // Mapear todos los IDs legacy de solicitantes (incluidos duplicados consolidados por alias)
+                foreach (MdbRequesterRow rawSol in snapshot.Requesters)
+                {
+                    string aliasKey = Clean(rawSol.Alias);
+                    if (rawSol.LegacyIdSol > 0 && existingRequestersByAlias.TryGetValue(aliasKey, out Requester? mappedSol))
+                    {
+                        legacySolIdToSqlId[rawSol.LegacyIdSol] = mappedSol.IdSol;
                     }
                 }
             }
@@ -311,33 +400,41 @@ public sealed class MdbImportService(
 
         if (willModifyDatabase)
         {
+            string actionCode = fullRewrite ? "REESCRIBIR_BD_DESDE_MDB" : "IMPORTAR_MDB";
             string auditDetail =
+                (fullRewrite ? $"[REESCRITURA COMPLETA: -{clearedProviders} prov., -{clearedRequesters} sol., -{clearedWorkOrders} OTs] " : string.Empty) +
                 $"Archivo: {Path.GetFileName(preview.MdbPath)} | " +
                 $"Proveedores (+{insertedProviders} nuevos, {updatedProviders} actualizados) | " +
                 $"Solicitantes (+{insertedRequesters}, {updatedRequesters} act.) | " +
                 $"OTs (+{insertedOts}, ítems +{insertedOtDetails})" +
                 (backupPath is not null ? $" | Respaldo: {Path.GetFileName(backupPath)}" : string.Empty);
 
-            audit.Log(session.Usuario.AliasUsuario, "Importación MDB", "IMPORTAR_MDB", auditDetail);
+            audit.Log(session.Usuario.AliasUsuario, "Importación MDB", actionCode, auditDetail);
 
             DataChangeKind changes = DataChangeKind.Catalogs | DataChangeKind.Audit;
-            if (insertedOts > 0)
+            if (fullRewrite || insertedOts > 0)
             {
                 changes |= DataChangeKind.WorkOrders;
             }
 
-            syncHub?.Publish(changes, "IMPORTAR_MDB");
+            syncHub?.Publish(changes, actionCode);
         }
 
         return new MdbImportResult
         {
             MdbPath = preview.MdbPath,
             BackupPath = backupPath,
+            WasFullRewrite = fullRewrite,
+            ProvidersCleared = clearedProviders,
+            RequestersCleared = clearedRequesters,
+            WorkOrdersCleared = clearedWorkOrders,
             ProvidersInserted = insertedProviders,
             ProvidersUpdated = updatedProviders,
-            ProvidersUnchanged = preview.UnchangedProvidersCount +
-                (effectiveOptions.InsertNewProviders ? 0 : preview.NewProvidersCount) +
-                (effectiveOptions.UpdateExistingProviders ? 0 : preview.UpdatedProvidersCount),
+            ProvidersUnchanged = fullRewrite
+                ? 0
+                : preview.UnchangedProvidersCount +
+                  (effectiveOptions.InsertNewProviders ? 0 : preview.NewProvidersCount) +
+                  (effectiveOptions.UpdateExistingProviders ? 0 : preview.UpdatedProvidersCount),
             RequestersInserted = insertedRequesters,
             RequestersUpdated = updatedRequesters,
             WorkOrdersInserted = insertedOts,
@@ -352,13 +449,24 @@ public sealed class MdbImportService(
     {
         MdbSnapshot snapshot = mdbReader.ReadSnapshot(mdbPath);
         List<string> warnings = [];
+        bool fullRewrite = options.RewriteAllFromMdb;
 
+        OperationalDatabaseCounts dbCounts = ReadOperationalCounts();
         IReadOnlyList<Provider> dbProviders = providers.GetAll(includeInactive: true);
         Dictionary<string, Provider> dbByName = new(StringComparer.OrdinalIgnoreCase);
-        foreach (Provider p in dbProviders)
+        if (!fullRewrite)
         {
-            string key = Clean(p.Nombre);
-            dbByName.TryAdd(key, p);
+            foreach (Provider p in dbProviders)
+            {
+                string key = Clean(p.Nombre);
+                dbByName.TryAdd(key, p);
+            }
+        }
+        else
+        {
+            warnings.Add(
+                $"MODO REESCRITURA COMPLETA: se limpiarán {dbCounts.ProvidersCount} proveedores, " +
+                $"{dbCounts.RequestersCount} solicitantes y {dbCounts.WorkOrdersCount} OTs actuales antes de importar desde cero el contenido del MDB.");
         }
 
         // Deduplicar nombres repetidos dentro del mismo MDB (conservando datos no vacíos)
@@ -473,8 +581,10 @@ public sealed class MdbImportService(
                     TelefonoFinal = row.Telefono,
                     FaxFinal = row.Fax,
                     CorreoFinal = row.Correo,
-                    ChangedFields = ["Registro completo"],
-                    PreviewBeforeAfter = $"Se agregará nuevo proveedor ({FormatCompactContact(row)})"
+                    ChangedFields = [fullRewrite ? "Reescritura completa" : "Registro completo"],
+                    PreviewBeforeAfter = fullRewrite
+                        ? $"Se importará desde cero ({FormatCompactContact(row)})"
+                        : $"Se agregará nuevo proveedor ({FormatCompactContact(row)})"
                 });
             }
         }
@@ -484,21 +594,59 @@ public sealed class MdbImportService(
             .ThenBy(d => d.Nombre, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        // Deduplicar solicitantes por alias dentro del mismo MDB para evitar colisiones UNIQUE
+        Dictionary<string, MdbRequesterRow> uniqueMdbRequesters = new(StringComparer.OrdinalIgnoreCase);
+        foreach (MdbRequesterRow rawReq in snapshot.Requesters)
+        {
+            string aliasKey = Clean(rawReq.Alias);
+            if (string.IsNullOrWhiteSpace(aliasKey))
+            {
+                continue;
+            }
+
+            if (uniqueMdbRequesters.TryGetValue(aliasKey, out MdbRequesterRow? prevReq))
+            {
+                uniqueMdbRequesters[aliasKey] = new MdbRequesterRow
+                {
+                    LegacyIdSol = prevReq.LegacyIdSol > 0 ? prevReq.LegacyIdSol : rawReq.LegacyIdSol,
+                    Alias = prevReq.Alias,
+                    Nombre = string.IsNullOrWhiteSpace(rawReq.Nombre) ? prevReq.Nombre : Clean(rawReq.Nombre),
+                    ApellidoPaterno = string.IsNullOrWhiteSpace(rawReq.ApellidoPaterno) ? prevReq.ApellidoPaterno : Clean(rawReq.ApellidoPaterno),
+                    ApellidoMaterno = string.IsNullOrWhiteSpace(rawReq.ApellidoMaterno) ? prevReq.ApellidoMaterno : Clean(rawReq.ApellidoMaterno),
+                    Telefono = string.IsNullOrWhiteSpace(rawReq.Telefono) ? prevReq.Telefono : Clean(rawReq.Telefono),
+                    Correo = string.IsNullOrWhiteSpace(rawReq.Correo) ? prevReq.Correo : Clean(rawReq.Correo)
+                };
+            }
+            else
+            {
+                uniqueMdbRequesters[aliasKey] = new MdbRequesterRow
+                {
+                    LegacyIdSol = rawReq.LegacyIdSol,
+                    Alias = aliasKey,
+                    Nombre = Clean(rawReq.Nombre),
+                    ApellidoPaterno = Clean(rawReq.ApellidoPaterno),
+                    ApellidoMaterno = Clean(rawReq.ApellidoMaterno),
+                    Telefono = Clean(rawReq.Telefono),
+                    Correo = Clean(rawReq.Correo)
+                };
+            }
+        }
+
         // Solicitantes comparison
-        Dictionary<string, Requester> dbRequestersByAlias = requesters
-            .GetAll(includeInactive: true)
-            .GroupBy(r => Clean(r.Alias), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, Requester> dbRequestersByAlias = fullRewrite
+            ? new Dictionary<string, Requester>(StringComparer.OrdinalIgnoreCase)
+            : requesters
+                .GetAll(includeInactive: true)
+                .GroupBy(r => Clean(r.Alias), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         int newReqCount = 0;
         int updReqCount = 0;
         List<MdbRequesterRow> changedRequesters = [];
-        foreach (MdbRequesterRow r in snapshot.Requesters)
+        foreach (MdbRequesterRow r in uniqueMdbRequesters.Values)
         {
             string aliasKey = Clean(r.Alias);
-            if (string.IsNullOrWhiteSpace(aliasKey)) continue;
-
-            if (dbRequestersByAlias.TryGetValue(aliasKey, out Requester? existingReq))
+            if (!fullRewrite && dbRequestersByAlias.TryGetValue(aliasKey, out Requester? existingReq))
             {
                 string finNom = PickField(r.Nombre, Clean(existingReq.Nombre), options.OverwriteWithEmptyValues);
                 string finPat = PickField(r.ApellidoPaterno, Clean(existingReq.ApellidoPaterno), options.OverwriteWithEmptyValues);
@@ -523,10 +671,10 @@ public sealed class MdbImportService(
             }
         }
 
-        // WorkOrders comparison (por n_ot único)
-        HashSet<int> existingOtNumbers = LoadExistingOtNumbers();
+        // WorkOrders comparison (por n_ot único en modo incremental; todas en modo reescritura completa)
+        HashSet<int> existingOtNumbers = fullRewrite ? [] : LoadExistingOtNumbers();
         List<MdbWorkOrderRow> newWorkOrders = snapshot.WorkOrders
-            .Where(ot => !existingOtNumbers.Contains(ot.NumeroOt))
+            .Where(ot => fullRewrite || !existingOtNumbers.Contains(ot.NumeroOt))
             .OrderBy(ot => ot.FechaOt)
             .ThenBy(ot => ot.NumeroOt)
             .ToList();
@@ -540,12 +688,15 @@ public sealed class MdbImportService(
         {
             MdbPath = snapshot.MdbPath,
             MdbFileSizeBytes = snapshot.FileSizeBytes,
+            IsFullRewriteMode = fullRewrite,
             MdbProvidersTotal = uniqueMdbProviders.Count,
-            DbProvidersBefore = dbProviders.Count,
+            DbProvidersBefore = dbCounts.ProvidersCount,
+            DbRequestersBefore = dbCounts.RequestersCount,
+            DbWorkOrdersBefore = dbCounts.WorkOrdersCount,
             NewProvidersCount = newCount,
             UpdatedProvidersCount = updCount,
             UnchangedProvidersCount = unchangedCount,
-            MdbRequestersTotal = snapshot.Requesters.Count,
+            MdbRequestersTotal = uniqueMdbRequesters.Count,
             NewRequestersCount = newReqCount,
             UpdatedRequestersCount = updReqCount,
             MdbWorkOrdersTotal = snapshot.WorkOrders.Count,
@@ -559,6 +710,65 @@ public sealed class MdbImportService(
         };
 
         return (preview, snapshot);
+    }
+
+    private string CreateSafetyBackup(string prefix)
+    {
+        string dbDir = Path.GetDirectoryName(factory.DatabasePath) ?? AppContext.BaseDirectory;
+        string backupDir = Path.Combine(dbDir, "backups");
+        Directory.CreateDirectory(backupDir);
+        string backupPath = Path.Combine(backupDir, $"{prefix}_{DateTime.Now:yyyyMMdd_HHmmss}.db");
+        factory.BackupTo(backupPath);
+        return backupPath;
+    }
+
+    private OperationalDatabaseCounts ReadOperationalCounts()
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        int prov = ExecuteScalarCount(conn, "SELECT COUNT(*) FROM Proveedores;");
+        int sol = ExecuteScalarCount(conn, "SELECT COUNT(*) FROM Solicitantes;");
+        int ot = ExecuteScalarCount(conn, "SELECT COUNT(*) FROM OrdenesTrabajo;");
+        int det = ExecuteScalarCount(conn, "SELECT COUNT(*) FROM DetalleOT;");
+        return new OperationalDatabaseCounts(prov, sol, ot, det);
+    }
+
+    private static int ExecuteScalarCount(SqliteConnection conn, string sql)
+    {
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = sql;
+        return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+    }
+
+    private static void ClearOperationalTables(SqliteConnection conn, SqliteTransaction tx)
+    {
+        string[] statements =
+        [
+            "DELETE FROM VistoBueno;",
+            "DELETE FROM DetalleOT;",
+            "DELETE FROM OrdenesTrabajo;",
+            "DELETE FROM Solicitantes;",
+            "DELETE FROM Proveedores;"
+        ];
+
+        foreach (string sql in statements)
+        {
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.ExecuteNonQuery();
+        }
+
+        // Reiniciar autoincrement de las tablas operativas si existe sqlite_sequence
+        using SqliteCommand chkSeq = conn.CreateCommand();
+        chkSeq.Transaction = tx;
+        chkSeq.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence';";
+        if (Convert.ToInt64(chkSeq.ExecuteScalar(), CultureInfo.InvariantCulture) > 0)
+        {
+            using SqliteCommand resetSeq = conn.CreateCommand();
+            resetSeq.Transaction = tx;
+            resetSeq.CommandText = "DELETE FROM sqlite_sequence WHERE name IN ('VistoBueno', 'DetalleOT', 'OrdenesTrabajo', 'Solicitantes', 'Proveedores');";
+            resetSeq.ExecuteNonQuery();
+        }
     }
 
     private HashSet<int> LoadExistingOtNumbers()

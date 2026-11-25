@@ -391,6 +391,183 @@ public sealed class MdbImportTests
             temp.Context.MdbImportService.AnalyzeMdb(opSession, @"C:\fake\OT_PROV.mdb"));
         Assert.Throws<UnauthorizedAccessException>(() =>
             temp.Context.MdbImportService.ApplyImport(opSession, @"C:\fake\OT_PROV.mdb"));
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            temp.Context.MdbImportService.GetOperationalCounts(opSession));
+        Assert.Throws<UnauthorizedAccessException>(() =>
+            temp.Context.MdbImportService.CleanOperationalDatabase(opSession, createBackup: false));
+    }
+
+    [Fact]
+    public void CleanOperationalDatabase_ClearsOperationalDataPreservesSecurityAssetsAndConfigCreatesBackupAndAudits()
+    {
+        using TempTestDatabase temp = new(copyMigratedRealDb: false);
+        UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
+
+        int provId = temp.Context.Providers.Create(new Provider { Nombre = "PROV VIEJO", Direccion = "Av 1", Activo = true });
+        int solId = temp.Context.Requesters.Create(new Requester { Alias = "OldSol", Nombre = "Juan", ApellidoPaterno = "Viejo", Activo = true });
+        int plantId = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA CONSERVADA", AssetNodeTypes.Planta);
+
+        WorkOrder ot = new()
+        {
+            NumeroOt = 77001,
+            IdProv = provId,
+            IdSol = solId,
+            FechaOt = DateTime.Today,
+            Detalles = [new WorkOrderDetail { Cantidad = 2, Descripcion = "Trabajo a limpiar" }]
+        };
+        ot.SetLevels([1, plantId]);
+        temp.Context.WorkOrderService.Create(admin, ot);
+
+        temp.Context.SystemConfigService.SaveConfiguration(admin, new AppSettings
+        {
+            DatabasePath = temp.DbPath,
+            CompanyName = "EMPRESA CONSERVADA S.A.",
+            CompanyRut = "91.438.000-6",
+            CompanyDepartment = "MANTENCION",
+            CompanyAddress = "Placilla 777"
+        });
+
+        OperationalDatabaseCounts before = temp.Context.MdbImportService.GetOperationalCounts(admin);
+        Assert.Equal(1, before.ProvidersCount);
+        Assert.Equal(1, before.RequestersCount);
+        Assert.Equal(1, before.WorkOrdersCount);
+        Assert.Equal(1, before.WorkOrderDetailsCount);
+
+        MdbDatabaseCleanResult cleanRes = temp.Context.MdbImportService.CleanOperationalDatabase(admin, createBackup: true);
+
+        Assert.Equal(1, cleanRes.ProvidersDeleted);
+        Assert.Equal(1, cleanRes.RequestersDeleted);
+        Assert.Equal(1, cleanRes.WorkOrdersDeleted);
+        Assert.Equal(1, cleanRes.WorkOrderDetailsDeleted);
+        Assert.False(string.IsNullOrWhiteSpace(cleanRes.BackupPath));
+        Assert.True(File.Exists(cleanRes.BackupPath!));
+
+        OperationalDatabaseCounts after = temp.Context.MdbImportService.GetOperationalCounts(admin);
+        Assert.Equal(0, after.ProvidersCount);
+        Assert.Equal(0, after.RequestersCount);
+        Assert.Equal(0, after.WorkOrdersCount);
+        Assert.Equal(0, after.WorkOrderDetailsCount);
+
+        // Usuarios, Árbol de Activos, Configuración del Sistema y Auditoría permanecen intactos
+        Assert.NotNull(temp.Context.Users.GetByAlias("admin"));
+        Assert.NotNull(temp.Context.AssetTree.GetById(plantId));
+        Assert.Equal("EMPRESA CONSERVADA S.A.", temp.Context.SystemConfig.GetValue("CompanyName"));
+        Assert.Contains(temp.Context.Audit.GetRecent(20), a => a.Accion == "LIMPIAR_BD_OPERATIVA");
+    }
+
+    [Fact]
+    public void ApplyImport_RewriteAllFromMdb_ReplacesOperationalDataAtomicallyAndPreservesAdminUsersAndAssets()
+    {
+        using TempTestDatabase temp = new(copyMigratedRealDb: false);
+        UserSession admin = temp.Context.AuthService.Login("admin", "Admin2026!").Session!;
+
+        int plantId = temp.Context.AssetTreeService.AddChild(admin, 1, "PLANTA REWRITE", AssetNodeTypes.Planta);
+        int oldProvId = temp.Context.Providers.Create(new Provider { Nombre = "PROV OBSOLETO A BORRAR", Direccion = "Vieja 99", Activo = true });
+        int oldSolId = temp.Context.Requesters.Create(new Requester { Alias = "SolObsoleto", Nombre = "Viejo", ApellidoPaterno = "Sol", Activo = true });
+
+        WorkOrder oldOt = new()
+        {
+            NumeroOt = 55555,
+            IdProv = oldProvId,
+            IdSol = oldSolId,
+            FechaOt = DateTime.Today.AddDays(-10),
+            Detalles = [new WorkOrderDetail { Cantidad = 1, Descripcion = "OT obsoleta a eliminar" }]
+        };
+        oldOt.SetLevels([1, plantId]);
+        temp.Context.WorkOrderService.Create(admin, oldOt);
+
+        FakeMdbReader fakeReader = new(new MdbSnapshot
+        {
+            MdbPath = @"C:\fake\OT_PROV_LIMPIO.mdb",
+            FileSizeBytes = 4096,
+            Providers =
+            [
+                new MdbProviderRow { LegacyIdProv = 101, Nombre = "PROV LIMPIO UNO", Direccion = "Calle Nueva 1", Telefono = "3221111", Correo = "uno@prov.cl" },
+                new MdbProviderRow { LegacyIdProv = 102, Nombre = "PROV LIMPIO DOS", Direccion = "Calle Nueva 2", Telefono = "3222222", Correo = "dos@prov.cl" }
+            ],
+            Requesters =
+            [
+                new MdbRequesterRow { LegacyIdSol = 10, Alias = "SolNuevo", Nombre = "Ana", ApellidoPaterno = "Torres", Telefono = "900111", Correo = "ana@cambiaso.cl" },
+                new MdbRequesterRow { LegacyIdSol = 11, Alias = "solnuevo", Nombre = "Ana", ApellidoPaterno = "Torres", Telefono = "", Correo = "" } // Duplicado consolidado
+            ],
+            WorkOrders =
+            [
+                new MdbWorkOrderRow
+                {
+                    LegacyIdOt = 3001,
+                    NumeroOt = 90001,
+                    LegacyIdProv = 101,
+                    LegacyIdSol = 11, // Referencia al duplicado consolidado -> debe mapear bien
+                    FechaOt = new DateTime(2026, 11, 25),
+                    ActivoFlag = true,
+                    IdN1 = 1,
+                    IdN2 = plantId,
+                    IdNivel = 2
+                }
+            ],
+            WorkOrderDetails =
+            [
+                new MdbWorkOrderDetailRow { LegacyIdDet = 1, LegacyIdOt = 3001, Cantidad = 4, Detalle = "Mecanizado limpio desde cero", EstadoDet = true }
+            ]
+        });
+
+        MdbImportService service = new(
+            temp.Context.ConnectionFactory,
+            temp.Context.Providers,
+            temp.Context.Requesters,
+            temp.Context.Audit,
+            fakeReader,
+            temp.Context.SyncHub,
+            temp.Context.Users);
+
+        MdbImportOptions rewriteOpts = new()
+        {
+            RewriteAllFromMdb = true,
+            SyncNewRequesters = true,
+            SyncNewWorkOrders = true,
+            CreateBackupBeforeApply = true
+        };
+
+        MdbImportPreview preview = service.AnalyzeMdb(admin, @"C:\fake\OT_PROV_LIMPIO.mdb", rewriteOpts);
+        Assert.True(preview.IsFullRewriteMode);
+        Assert.Equal(2, preview.NewProvidersCount);
+        Assert.Equal(0, preview.UnchangedProvidersCount);
+        Assert.Equal(1, preview.NewRequestersCount); // Duplicado consolidado
+        Assert.Equal(1, preview.NewWorkOrdersCount);
+        Assert.Contains(preview.Warnings, w => w.Contains("REESCRITURA COMPLETA", StringComparison.Ordinal));
+
+        MdbImportResult result = service.ApplyImport(admin, @"C:\fake\OT_PROV_LIMPIO.mdb", rewriteOpts);
+
+        Assert.True(result.WasFullRewrite);
+        Assert.Equal(1, result.ProvidersCleared);
+        Assert.Equal(1, result.RequestersCleared);
+        Assert.Equal(1, result.WorkOrdersCleared);
+        Assert.Equal(2, result.ProvidersInserted);
+        Assert.Equal(0, result.ProvidersUpdated);
+        Assert.Equal(1, result.RequestersInserted);
+        Assert.Equal(1, result.WorkOrdersInserted);
+        Assert.Equal(1, result.WorkOrderDetailsInserted);
+        Assert.Equal(2, result.DbProvidersAfter);
+        Assert.Equal(1, result.DbWorkOrdersAfter);
+        Assert.False(string.IsNullOrWhiteSpace(result.BackupPath));
+        Assert.True(File.Exists(result.BackupPath!));
+
+        // Registros obsoletos eliminados y registros nuevos limpios presentes
+        Assert.Null(temp.Context.Providers.GetByName("PROV OBSOLETO A BORRAR"));
+        Assert.Null(temp.Context.WorkOrders.GetByNumber(55555));
+        Assert.NotNull(temp.Context.Providers.GetByName("PROV LIMPIO UNO"));
+        Assert.NotNull(temp.Context.Providers.GetByName("PROV LIMPIO DOS"));
+
+        WorkOrder cleanOt = temp.Context.WorkOrders.GetByNumber(90001)!;
+        Assert.Equal(WorkOrderStatus.Terminada, cleanOt.Estado);
+        Assert.Equal("SolNuevo", cleanOt.AliasSolicitante);
+        Assert.Single(cleanOt.Detalles);
+        Assert.Equal("Mecanizado limpio desde cero", cleanOt.Detalles[0].Descripcion);
+
+        // Seguridad y Activos intactos
+        Assert.NotNull(temp.Context.Users.GetByAlias("admin"));
+        Assert.NotNull(temp.Context.AssetTree.GetById(plantId));
+        Assert.Contains(temp.Context.Audit.GetRecent(20), a => a.Accion == "REESCRIBIR_BD_DESDE_MDB");
     }
 
     [Fact]
@@ -425,11 +602,23 @@ public sealed class MdbImportTests
             dlg.CreateControl();
             Assert.NotNull(dlg.BtnBrowse.Image);
             Assert.NotNull(dlg.BtnAnalyze.Image);
+            Assert.NotNull(dlg.BtnCleanDb.Image);
             Assert.NotNull(dlg.BtnApply.Image);
             Assert.NotNull(dlg.BtnClose.Image);
             Assert.False(dlg.BtnApply.Enabled);
+            Assert.True(dlg.BtnCleanDb.Enabled);
             Assert.Equal("Examinar...", dlg.BtnBrowse.Text);
             Assert.Equal("Analizar MDB", dlg.BtnAnalyze.Text);
+            Assert.Equal("Limpiar sispro.db", dlg.BtnCleanDb.Text);
+            Assert.Equal("Actualizar BD desde MDB", dlg.BtnApply.Text);
+
+            // Al activar modo reescritura completa cambia etiqueta del botón principal
+            dlg.ChkRewriteAll.Checked = true;
+            Application.DoEvents();
+            Assert.Equal("Reescribir BD desde MDB", dlg.BtnApply.Text);
+
+            dlg.ChkRewriteAll.Checked = false;
+            Application.DoEvents();
             Assert.Equal("Actualizar BD desde MDB", dlg.BtnApply.Text);
         });
     }

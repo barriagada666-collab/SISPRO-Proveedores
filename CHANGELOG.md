@@ -2,6 +2,23 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.6.2] — 2026-11-25
+
+### Agregado y Mejorado
+- **Importación Access (`.mdb`) con Reescritura Completa y Limpieza de `sispro.db` (`MdbImportDtos`, `MdbImportService`, `MdbImportDialog`)**:
+  - Nueva opción **Reescribir todo desde cero al importar (`RewriteAllFromMdb`)**: limpia atómicamente `VistoBueno`, `DetalleOT`, `OrdenesTrabajo`, `Solicitantes` y `Proveedores` dentro de una sola transacción SQLite e importa todo el contenido del `.mdb` desde cero (deduplicando proveedores y solicitantes con preservación de capitalización), con respaldo automático previo (`backups/sispro_pre_mdb_rewrite_*.db`), auditoría `REESCRIBIR_BD_DESDE_MDB` y refresco vía `SisproSyncHub`.
+  - Nuevo botón **Limpiar `sispro.db`** (`CleanOperationalDatabase`, exclusivo Administrador): vacía las tablas operativas dejando la base lista para una importación limpia desde cero, conservando intactos `Usuarios`, `Permisos`, `Niveles`, `Grupos`, `Activos`, `ConfiguracionSistema` y `AuditLog`, con respaldo previo (`backups/sispro_pre_limpieza_*.db`) y auditoría `LIMPIAR_BD_OPERATIVA`.
+- **Estabilización de Publicación `win-x64` e Instalador `v4.6.2` (`Sispro.UI.csproj`, `Setup_SISPRO.iss`)**:
+  - Agregado `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>` en `src/Sispro.UI/Sispro.UI.csproj` para eliminar `NETSDK1047` tras restauraciones `AnyCPU` / `dotnet list --vulnerable`.
+  - Actualizados textos en español, licencia corporativa, pantalla informativa y banner del instalador a `v4.6.2`, e incorporada la carpeta de evidencias sanitizadas `docs/evidencias/v4.6.2/`.
+
+### Verificado
+- **Compilación y Análisis Estático**: `Debug` y `Release` (`--no-incremental`) con `0` errores, `0` advertencias, `0` supresiones y `0` vulnerabilidades NuGet.
+- **Suite Automatizada (`Release`)**: `83 / 83` pruebas `xUnit` aprobadas (`0` fallidas, `0` omitidas).
+- **Instalador `SISPRO_Setup_v4.6.2_win-x64.exe` (Inno Setup `7.1.1`)**: `58.014.333` bytes (`SHA-256`: `D36400B36B971CC5599E5D8BCEB97E7A1309EB40BFBC554F1FA2EA0BC00B63DF`), validadas instalación silenciosa (`4.6.2.0`), preservación de `Data\sispro.db` en actualización y desinstalación limpia.
+
+---
+
 ## [4.6.1] — 2026-11-25
 
 ### Agregado y Mejorado

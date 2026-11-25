@@ -110,14 +110,47 @@ public sealed class MdbImportOptions
     public bool SyncNewRequesters { get; set; } = true;
     public bool SyncNewWorkOrders { get; set; }
     public bool CreateBackupBeforeApply { get; set; } = true;
+
+    /// <summary>
+    /// Cuando es true, limpia las tablas operativas de sispro.db (Proveedores, Solicitantes,
+    /// OrdenesTrabajo, DetalleOT y VistoBueno) dentro de la misma transacción e importa todo
+    /// el contenido del MDB desde cero, preservando Usuarios, Permisos, Grupos, Activos,
+    /// Configuración del Sistema y Auditoría.
+    /// </summary>
+    public bool RewriteAllFromMdb { get; set; }
+}
+
+public sealed record OperationalDatabaseCounts(
+    int ProvidersCount,
+    int RequestersCount,
+    int WorkOrdersCount,
+    int WorkOrderDetailsCount);
+
+public sealed class MdbDatabaseCleanResult
+{
+    public string? BackupPath { get; init; }
+    public int ProvidersDeleted { get; init; }
+    public int RequestersDeleted { get; init; }
+    public int WorkOrdersDeleted { get; init; }
+    public int WorkOrderDetailsDeleted { get; init; }
+
+    public int TotalDeleted => ProvidersDeleted + RequestersDeleted + WorkOrdersDeleted + WorkOrderDetailsDeleted;
+
+    public string BuildSummaryText() =>
+        $"Proveedores eliminados: {ProvidersDeleted} | Solicitantes eliminados: {RequestersDeleted}\n" +
+        $"Órdenes de trabajo eliminadas: {WorkOrdersDeleted} ({WorkOrderDetailsDeleted} ítems de detalle)\n" +
+        "Conservados intactos: Usuarios, Perfiles, Grupos, Árbol de Activos, Configuración del Sistema y Auditoría.";
 }
 
 public sealed class MdbImportPreview
 {
     public string MdbPath { get; init; } = string.Empty;
     public long MdbFileSizeBytes { get; init; }
+    public bool IsFullRewriteMode { get; init; }
     public int MdbProvidersTotal { get; init; }
     public int DbProvidersBefore { get; init; }
+    public int DbRequestersBefore { get; init; }
+    public int DbWorkOrdersBefore { get; init; }
     public int NewProvidersCount { get; init; }
     public int UpdatedProvidersCount { get; init; }
     public int UnchangedProvidersCount { get; init; }
@@ -135,16 +168,22 @@ public sealed class MdbImportPreview
 
     public int TotalProviderChanges => NewProvidersCount + UpdatedProvidersCount;
 
-    public string BuildSummaryText() =>
-        $"Proveedores MDB: {MdbProvidersTotal} | En BD actual: {DbProvidersBefore} | " +
-        $"Nuevos: {NewProvidersCount} | Para actualizar: {UpdatedProvidersCount} | Sin cambios: {UnchangedProvidersCount} | " +
-        $"Solicitantes nuevos: {NewRequestersCount} | OTs nuevas en MDB: {NewWorkOrdersCount} ({NewWorkOrderDetailsCount} ítems)";
+    public string BuildSummaryText() => IsFullRewriteMode
+        ? $"MODO REESCRITURA COMPLETA | Se reemplazarán {DbProvidersBefore} prov., {DbRequestersBefore} sol. y {DbWorkOrdersBefore} OTs por: " +
+          $"{NewProvidersCount} proveedores, {NewRequestersCount} solicitantes y {NewWorkOrdersCount} OTs ({NewWorkOrderDetailsCount} ítems) desde MDB."
+        : $"Proveedores MDB: {MdbProvidersTotal} | En BD actual: {DbProvidersBefore} | " +
+          $"Nuevos: {NewProvidersCount} | Para actualizar: {UpdatedProvidersCount} | Sin cambios: {UnchangedProvidersCount} | " +
+          $"Solicitantes nuevos: {NewRequestersCount} | OTs nuevas en MDB: {NewWorkOrdersCount} ({NewWorkOrderDetailsCount} ítems)";
 }
 
 public sealed class MdbImportResult
 {
     public string MdbPath { get; init; } = string.Empty;
     public string? BackupPath { get; init; }
+    public bool WasFullRewrite { get; init; }
+    public int ProvidersCleared { get; init; }
+    public int RequestersCleared { get; init; }
+    public int WorkOrdersCleared { get; init; }
     public int ProvidersInserted { get; init; }
     public int ProvidersUpdated { get; init; }
     public int ProvidersUnchanged { get; init; }
@@ -156,8 +195,14 @@ public sealed class MdbImportResult
     public int DbWorkOrdersAfter { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
-    public string BuildSummaryText() =>
-        $"Proveedores agregados: {ProvidersInserted} | Proveedores actualizados: {ProvidersUpdated} | Sin cambios: {ProvidersUnchanged}\n" +
-        $"Solicitantes agregados/actualizados: {RequestersInserted}/{RequestersUpdated} | OTs agregadas: {WorkOrdersInserted} ({WorkOrderDetailsInserted} ítems)\n" +
-        $"Total en BD ahora: {DbProvidersAfter} proveedores y {DbWorkOrdersAfter} órdenes de trabajo.";
+    public string BuildSummaryText()
+    {
+        string rewriteHeader = WasFullRewrite
+            ? $"Reescritura limpia ejecutada (eliminados previamente: {ProvidersCleared} prov., {RequestersCleared} sol., {WorkOrdersCleared} OTs).\n"
+            : string.Empty;
+        return rewriteHeader +
+               $"Proveedores agregados: {ProvidersInserted} | Proveedores actualizados: {ProvidersUpdated} | Sin cambios: {ProvidersUnchanged}\n" +
+               $"Solicitantes agregados/actualizados: {RequestersInserted}/{RequestersUpdated} | OTs agregadas: {WorkOrdersInserted} ({WorkOrderDetailsInserted} ítems)\n" +
+               $"Total en BD ahora: {DbProvidersAfter} proveedores y {DbWorkOrdersAfter} órdenes de trabajo.";
+    }
 }
