@@ -47,7 +47,7 @@ public sealed class WorkOrderDetailDialog : Form
         };
         header.Controls.Add(new Label
         {
-            Text = $"Orden de Trabajo {order.TipoOrden} N° {order.NumeroOt:D6} — Estado: {order.Estado}",
+            Text = $"Orden de Trabajo {order.TipoOrden} N° {order.NumeroOt:D6} — Estado: {order.Estado.ToDisplayName()}",
             Font = CambiasoTheme.SectionFont,
             ForeColor = Color.White,
             AutoSize = true,
@@ -89,7 +89,7 @@ public sealed class WorkOrderDetailDialog : Form
         genTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
         genTbl.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
 
-        AddPair(genTbl, 0, "N° OT:", order.NumeroOt.ToString(CultureInfo.InvariantCulture), "Tipo / Estado:", $"OT {order.TipoOrden} · {order.Estado}");
+        AddPair(genTbl, 0, "N° OT:", order.NumeroOt.ToString(CultureInfo.InvariantCulture), "Tipo / Estado:", $"OT {order.TipoOrden} · {order.Estado.ToDisplayName()}");
         AddPair(genTbl, 1, "Fecha:", order.FechaOt.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture), "Solicitante:", $"{order.SolicitanteDisplayNombre} ({order.CorreoSolicitante})");
         AddPair(genTbl, 2, "Proveedor:", order.NombreProveedor, "Dirección / Mail:", $"{order.DireccionProveedor} · {order.CorreoProveedor}".Trim(' ', '·'));
         AddPair(genTbl, 3, "Ruta Activo:", string.IsNullOrWhiteSpace(order.RutaActivo) ? "(Sin ruta)" : order.RutaActivo, "Teléfono Sol.:", string.IsNullOrWhiteSpace(order.TelefonoSolicitante) ? "-" : order.TelefonoSolicitante);

@@ -139,7 +139,7 @@ public sealed class DocumentExportService(
                     detalleConsolidado,
                     o.Observacion,
                     o.MostrarValorNeto ? o.ValorNeto : null,
-                    o.Estado.ToString(),
+                    o.Estado.ToDisplayName(),
                     o.FirmasSeleccionadas.FormatResumen()
                 };
             }).ToList()
@@ -376,7 +376,7 @@ public sealed class DocumentExportService(
                     row.Add(order.ValorNeto);
                 }
 
-                row.Add(order.Estado.ToString());
+                row.Add(order.Estado.ToDisplayName());
                 row.Add(order.FirmasSeleccionadas.FormatResumen());
                 row.Add(order.RutaActivo);
                 return row.ToArray();

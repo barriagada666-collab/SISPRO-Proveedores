@@ -1,14 +1,14 @@
-# SISPRO v4.6.0 — Sistema de Gestión de Proveedores, Órdenes de Trabajo y Solicitantes
+# SISPRO v4.6.1 — Sistema de Gestión de Proveedores, Órdenes de Trabajo y Solicitantes
 
 > **Cambiaso Hnos S.A.C. — Departamento Mantención (Placilla, Valparaíso)**  
-> Aplicación de escritorio corporativa en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con **Búsqueda de OT (CRUD completo Externa/Interna)**, control de visibilidad **Mostrar valor neto en OT externa**, navegación administrativa centralizada en **Mantenedores** (`Editor de Árbol`, **Configuración con `Probar / Aplicar / Guardar`** en BD y **Mi Clave**), barra superior simplificada (**Cambiar usuario**, **Acerca de**, **Cerrar sesión**), **Importación y Comparación desde Access (`.mdb`)**, **Firmas al Pie** desde Personal/Usuarios, **Perfiles de Usuarios dinámicos** e instalador **Inno Setup 7**.
+> Aplicación de escritorio corporativa en **.NET 10 (`C#` WinForms · `net10.0-windows10.0.19041.0`)** sobre **SQLite 3 (WAL)**, con **Búsqueda de OT (CRUD completo Externa/Interna)**, **gestión de 6 estados de OT (`Abierta`, `En Curso`, `Modificada`, `Terminada`, `Cerrada`, `Anulada`) al ingresar, editar y por clic derecho**, control de visibilidad **Mostrar valor neto en OT externa**, navegación administrativa centralizada en **Mantenedores** (`Editor de Árbol`, **Configuración con `Probar / Aplicar / Guardar`** en BD y **Mi Clave**), barra superior simplificada (**Cambiar usuario**, **Acerca de**, **Cerrar sesión**), **Importación y Comparación desde Access (`.mdb`)**, **Firmas al Pie** desde Personal/Usuarios, **Perfiles de Usuarios dinámicos** e instalador **Inno Setup 7**.
 
 ---
 
 ## Características Principales
 
-- **Panel de Control y Barra Superior Simplificada:** Barra superior derecha con únicamente **Cambiar usuario** (cambio de cuenta en caliente sin cerrar la aplicación), **Acerca de** (metadatos centralizados de versión y fecha) y **Cerrar sesión**. Dashboard con 5 KPIs clicables, 3 gráficos vectoriales High-DPI y tabla de OTs recientes.
-- **Trabajos Externos (`M1`) — Búsqueda CRUD Completa e Ingreso / Edición:** Pestaña principal **Búsqueda de OT** con barra CRUD completa (**Nuevo**, **Consultar**, **Editar**, **Eliminar**), selección múltiple y exportación exclusiva de OTs seleccionadas (`.xlsx`, `.csv`, `.pdf`). En **Ingreso / Edición de OT**, soporte para OTs **Externa** e **Interna**, checkbox **Mostrar valor neto en OT externa** (oculta el campo y omite `VALOR NETO` en plantillas PDF/Word/Excel/CSV/Vista Previa **sin borrar datos económicos** en SQLite), **Guardar y Exportar**, **Vista Previa** directa y selector de firmantes (`Jefatura`, `Técnico`, `Supervisor`).
+- **Panel de Control y Barra Superior Simplificada:** Barra superior derecha con únicamente **Cambiar usuario** (cambio de cuenta en caliente sin cerrar la aplicación), **Acerca de** (metadatos centralizados de versión y fecha) y **Cerrar sesión**. Dashboard con 5 KPIs clicables, 3 gráficos vectoriales High-DPI y tabla de OTs recientes con columna **Estado** y **clic derecho → Cambiar estado / Visualizar OT**.
+- **Trabajos Externos (`M1`) — Búsqueda CRUD Completa, Estados e Ingreso / Edición:** Pestaña principal **Búsqueda de OT** con barra CRUD completa (**Nuevo**, **Consultar**, **Editar**, **Eliminar**), filtro por **Estado**, menú de **clic derecho → Cambiar estado** (individual o masivo para `Abierta`, `En Curso`, `Modificada`, `Terminada`, `Cerrada` y `Anulada`), selección múltiple y exportación exclusiva de OTs seleccionadas (`.xlsx`, `.csv`, `.pdf`). En **Ingreso / Edición de OT**, selector de **Estado**, soporte para OTs **Externa** e **Interna**, checkbox **Mostrar valor neto en OT externa** (oculta el campo y omite `VALOR NETO` en plantillas PDF/Word/Excel/CSV/Vista Previa **sin borrar datos económicos** en SQLite), **Guardar y Exportar**, **Vista Previa** directa y selector de firmantes (`Jefatura`, `Técnico`, `Supervisor`).
 - **Mantenedores Centralizados (`M2`) y Administración:** 7 pestañas gobernadas por RBAC: **Proveedores** (incluye **Importar MDB**), **Solicitantes**, **Firmas**, **Árbol de Activos**, **Editor de Árbol** (exclusivo Administrador), **Configuración** (exclusivo Administrador, con **Probar**, **Aplicar** temporal y **Guardar** centralizado en SQLite `ConfiguracionSistema`) y **Mi Clave** (disponible para todos los usuarios autenticados).
 - **Importación y Actualización desde Microsoft Access (`.mdb`) (Exclusivo Administrador):** Accesible desde **Mantenedores → Proveedores → `Importar MDB`** y **Mantenedores → Configuración → `Importar MDB`**. Analiza el `.mdb` antes de escribir cambios y actualiza `sispro.db` en una transacción atómica con respaldo automático previo (`backups/sispro_pre_mdb_*.db`).
 - **Perfiles, Usuarios y Grupos (Exclusivo Administrador):** Pestaña **Perfiles de Usuarios** para crear/editar perfiles personalizados; **Usuarios y Grupos** con Drag & Drop y acciones por lotes; **Solicitados Por y Firmas Digitales** (`PNG`, `JPG`, `PDF` rasterizado vía `Windows.Data.Pdf`).
@@ -24,7 +24,7 @@
 | Persistencia | `src/Sispro.Data` | `Microsoft.Data.Sqlite 10.0.15` + `SQLitePCLRaw.lib.e_sqlite3 2.1.14` | Esquema WAL idempotente (`ConfiguracionSistema`, `OrdenesTrabajo.mostrar_valor_neto`, `tipo_ot`), respaldos en caliente y 9 repositorios parametrizados. |
 | Negocio y Reportes | `src/Sispro.Services` | `ClosedXML 0.105.1` + `DocumentFormat.OpenXml 3.1.1` + `Windows.Data.Pdf` | Servicios RBAC transaccionales, `SystemConfigService`, `MdbImportService` (`SysWOW64`), `SisproSyncHub`, exportadores `.xlsx`/`.pdf`/`.docx`/`.csv` e impresión. |
 | Interfaz | `src/Sispro.UI` | WinForms `net10.0-windows10.0.19041.0` (`PerMonitorV2`) | Identidad Cambiaso (`#0A263C`, `#0E4163`, `#0089B6`, `#C8A977`), fuentes GDI+ cacheadas, 57 íconos Lucide, `SystemSettingsControl`, `MyPasswordControl`, `AboutDialog`, `WorkOrderDetailDialog` y vistas modulares. |
-| Pruebas | `tests/Sispro.Tests` | `xUnit` | **80 pruebas automatizadas** (Unit, Integration, Sync/Concurrency, Functional incl. Navegación/Configuración/Valor Neto/CRUD OT/Importación `.mdb`/Perfiles/Firmantes, UI STA, Regression y Stress). |
+| Pruebas | `tests/Sispro.Tests` | `xUnit` | **81 pruebas automatizadas** (Unit, Integration, Sync/Concurrency, Functional incl. Estados OT/Navegación/Configuración/Valor Neto/CRUD OT/Importación `.mdb`/Perfiles/Firmantes, UI STA, Regression y Stress). |
 
 ---
 
@@ -32,8 +32,8 @@
 
 - **Sistema Operativo:** Windows 10 (19041+) / Windows 11 de 64 bits (`win-x64`).
 - **Instalador oficial autocontenido (no requiere instalar .NET previamente):**
-  1. Descargar `SISPRO_Setup_v4.6.0_win-x64.exe` desde [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
-  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.0: `34FDA6DE164035C25168837DFD55B63C53A442285DF36A65F6C29DF039472958`).
+  1. Descargar `SISPRO_Setup_v4.6.1_win-x64.exe` desde [Releases](https://github.com/barriagada666-collab/SISPRO-Proveedores/releases).
+  2. Verificar integridad con `checksums_sha256.txt` (`SHA-256` v4.6.1: `8D332C855CBB6CECB85D543C8A327401CBCFF8BD2C49C2E222DD5AFF409CA77D`).
   3. Ejecutar el asistente (**ruta predeterminada:** `C:\Temp`, modificable). Las actualizaciones y desinstalaciones preservan íntegramente `sispro.db`.
 
 ---
@@ -81,10 +81,10 @@
 dotnet build SISPRO.sln -c Debug
 dotnet build SISPRO.sln -c Release
 
-# Ejecutar las 80 pruebas automatizadas
+# Ejecutar las 81 pruebas automatizadas
 dotnet test SISPRO.sln -c Release --no-build
 
-# Compilar publicación autocontenida win-x64 + instalador Inno Setup 7 (v4.6.0) + SHA-256
+# Compilar publicación autocontenida win-x64 + instalador Inno Setup 7 (v4.6.1) + SHA-256
 .\scripts\Build-Release.ps1
 ```
 
@@ -92,6 +92,7 @@ dotnet test SISPRO.sln -c Release --no-build
 
 ## Documentación, Versionado e Historial
 
+- [Informe de Entrega `v4.6.1`](docs/INFORME_ENTREGA_v4.6.1.md)
 - [Informe de Entrega `v4.6.0`](docs/INFORME_ENTREGA_v4.6.0.md)
 - [Informe de Entrega `v4.5.0`](docs/INFORME_ENTREGA_v4.5.0.md)
 - [Informe de Entrega `v4.4.0`](docs/INFORME_ENTREGA_v4.4.0.md)

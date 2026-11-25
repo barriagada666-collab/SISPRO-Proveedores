@@ -159,7 +159,7 @@ public sealed partial class WorkOrderService(
         PopulateAssetPath(order);
         int id = workOrders.Create(order);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "CREAR_OT",
-            $"OT N° {order.NumeroOt} creada ({order.Detalles.Count} ítems, Proveedor ID {order.IdProv}, Neto $ {order.ValorNeto:N0}, Firmas: {order.FirmasSeleccionadas.FormatResumen()}).");
+            $"OT N° {order.NumeroOt} creada (Estado: {order.Estado.ToDisplayName()}, {order.Detalles.Count} ítems, Proveedor ID {order.IdProv}, Neto $ {order.ValorNeto:N0}, Firmas: {order.FirmasSeleccionadas.FormatResumen()}).");
         syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "CREAR_OT");
         return id;
     }
@@ -178,8 +178,65 @@ public sealed partial class WorkOrderService(
         PopulateAssetPath(order);
         workOrders.Update(order);
         audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "MODIFICAR_OT",
-            $"OT N° {order.NumeroOt} (ID {order.IdOt}) actualizada ({order.Detalles.Count} ítems, Neto $ {order.ValorNeto:N0}, Firmas: {order.FirmasSeleccionadas.FormatResumen()}).");
+            $"OT N° {order.NumeroOt} (ID {order.IdOt}) actualizada (Estado: {order.Estado.ToDisplayName()}, {order.Detalles.Count} ítems, Neto $ {order.ValorNeto:N0}, Firmas: {order.FirmasSeleccionadas.FormatResumen()}).");
         syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "MODIFICAR_OT");
+    }
+
+    public void UpdateStatus(UserSession session, int idOt, WorkOrderStatus newStatus)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && p.IngresoOt, "Cambiar estado de orden de trabajo");
+        if (!Enum.IsDefined(newStatus))
+        {
+            throw new ArgumentOutOfRangeException(nameof(newStatus), newStatus, "El estado indicado para la OT no es válido.");
+        }
+
+        WorkOrder existing = workOrders.GetById(idOt)
+            ?? throw new InvalidOperationException("La orden de trabajo seleccionada no existe.");
+
+        if (existing.Estado == newStatus)
+        {
+            return;
+        }
+
+        WorkOrderStatus previousStatus = existing.Estado;
+        workOrders.UpdateStatus(idOt, newStatus);
+        audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "CAMBIAR_ESTADO_OT",
+            $"OT N° {existing.NumeroOt} (ID {idOt}): estado cambiado de '{previousStatus.ToDisplayName()}' a '{newStatus.ToDisplayName()}'.");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "CAMBIAR_ESTADO_OT");
+    }
+
+    public int UpdateStatusMany(UserSession session, IReadOnlyCollection<int> idOts, WorkOrderStatus newStatus)
+    {
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && p.IngresoOt, "Cambiar estado de órdenes de trabajo");
+        if (!Enum.IsDefined(newStatus))
+        {
+            throw new ArgumentOutOfRangeException(nameof(newStatus), newStatus, "El estado indicado para la OT no es válido.");
+        }
+
+        if (idOts is null || idOts.Count == 0)
+        {
+            return 0;
+        }
+
+        List<WorkOrder> targets = workOrders.GetByIds(idOts)
+            .Where(o => o.Estado != newStatus)
+            .ToList();
+        if (targets.Count == 0)
+        {
+            return 0;
+        }
+
+        int updated = workOrders.UpdateStatusMany(targets.Select(o => o.IdOt).ToList(), newStatus);
+        string nums = string.Join(", ", targets.Take(10).Select(o => $"#{o.NumeroOt}"));
+        if (targets.Count > 10)
+        {
+            nums += $" (+{targets.Count - 10} más)";
+        }
+
+        audit.Log(session.Usuario.AliasUsuario, "Órdenes de Trabajo", "CAMBIAR_ESTADO_OT_LOTE",
+            $"{updated} OT(s) cambiadas a estado '{newStatus.ToDisplayName()}' [{nums}].");
+        syncHub?.Publish(DataChangeKind.WorkOrders | DataChangeKind.Audit, "CAMBIAR_ESTADO_OT_LOTE");
+        return updated;
     }
 
     public void UpdateSignatures(
@@ -288,6 +345,11 @@ public sealed partial class WorkOrderService(
         if (order.NumeroOt <= 0)
         {
             throw new ArgumentException("Debe ingresar un número de OT válido mayor a cero.");
+        }
+
+        if (!Enum.IsDefined(order.Estado))
+        {
+            throw new ArgumentException("Debe seleccionar un estado de OT válido.");
         }
 
         if (order.ValorNeto < 0m)

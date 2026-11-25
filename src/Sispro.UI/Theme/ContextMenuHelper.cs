@@ -26,6 +26,25 @@ public static class ContextMenuHelper
         };
     }
 
+    public static ToolStripMenuItem SubMenu(
+        string text,
+        AppIcon icon,
+        Color iconColor,
+        IEnumerable<ToolStripItem> children,
+        bool enabled = true)
+    {
+        ToolStripMenuItem parent = new(text, IconCatalog.Get(icon, iconColor, 16))
+        {
+            Enabled = enabled
+        };
+        foreach (ToolStripItem child in NormalizeSeparators(children))
+        {
+            parent.DropDownItems.Add(child);
+        }
+
+        return parent;
+    }
+
     public static ToolStripSeparator Separator() => new();
 
     internal static ContextMenuStrip Show(Control anchor, Point clientLocation, IEnumerable<ToolStripItem> items)

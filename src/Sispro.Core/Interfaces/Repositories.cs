@@ -118,6 +118,8 @@ public interface IWorkOrderRepository
     int GetNextWorkOrderNumber();
     int Create(WorkOrder workOrder);
     void Update(WorkOrder workOrder);
+    void UpdateStatus(int idOt, WorkOrderStatus newStatus);
+    int UpdateStatusMany(IReadOnlyCollection<int> idOts, WorkOrderStatus newStatus);
     void UpdateSignatures(
         int idOt,
         SignatureOption firmas,

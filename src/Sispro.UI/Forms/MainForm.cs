@@ -634,7 +634,7 @@ public sealed class MainForm : Form
         chartsRow.Controls.Add(_chartTopProviders, 2, 0);
 
         // 4. Recent Work Orders Grid
-        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para editar · clic derecho para visualizar)");
+        GroupBox grpRecent = CambiasoTheme.CreateGroupBox("Últimas Órdenes de Trabajo Registradas (doble clic para editar · clic derecho para cambiar estado o visualizar)");
         grpRecent.Dock = DockStyle.Fill;
         _gridRecentOts = new DataGridView { Dock = DockStyle.Fill };
         CambiasoTheme.StyleGrid(_gridRecentOts);
@@ -649,11 +649,28 @@ public sealed class MainForm : Form
         _gridRecentOts.CellFormatting += (_, e) =>
         {
             WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridRecentOts, e.RowIndex);
-            if (row is null || e.CellStyle is null) return;
-            if (e.ColumnIndex == 7)
+            if (row is null || e.CellStyle is null || e.ColumnIndex < 0 || e.ColumnIndex >= _gridRecentOts.Columns.Count) return;
+
+            string prop = _gridRecentOts.Columns[e.ColumnIndex].DataPropertyName;
+            if (string.Equals(prop, nameof(RecentOtGridRow.Estado), StringComparison.Ordinal))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = CambiasoTheme.PrimaryDark;
+                e.CellStyle.ForeColor = WorkOrderStatusUi.GetColor(row.Estado);
+            }
+            else if (string.Equals(prop, nameof(RecentOtGridRow.ValorNeto), StringComparison.Ordinal))
+            {
+                if (!row.MostrarValorNeto)
+                {
+                    e.Value = "Oculto";
+                    e.FormattingApplied = true;
+                    e.CellStyle.Font = CambiasoTheme.SmallItalicFont;
+                    e.CellStyle.ForeColor = CambiasoTheme.TextMuted;
+                }
+                else
+                {
+                    e.CellStyle.Font = CambiasoTheme.LabelFont;
+                    e.CellStyle.ForeColor = CambiasoTheme.PrimaryDark;
+                }
             }
         };
         ContextMenuHelper.AttachToGrid(_gridRecentOts, rowIndex =>
@@ -664,11 +681,14 @@ public sealed class MainForm : Form
                 return [];
             }
 
+            int idOt = row.IdOt;
             int numOt = row.NumeroOt;
+            bool canEdit = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
             return
             [
                 ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt),
+                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => ShowWorkOrders(numOt), enabled: canEdit),
+                WorkOrderStatusUi.BuildChangeStatusMenu(row.Estado, canEdit, newStatus => ChangeDashboardOrderStatus(idOt, numOt, newStatus)),
                 ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Actualizar listado", AppIcon.Refresh, CambiasoTheme.Primary, RefreshDashboard)
             ];
@@ -725,18 +745,32 @@ public sealed class MainForm : Form
             _gridRecentOts.DataSource = new SortableBindingList<RecentOtGridRow>(
                 _recentOts.Select(r => new RecentOtGridRow(r)));
 
-            if (_gridRecentOts.Columns.Count >= 9)
+            if (_gridRecentOts.Columns.Count >= 10)
             {
                 GridBindingHelper.ConfigureColumn(_gridRecentOts, 0, "N° OT", 7);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 11, "dd-MM-yyyy");
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, "Proveedor", 16);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, "Solicitante", 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 1, "Fecha", 10, "dd-MM-yyyy");
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 2, "Proveedor", 15);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 3, "Solicitante", 9);
                 GridBindingHelper.ConfigureColumn(_gridRecentOts, 4, "Cant.", 5);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, "Detalle", 21);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, "Activo", 11);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, "Valor Neto", 9, "$#,##0", DataGridViewContentAlignment.MiddleRight);
-                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, "Firmas", 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 5, "Detalle", 19);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 6, "Activo", 10);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 7, "Valor Neto", 8, "$#,##0", DataGridViewContentAlignment.MiddleRight);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 8, "Estado", 8);
+                GridBindingHelper.ConfigureColumn(_gridRecentOts, 9, "Firmas", 9);
             }
+        }
+    }
+
+    private void ChangeDashboardOrderStatus(int idOt, int numeroOt, WorkOrderStatus newStatus)
+    {
+        try
+        {
+            _ctx.WorkOrderService.UpdateStatus(_session, idOt, newStatus);
+            RefreshDashboard();
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, $"No se pudo cambiar el estado de la OT N° {numeroOt}: {ex.Message}");
         }
     }
 
@@ -754,6 +788,7 @@ public sealed class MainForm : Form
             ? Source.RutaActivo["CAMBIASO HNOS S.A.C. \\ ".Length..]
             : Source.RutaActivo;
         public decimal ValorNeto => Source.ValorNeto;
+        public string Estado => Source.EstadoDisplay;
         public string Firmas => Source.FirmasDisplay;
     }
 

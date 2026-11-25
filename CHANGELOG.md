@@ -2,6 +2,21 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.6.1] — 2026-11-25
+
+### Agregado y Mejorado
+- **Gestión Completa de 6 Estados de OT (`DomainEnums`, `WorkOrderRepository`, `WorkOrderService`, `WorkOrderStatusUi`, `WorkOrdersForm`, `MainForm`, `WorkOrderDetailDialog`)**:
+  - Catálogo ampliado de estados de OT con compatibilidad histórica en SQLite: **Abierta**, **En Curso**, **Modificada**, **Terminada**, **Cerrada** y **Anulada**, con colores semánticos e íconos Lucide en todas las vistas y exportaciones.
+  - **Cambio de estado por clic derecho**: submenú **`Cambiar estado`** en **Búsqueda de OT** (soporta actualización individual y masiva sobre OTs seleccionadas con checkbox) y en la tabla de **Últimas Órdenes de Trabajo** del Dashboard (incorporando columna `Estado`), protegido por RBAC (`MenuOrdenesTrabajo && IngresoOt`), auditado (`CAMBIAR_ESTADO_OT` / `CAMBIAR_ESTADO_OT_LOTE`) y sincronizado en vivo vía `SisproSyncHub`.
+  - **Selector de estado al ingresar y editar OT**: nuevo campo `Estado:` (`CmbEstadoEntry`) en **Ingreso / Edición de OT** y filtro combinable por **Estado** en **Búsqueda de OT**.
+
+### Verificado
+- **Compilación y Calidad**: `Debug` y `Release` con `0` errores y `0` advertencias.
+- **Suite Automatizada (`Release`)**: `81 / 81` pruebas `xUnit` aprobadas (`WorkOrderStatus_CreateEditRightClickMenuAndBatchUpdate_SupportsAllSixStatusesWithRbacAndAudit` + regresión completa) e inspección visual de capturas actualizadas.
+- **Instalador `SISPRO_Setup_v4.6.1_win-x64.exe` (Inno Setup `7.1.1`)**: `57.992.607` bytes (`SHA-256`: `8D332C855CBB6CECB85D543C8A327401CBCFF8BD2C49C2E222DD5AFF409CA77D`).
+
+---
+
 ## [4.6.0] — 2026-11-25
 
 ### Agregado y Mejorado

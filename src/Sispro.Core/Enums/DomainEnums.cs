@@ -3,9 +3,43 @@ namespace Sispro.Core.Enums;
 public enum WorkOrderStatus
 {
     Abierta = 0,
-    EnProceso = 1,
-    Completada = 2,
-    Anulada = 3
+    EnCurso = 1,
+    Terminada = 2,
+    Anulada = 3,
+    Modificada = 4,
+    Cerrada = 5
+}
+
+public sealed record WorkOrderStatusOption(WorkOrderStatus Value, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
+public static class WorkOrderStatusExtensions
+{
+    public static readonly WorkOrderStatus[] AllOrdered =
+    [
+        WorkOrderStatus.Abierta,
+        WorkOrderStatus.EnCurso,
+        WorkOrderStatus.Modificada,
+        WorkOrderStatus.Terminada,
+        WorkOrderStatus.Cerrada,
+        WorkOrderStatus.Anulada
+    ];
+
+    public static IReadOnlyList<WorkOrderStatusOption> CreateComboOptions() =>
+        AllOrdered.Select(static s => new WorkOrderStatusOption(s, s.ToDisplayName())).ToList();
+
+    public static string ToDisplayName(this WorkOrderStatus status) => status switch
+    {
+        WorkOrderStatus.Abierta => "Abierta",
+        WorkOrderStatus.EnCurso => "En Curso",
+        WorkOrderStatus.Modificada => "Modificada",
+        WorkOrderStatus.Terminada => "Terminada",
+        WorkOrderStatus.Cerrada => "Cerrada",
+        WorkOrderStatus.Anulada => "Anulada",
+        _ => "Abierta"
+    };
 }
 
 public enum ApprovalType

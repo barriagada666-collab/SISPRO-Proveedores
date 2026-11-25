@@ -511,6 +511,180 @@ public sealed class NavigationConfigNetValueAndCrudTests
         Assert.Contains(temp.Context.Audit.GetRecent(20), a => a.Accion == "ELIMINAR_OT" && a.Detalle.Contains(intNum.ToString(), StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void WorkOrderStatus_CreateEditRightClickMenuAndBatchUpdate_SupportsAllSixStatusesWithRbacAndAudit()
+    {
+        using TempTestDatabase temp = new(copyMigratedRealDb: true);
+        UserSession admin = temp.Context.AuthService.Login("L Reyes", "wanderes").Session!;
+
+        // Usuario solo lectura de búsqueda (sin IngresoOt) no puede cambiar estado
+        temp.Context.UserManagementService.CreateUser(admin, new User
+        {
+            AliasUsuario = "consulta_est",
+            NombreUsuario = "Carlos",
+            ApePatUsuario = "Soto",
+            Nivel = UserRoleLevel.Usuario,
+            Permisos = new UserPermissions
+            {
+                MenuOrdenesTrabajo = true,
+                BusquedaOt = true,
+                IngresoOt = false
+            }
+        }, "Consulta2026!", "Consulta2026!");
+        UserSession readOnlySession = temp.Context.AuthService.Login("consulta_est", "Consulta2026!").Session!;
+
+        int provId = temp.Context.MaintainerService.GetProviders()[0].IdProv;
+        int solId = temp.Context.MaintainerService.GetRequesters()[0].IdSol;
+        int plantId = temp.Context.MaintainerService.GetAssetChildren(1)[0].IdActivo;
+
+        // 1. Ingresar nueva OT seleccionando estado explícito "En Curso"
+        int otNum1 = temp.Context.WorkOrderService.GetNextWorkOrderNumber();
+        WorkOrder order1 = new()
+        {
+            NumeroOt = otNum1,
+            TipoOrden = "Externa",
+            Estado = WorkOrderStatus.EnCurso,
+            IdProv = provId,
+            IdSol = solId,
+            FechaOt = DateTime.Today,
+            Observacion = "OT prueba estados v4.6.1",
+            ValorNeto = 50000m,
+            Detalles = [new WorkOrderDetail { Cantidad = 1, Descripcion = "Prueba estado inicial En Curso" }]
+        };
+        order1.SetLevels([1, plantId]);
+        int idOt1 = temp.Context.WorkOrderService.Create(admin, order1);
+
+        int otNum2 = temp.Context.WorkOrderService.GetNextWorkOrderNumber();
+        WorkOrder order2 = new()
+        {
+            NumeroOt = otNum2,
+            TipoOrden = "Externa",
+            Estado = WorkOrderStatus.Abierta,
+            IdProv = provId,
+            IdSol = solId,
+            FechaOt = DateTime.Today,
+            Observacion = "OT prueba lote estados v4.6.1",
+            ValorNeto = 25000m,
+            Detalles = [new WorkOrderDetail { Cantidad = 1, Descripcion = "Prueba cambio estado masivo" }]
+        };
+        order2.SetLevels([1, plantId]);
+        int idOt2 = temp.Context.WorkOrderService.Create(admin, order2);
+
+        WorkOrder loaded1 = temp.Context.WorkOrderService.GetById(idOt1)!;
+        Assert.Equal(WorkOrderStatus.EnCurso, loaded1.Estado);
+        Assert.Equal("En Curso", loaded1.Estado.ToDisplayName());
+
+        // 2. Al editar una OT, cambiar estado a "Modificada" persiste correctamente
+        loaded1.Estado = WorkOrderStatus.Modificada;
+        temp.Context.WorkOrderService.Update(admin, loaded1);
+        Assert.Equal(WorkOrderStatus.Modificada, temp.Context.WorkOrderService.GetById(idOt1)!.Estado);
+
+        // 3. Validar transición por servicio a los 6 estados oficiales + filtro de búsqueda por estado + auditoría
+        WorkOrderStatus[] allSix =
+        [
+            WorkOrderStatus.Abierta,
+            WorkOrderStatus.EnCurso,
+            WorkOrderStatus.Modificada,
+            WorkOrderStatus.Terminada,
+            WorkOrderStatus.Cerrada,
+            WorkOrderStatus.Anulada
+        ];
+        foreach (WorkOrderStatus target in allSix)
+        {
+            temp.Context.WorkOrderService.UpdateStatus(admin, idOt1, target);
+            WorkOrder after = temp.Context.WorkOrderService.GetById(idOt1)!;
+            Assert.Equal(target, after.Estado);
+
+            IReadOnlyList<WorkOrderSearchRow> filtered = temp.Context.WorkOrderService.Search(admin, new WorkOrderSearchFilter
+            {
+                NumeroOt = otNum1,
+                Estado = target
+            });
+            WorkOrderSearchRow row = Assert.Single(filtered);
+            Assert.Equal(target.ToDisplayName(), row.EstadoDisplay);
+        }
+
+        Assert.Contains(temp.Context.Audit.GetRecent(30), a => a.Accion == "CAMBIAR_ESTADO_OT" && a.Detalle.Contains("Anulada", StringComparison.Ordinal));
+
+        // 4. Seguridad RBAC: usuario sin IngresoOt no puede cambiar estado
+        Assert.Throws<UnauthorizedAccessException>(() => temp.Context.WorkOrderService.UpdateStatus(readOnlySession, idOt1, WorkOrderStatus.Abierta));
+        Assert.Throws<UnauthorizedAccessException>(() => temp.Context.WorkOrderService.UpdateStatusMany(readOnlySession, [idOt1, idOt2], WorkOrderStatus.Cerrada));
+
+        // 5. Cambio por lote (UpdateStatusMany)
+        int batchUpdated = temp.Context.WorkOrderService.UpdateStatusMany(admin, [idOt1, idOt2], WorkOrderStatus.Terminada);
+        Assert.Equal(2, batchUpdated);
+        Assert.Equal(WorkOrderStatus.Terminada, temp.Context.WorkOrderService.GetById(idOt1)!.Estado);
+        Assert.Equal(WorkOrderStatus.Terminada, temp.Context.WorkOrderService.GetById(idOt2)!.Estado);
+        Assert.Contains(temp.Context.Audit.GetRecent(20), a => a.Accion == "CAMBIAR_ESTADO_OT_LOTE" && a.Detalle.Contains("Terminada", StringComparison.Ordinal));
+
+        // 6. Verificación UI STA: combo de estado en Ingreso/Edición y menú contextual clic derecho con los 6 estados
+        TempTestDatabase.RunOnStaThread(() =>
+        {
+            using Form host = new() { ShowInTaskbar = false, StartPosition = FormStartPosition.Manual, Location = new(-2000, -2000), Size = new(1380, 840) };
+            using WorkOrdersForm wo = new(temp.Context, admin);
+            host.Controls.Add(wo);
+            host.Show();
+            Application.DoEvents();
+
+            // Combo de ingreso/edición ofrece exactamente los 6 estados requeridos
+            string[] comboLabels = wo.CmbEstadoEntry.Items.Cast<WorkOrderStatusOption>().Select(x => x.DisplayName).ToArray();
+            Assert.Equal(["Abierta", "En Curso", "Modificada", "Terminada", "Cerrada", "Anulada"], comboLabels);
+
+            // Al abrir la OT1 en edición, el combo refleja automáticamente "Terminada"
+            wo.OpenOrderByNumber(otNum1);
+            Application.DoEvents();
+            Assert.Equal(WorkOrderStatus.Terminada, ((WorkOrderStatusOption)wo.CmbEstadoEntry.SelectedItem!).Value);
+
+            // En Búsqueda de OT, el menú clic derecho ofrece submenú "Cambiar estado" con las 6 opciones
+            wo.OpenSearchTab();
+            Application.DoEvents();
+            int rowIdx = -1;
+            for (int i = 0; i < wo.GridSearchResults.Rows.Count; i++)
+            {
+                if (Sispro.UI.Theme.GridBindingHelper.GetRowSource<WorkOrderSearchRow>(wo.GridSearchResults, i)?.IdOt == idOt1)
+                {
+                    rowIdx = i;
+                    break;
+                }
+            }
+
+            Assert.True(rowIdx >= 0, "La OT creada debe aparecer en la grilla de Búsqueda de OT.");
+            ToolStripItem[] menuItems = wo.BuildSearchContextMenuItems(rowIdx);
+            ToolStripMenuItem statusMenu = Assert.Single(menuItems.OfType<ToolStripMenuItem>(), m => m.Text?.StartsWith("Cambiar estado", StringComparison.Ordinal) == true);
+            Assert.Equal(6, statusMenu.DropDownItems.Count);
+
+            ToolStripMenuItem cerradaItem = Assert.Single(statusMenu.DropDownItems.OfType<ToolStripMenuItem>(), m => m.Text?.StartsWith("Cerrada", StringComparison.Ordinal) == true);
+            Assert.IsType<Action>(cerradaItem.Tag);
+            ((Action)cerradaItem.Tag!).Invoke();
+            Application.DoEvents();
+
+            // Verificar persistencia inmediata en BD y sincronización con combo de edición
+            Assert.Equal(WorkOrderStatus.Cerrada, temp.Context.WorkOrderService.GetById(idOt1)!.Estado);
+            Assert.Equal(WorkOrderStatus.Cerrada, ((WorkOrderStatusOption)wo.CmbEstadoEntry.SelectedItem!).Value);
+
+            // Limpiar items construidos manualmente para el test sin liberar íconos cacheados
+            foreach (ToolStripItem item in menuItems)
+            {
+                item.Image = null;
+                if (item is ToolStripDropDownItem dd)
+                {
+                    foreach (ToolStripItem sub in dd.DropDownItems)
+                    {
+                        sub.Image = null;
+                    }
+                }
+                item.Dispose();
+            }
+
+            // WorkOrderDetailDialog muestra correctamente "En Curso"
+            temp.Context.WorkOrderService.UpdateStatus(admin, idOt1, WorkOrderStatus.EnCurso);
+            using WorkOrderDetailDialog detailDlg = new(temp.Context, temp.Context.WorkOrderService.GetById(idOt1)!);
+            Assert.Contains(CollectControls<Label>(detailDlg), l => l.Text.Contains("En Curso", StringComparison.Ordinal));
+
+            host.Hide();
+        });
+    }
+
     private static List<T> CollectControls<T>(Control root) where T : Control
     {
         List<T> list = [];

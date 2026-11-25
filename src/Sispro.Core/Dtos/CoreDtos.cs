@@ -95,7 +95,7 @@ public sealed class WorkOrderSearchRow
     public DateTime? VbjFecha { get; set; }
     public int IdDet { get; set; }
 
-    public string EstadoDisplay => Estado.ToString();
+    public string EstadoDisplay => Estado.ToDisplayName();
 
     public string FirmasDisplay => FirmasSeleccionadas.FormatResumen();
 

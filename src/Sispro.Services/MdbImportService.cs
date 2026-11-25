@@ -267,7 +267,7 @@ public sealed class MdbImportService(
                     insOt.Parameters.AddWithValue("$prov", targetIdProv);
                     insOt.Parameters.AddWithValue("$sol", targetIdSol);
                     insOt.Parameters.AddWithValue("$fecha", ot.FechaOt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-                    insOt.Parameters.AddWithValue("$estado", ot.ActivoFlag ? (int)WorkOrderStatus.Completada : (int)WorkOrderStatus.Abierta);
+                    insOt.Parameters.AddWithValue("$estado", ot.ActivoFlag ? (int)WorkOrderStatus.Terminada : (int)WorkOrderStatus.Abierta);
                     insOt.Parameters.AddWithValue("$guia", ot.GuiaDespacho);
                     insOt.Parameters.AddWithValue("$n1", ot.IdN1);
                     insOt.Parameters.AddWithValue("$n2", ot.IdN2);

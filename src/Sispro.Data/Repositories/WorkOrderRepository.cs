@@ -174,6 +174,44 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         tx.Commit();
     }
 
+    public void UpdateStatus(int idOt, WorkOrderStatus newStatus)
+    {
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE OrdenesTrabajo SET estado = $est WHERE id_ot = $id;";
+        cmd.Parameters.AddWithValue("$est", (int)newStatus);
+        cmd.Parameters.AddWithValue("$id", idOt);
+        cmd.ExecuteNonQuery();
+    }
+
+    public int UpdateStatusMany(IReadOnlyCollection<int> idOts, WorkOrderStatus newStatus)
+    {
+        int[] ids = RepositoryHelpers.NormalizePositiveIds(idOts);
+        if (ids.Length == 0)
+        {
+            return 0;
+        }
+
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteTransaction tx = conn.BeginTransaction();
+        int updated = 0;
+
+        const int chunkSize = 400;
+        for (int offset = 0; offset < ids.Length; offset += chunkSize)
+        {
+            int[] slice = ids.Skip(offset).Take(chunkSize).ToArray();
+            using SqliteCommand cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            string inClause = RepositoryHelpers.AddInParameters(cmd, "ot", slice);
+            cmd.CommandText = $"UPDATE OrdenesTrabajo SET estado = $est WHERE id_ot IN ({inClause});";
+            cmd.Parameters.AddWithValue("$est", (int)newStatus);
+            updated += cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return updated;
+    }
+
     public void UpdateSignatures(
         int idOt,
         SignatureOption firmas,

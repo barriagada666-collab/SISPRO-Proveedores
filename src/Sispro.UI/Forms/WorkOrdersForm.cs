@@ -35,6 +35,7 @@ public sealed class WorkOrdersForm : UserControl
     // Tab Ingreso / Edición OT
     private readonly TextBox _txtNumeroOt;
     private readonly ComboBox _cmbTipoOrdenEntry;
+    private readonly ComboBox _cmbEstadoEntry;
     private readonly Button _btnLookupOt;
     private readonly Button _btnNextOt;
     private readonly ComboBox _cmbProviderEntry;
@@ -66,6 +67,7 @@ public sealed class WorkOrdersForm : UserControl
     internal CheckBox ChkMostrarValorNetoEntry { get; }
     internal TextBox TxtValorNetoEntry { get; }
     internal ComboBox CmbTipoOrdenEntry => _cmbTipoOrdenEntry;
+    internal ComboBox CmbEstadoEntry => _cmbEstadoEntry;
     internal CheckBox ChkEntrySigJefatura { get; }
     internal CheckBox ChkEntrySigTecnico { get; }
     internal CheckBox ChkEntrySigSupervisor { get; }
@@ -85,6 +87,8 @@ public sealed class WorkOrdersForm : UserControl
     private readonly ComboBox _cmbRequesterSearch;
     private readonly CheckBox _chkFilterText;
     private readonly TextBox _txtSearchKeyword;
+    private readonly CheckBox _chkFilterStatus;
+    private readonly ComboBox _cmbStatusSearch;
     private readonly CheckBox _chkFilterTree;
     private readonly Button _btnExecuteSearch;
     private readonly Button _btnClearSearch;
@@ -218,8 +222,17 @@ public sealed class WorkOrdersForm : UserControl
         _btnNextOt = CambiasoTheme.CreateButton("Siguiente N°", AppIcon.Refresh, ButtonTone.Secondary, _toolTip, "Sugerir el siguiente correlativo disponible", width: 122, height: 28);
         _btnNextOt.Click += (_, _) => _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString();
 
-        _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 245 };
-        _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 195 };
+        _cmbProviderEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+        _cmbRequesterEntry = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 142 };
+        _cmbEstadoEntry = new ComboBox
+        {
+            Name = "cmbEstadoOtEntry",
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 112
+        };
+        _cmbEstadoEntry.Items.AddRange(WorkOrderStatusExtensions.CreateComboOptions().Cast<object>().ToArray());
+        _cmbEstadoEntry.SelectedIndex = 0;
+        _toolTip.SetToolTip(_cmbEstadoEntry, "Estado de la Orden de Trabajo (Abierta, En Curso, Modificada, Terminada, Cerrada o Anulada)");
         _cmbRequesterEntry.SelectedIndexChanged += (_, _) =>
         {
             if (!_suppressEntrySignerSync &&
@@ -416,7 +429,7 @@ public sealed class WorkOrdersForm : UserControl
         _chkFilterRequester.CheckedChanged += (_, _) => _cmbRequesterSearch.Enabled = _chkFilterRequester.Checked;
 
         _chkFilterText = new CheckBox { Text = "Palabra clave / N° OT", AutoSize = true, Checked = true };
-        _txtSearchKeyword = new TextBox { Width = 185, PlaceholderText = "Ej. motor, MAI, 2815..." };
+        _txtSearchKeyword = new TextBox { Width = 152, PlaceholderText = "Ej. motor, MAI, 2815..." };
         _txtSearchKeyword.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter)
@@ -426,6 +439,18 @@ public sealed class WorkOrdersForm : UserControl
             }
         };
         _chkFilterText.CheckedChanged += (_, _) => _txtSearchKeyword.Enabled = _chkFilterText.Checked;
+
+        _chkFilterStatus = new CheckBox { Text = "Estado", AutoSize = true };
+        _cmbStatusSearch = new ComboBox
+        {
+            Name = "cmbEstadoOtSearch",
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Width = 114,
+            Enabled = false
+        };
+        _cmbStatusSearch.Items.AddRange(WorkOrderStatusExtensions.CreateComboOptions().Cast<object>().ToArray());
+        _cmbStatusSearch.SelectedIndex = 0;
+        _chkFilterStatus.CheckedChanged += (_, _) => _cmbStatusSearch.Enabled = _chkFilterStatus.Checked;
 
         _chkFilterTree = new CheckBox { Text = "Nodo árbol", AutoSize = true };
 
@@ -508,9 +533,7 @@ public sealed class WorkOrdersForm : UserControl
             if (string.Equals(prop, nameof(WorkOrderGridRow.Estado), StringComparison.Ordinal))
             {
                 e.CellStyle.Font = CambiasoTheme.LabelFont;
-                e.CellStyle.ForeColor = row.Estado == WorkOrderStatus.Completada
-                    ? CambiasoTheme.Success
-                    : (row.Estado == WorkOrderStatus.Anulada ? CambiasoTheme.Danger : CambiasoTheme.Primary);
+                e.CellStyle.ForeColor = WorkOrderStatusUi.GetColor(row.Estado);
             }
             else if (string.Equals(prop, nameof(WorkOrderGridRow.ValorNeto), StringComparison.Ordinal))
             {
@@ -528,24 +551,7 @@ public sealed class WorkOrdersForm : UserControl
                 }
             }
         };
-        ContextMenuHelper.AttachToGrid(_gridSearchResults, idx =>
-        {
-            WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridSearchResults, idx);
-            if (row is null)
-            {
-                return [];
-            }
-
-            int numOt = row.NumeroOt;
-            return
-            [
-                ContextMenuHelper.Item("Consultar OT (Detalle Completo)", AppIcon.FileText, CambiasoTheme.Primary, () => ConsultOrderByNumber(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => OpenOrderByNumber(numOt), enabled: _session.Permisos.IngresoOt),
-                ContextMenuHelper.Separator(),
-                ContextMenuHelper.Item("Eliminar OT", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteSearchOrder(numOt), enabled: _session.Permisos.IngresoOt)
-            ];
-        });
+        ContextMenuHelper.AttachToGrid(_gridSearchResults, BuildSearchContextMenuItems);
 
         _searchPager = new GridPagerBar(100);
         _searchPager.PageChanged += (_, _) => RenderSearchResultsPage();
@@ -607,9 +613,22 @@ public sealed class WorkOrdersForm : UserControl
             }
 
             RefreshNextOtBadge();
-            if ((e.Kind & DataChangeKind.WorkOrders) != 0 && _tabs.SelectedTab == _tabSearch && _lastSearchResults.Count > 0)
+            if ((e.Kind & DataChangeKind.WorkOrders) != 0)
             {
-                ExecuteSearchCore(showEmptyMessage: false);
+                if (_loadedOrder is not null)
+                {
+                    WorkOrder? freshLoaded = _ctx.WorkOrderService.GetById(_loadedOrder.IdOt);
+                    if (freshLoaded is not null && freshLoaded.Estado != _loadedOrder.Estado)
+                    {
+                        _loadedOrder.Estado = freshLoaded.Estado;
+                        SelectEntryStatus(freshLoaded.Estado);
+                    }
+                }
+
+                if (_tabs.SelectedTab == _tabSearch && _lastSearchResults.Count > 0)
+                {
+                    ExecuteSearchCore(showEmptyMessage: false);
+                }
             }
         }
 
@@ -728,7 +747,8 @@ public sealed class WorkOrdersForm : UserControl
         row2.Controls.AddRange(
         [
             WrapLabel("Proveedor:", _cmbProviderEntry),
-            WrapLabel("Solicitado por:", _cmbRequesterEntry)
+            WrapLabel("Solicitado por:", _cmbRequesterEntry),
+            WrapLabel("Estado:", _cmbEstadoEntry)
         ]);
 
         grpHeader.Controls.Add(row2);
@@ -850,13 +870,13 @@ public sealed class WorkOrdersForm : UserControl
         f2.Controls.AddRange([_chkFilterProvider, _cmbProviderSearch, _chkFilterRequester, _cmbRequesterSearch]);
 
         FlowLayoutPanel f3 = new() { Dock = DockStyle.Top, Height = 40, WrapContents = false, Padding = new Padding(4, 3, 4, 0) };
-        f3.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterTree, _btnExecuteSearch]);
+        f3.Controls.AddRange([_chkFilterText, _txtSearchKeyword, _chkFilterStatus, _cmbStatusSearch, _chkFilterTree, _btnExecuteSearch]);
 
         grpFilters.Controls.Add(f3);
         grpFilters.Controls.Add(f2);
         grpFilters.Controls.Add(f1);
 
-        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Gestión y Resultados de OT (CRUD completo: Nuevo, Consultar, Editar, Eliminar · doble clic para editar)");
+        GroupBox grpResults = CambiasoTheme.CreateGroupBox("Gestión y Resultados de OT (CRUD completo · doble clic para editar · clic derecho para cambiar estado)");
         grpResults.Dock = DockStyle.Fill;
 
         TableLayoutPanel resultsTbl = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
@@ -979,6 +999,7 @@ public sealed class WorkOrdersForm : UserControl
             _cmbTipoOrdenEntry.SelectedItem = string.Equals(order.TipoOrden, "Interna", StringComparison.OrdinalIgnoreCase)
                 ? "Interna"
                 : "Externa";
+            SelectEntryStatus(order.Estado);
             _dtFechaOt.Value = order.FechaOt;
             TxtObservacionEntry.Text = order.Observacion;
             _cachedValorNeto = Math.Max(0m, order.ValorNeto);
@@ -1006,7 +1027,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnDeleteOt.Enabled = _session.Permisos.IngresoOt;
         UpdateEntrySignatureHint();
         string netLabel = order.MostrarValorNeto ? $"$ {order.ValorNeto.ToString("N0", ClCulture)}" : "Oculto en OT externa";
-        _lblEntryStatus.Text = $"OT {order.TipoOrden} N° {order.NumeroOt} cargada · Neto: {netLabel} · Firmas: {order.FirmasSeleccionadas.FormatResumen()}";
+        _lblEntryStatus.Text = $"OT {order.TipoOrden} N° {order.NumeroOt} cargada · Estado: {order.Estado.ToDisplayName()} · Neto: {netLabel} · Firmas: {order.FirmasSeleccionadas.FormatResumen()}";
     }
 
     private void AddEntryDetail()
@@ -1095,11 +1116,10 @@ public sealed class WorkOrdersForm : UserControl
             {
                 WorkOrder updated = BuildOrderFromEntryForm();
                 updated.IdOt = _loadedOrder.IdOt;
-                updated.Estado = _loadedOrder.Estado;
                 _ctx.WorkOrderService.Update(_session, updated);
                 WorkOrder? fresh = _ctx.WorkOrderService.GetByNumber(updated.NumeroOt) ?? updated;
                 _loadedOrder = fresh;
-                _lblEntryStatus.Text = $"OT N° {fresh.NumeroOt} actualizada — lista para exportar.";
+                _lblEntryStatus.Text = $"OT N° {fresh.NumeroOt} actualizada (Estado: {fresh.Estado.ToDisplayName()}) — lista para exportar.";
                 if (_tabs.TabPages.Contains(_tabSearch))
                 {
                     ExecuteSearchCore(showEmptyMessage: false);
@@ -1177,9 +1197,8 @@ public sealed class WorkOrdersForm : UserControl
         {
             WorkOrder updated = BuildOrderFromEntryForm();
             updated.IdOt = _loadedOrder.IdOt;
-            updated.Estado = _loadedOrder.Estado;
             _ctx.WorkOrderService.Update(_session, updated);
-            CambiasoTheme.ShowInfo(this, $"Orden de Trabajo N° {updated.NumeroOt} actualizada correctamente.");
+            CambiasoTheme.ShowInfo(this, $"Orden de Trabajo N° {updated.NumeroOt} actualizada correctamente (Estado: {updated.Estado.ToDisplayName()}).");
             LookupEntryOrder();
             if (_tabs.TabPages.Contains(_tabSearch))
             {
@@ -1204,7 +1223,7 @@ public sealed class WorkOrdersForm : UserControl
             $"¿Confirma que desea eliminar la OT {_loadedOrder.TipoOrden} N° {_loadedOrder.NumeroOt}?\n\n" +
             $"• Proveedor: {_loadedOrder.NombreProveedor}\n" +
             $"• Fecha: {_loadedOrder.FechaOt:dd-MM-yyyy}\n" +
-            $"• Estado: {_loadedOrder.Estado}\n\n" +
+            $"• Estado: {_loadedOrder.Estado.ToDisplayName()}\n\n" +
             "Esta acción quedará registrada en la auditoría y no se puede deshacer.",
             "Confirmar Eliminación de OT"))
         {
@@ -1288,6 +1307,7 @@ public sealed class WorkOrdersForm : UserControl
         {
             NumeroOt = numOt,
             TipoOrden = tipoOrden,
+            Estado = GetSelectedEntryStatus(),
             IdProv = idProv,
             IdSol = idSol,
             FechaOt = _dtFechaOt.Value.Date,
@@ -1343,7 +1363,7 @@ public sealed class WorkOrdersForm : UserControl
             FirmaSolicitanteTipo = !string.IsNullOrWhiteSpace(sol?.FirmaTipo) ? sol.FirmaTipo : (_loadedOrder?.FirmaSolicitanteTipo ?? string.Empty),
             FirmaSolicitanteNombre = !string.IsNullOrWhiteSpace(sol?.FirmaNombre) ? sol.FirmaNombre : (_loadedOrder?.FirmaSolicitanteNombre ?? string.Empty),
             FechaOt = _dtFechaOt.Value.Date,
-            Estado = _loadedOrder?.Estado ?? WorkOrderStatus.Abierta,
+            Estado = GetSelectedEntryStatus(),
             Observacion = TxtObservacionEntry.Text.Trim(),
             ValorNeto = Math.Max(0m, valorNeto),
             MostrarValorNeto = mostrarNeto,
@@ -1465,6 +1485,7 @@ public sealed class WorkOrdersForm : UserControl
             }
             _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
             _cmbTipoOrdenEntry.SelectedIndex = 0;
+            SelectEntryStatus(WorkOrderStatus.Abierta);
             RefreshNextOtBadge();
             _dtFechaOt.Value = DateTime.Today;
             _numCantidad.Value = 1;
@@ -1511,6 +1532,7 @@ public sealed class WorkOrdersForm : UserControl
                 FechaFin = _searchDateRange.FechaFin,
                 IdProv = _chkFilterProvider.Checked && _cmbProviderSearch.SelectedValue is int pid ? pid : null,
                 IdSol = _chkFilterRequester.Checked && _cmbRequesterSearch.SelectedValue is int sid ? sid : null,
+                Estado = _chkFilterStatus.Checked && _cmbStatusSearch.SelectedItem is WorkOrderStatusOption stOpt ? stOpt.Value : null,
                 TextoBusqueda = _chkFilterText.Checked ? _txtSearchKeyword.Text.Trim() : null
             };
 
@@ -1570,10 +1592,10 @@ public sealed class WorkOrdersForm : UserControl
             _searchSelection.ConfigureDataColumn(2, "Proveedor", 14);
             _searchSelection.ConfigureDataColumn(3, "Solicitante", 11);
             _searchSelection.ConfigureDataColumn(4, "Cant.", 6);
-            _searchSelection.ConfigureDataColumn(5, "Detalle", 18);
-            _searchSelection.ConfigureDataColumn(6, "Obs.", 7);
+            _searchSelection.ConfigureDataColumn(5, "Detalle", 16);
+            _searchSelection.ConfigureDataColumn(6, "Obs.", 6);
             _searchSelection.ConfigureDataColumn(7, "Valor Neto", 10, "$#,##0", DataGridViewContentAlignment.MiddleRight);
-            _searchSelection.ConfigureDataColumn(8, "Estado", 9);
+            _searchSelection.ConfigureDataColumn(8, "Estado", 12);
             _searchSelection.ConfigureDataColumn(9, "Firmas", 10);
         }
 
@@ -1711,6 +1733,7 @@ public sealed class WorkOrdersForm : UserControl
         _searchDateRange.Clear();
         _chkFilterProvider.Checked = false;
         _chkFilterRequester.Checked = false;
+        _chkFilterStatus.Checked = false;
         _chkFilterText.Checked = true;
         _chkFilterTree.Checked = false;
         _txtSearchKeyword.Clear();
@@ -1726,7 +1749,105 @@ public sealed class WorkOrdersForm : UserControl
     {
         string prov = _chkFilterProvider.Checked && _cmbProviderSearch.SelectedItem is Provider p ? p.Nombre : "Todos";
         string sol = _chkFilterRequester.Checked && _cmbRequesterSearch.SelectedItem is Requester r ? r.Alias : "Todos";
-        return $"{_searchDateRange.BuildFilterDescription()} | Proveedor: {prov} | Solicitante: {sol}";
+        string est = _chkFilterStatus.Checked && _cmbStatusSearch.SelectedItem is WorkOrderStatusOption st ? st.DisplayName : "Todos";
+        return $"{_searchDateRange.BuildFilterDescription()} | Proveedor: {prov} | Solicitante: {sol} | Estado: {est}";
+    }
+
+    internal ToolStripItem[] BuildSearchContextMenuItems(int rowIndex)
+    {
+        WorkOrderSearchRow? row = GridBindingHelper.GetRowSource<WorkOrderSearchRow>(_gridSearchResults, rowIndex);
+        if (row is null)
+        {
+            return [];
+        }
+
+        int idOt = row.IdOt;
+        int numOt = row.NumeroOt;
+        bool canEdit = _session.Permisos.IngresoOt;
+
+        IReadOnlyList<int> selectedIds = _searchSelection.SelectedIds;
+        bool applyBatchStatus = selectedIds.Count > 1 && selectedIds.Contains(idOt);
+        ToolStripMenuItem statusSubMenu = applyBatchStatus
+            ? WorkOrderStatusUi.BuildChangeStatusMenu(
+                null,
+                canEdit,
+                newStatus => ChangeWorkOrdersStatusBatch(selectedIds, newStatus),
+                $"Cambiar estado ({selectedIds.Count} seleccionadas)")
+            : WorkOrderStatusUi.BuildChangeStatusMenu(
+                row.Estado,
+                canEdit,
+                newStatus => ChangeWorkOrderStatusSingle(idOt, numOt, newStatus));
+
+        return
+        [
+            ContextMenuHelper.Item("Consultar OT (Detalle Completo)", AppIcon.FileText, CambiasoTheme.Primary, () => ConsultOrderByNumber(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+            ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
+            ContextMenuHelper.Item("Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => OpenOrderByNumber(numOt), enabled: canEdit),
+            ContextMenuHelper.Separator(),
+            statusSubMenu,
+            ContextMenuHelper.Separator(),
+            ContextMenuHelper.Item("Eliminar OT", AppIcon.Delete, CambiasoTheme.Danger, () => DeleteSearchOrder(numOt), enabled: canEdit)
+        ];
+    }
+
+    private void ChangeWorkOrderStatusSingle(int idOt, int numeroOt, WorkOrderStatus newStatus)
+    {
+        try
+        {
+            _ctx.WorkOrderService.UpdateStatus(_session, idOt, newStatus);
+            if (_loadedOrder is not null && _loadedOrder.IdOt == idOt)
+            {
+                _loadedOrder.Estado = newStatus;
+                SelectEntryStatus(newStatus);
+            }
+
+            ExecuteSearchCore(showEmptyMessage: false);
+            _lblSearchSummary.Text = $"OT N° {numeroOt} actualizada a estado '{newStatus.ToDisplayName()}'.";
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, $"No se pudo cambiar el estado de la OT N° {numeroOt}: {ex.Message}");
+        }
+    }
+
+    private void ChangeWorkOrdersStatusBatch(IReadOnlyList<int> idOts, WorkOrderStatus newStatus)
+    {
+        try
+        {
+            int updated = _ctx.WorkOrderService.UpdateStatusMany(_session, idOts, newStatus);
+            if (_loadedOrder is not null && idOts.Contains(_loadedOrder.IdOt))
+            {
+                _loadedOrder.Estado = newStatus;
+                SelectEntryStatus(newStatus);
+            }
+
+            ExecuteSearchCore(showEmptyMessage: false);
+            _lblSearchSummary.Text = $"{updated} OT(s) actualizadas a estado '{newStatus.ToDisplayName()}'.";
+        }
+        catch (Exception ex)
+        {
+            CambiasoTheme.ShowWarning(this, $"No se pudo cambiar el estado de las OTs seleccionadas: {ex.Message}");
+        }
+    }
+
+    private WorkOrderStatus GetSelectedEntryStatus() =>
+        _cmbEstadoEntry.SelectedItem is WorkOrderStatusOption opt ? opt.Value : WorkOrderStatus.Abierta;
+
+    private void SelectEntryStatus(WorkOrderStatus status)
+    {
+        for (int i = 0; i < _cmbEstadoEntry.Items.Count; i++)
+        {
+            if (_cmbEstadoEntry.Items[i] is WorkOrderStatusOption opt && opt.Value == status)
+            {
+                _cmbEstadoEntry.SelectedIndex = i;
+                return;
+            }
+        }
+
+        if (_cmbEstadoEntry.Items.Count > 0)
+        {
+            _cmbEstadoEntry.SelectedIndex = 0;
+        }
     }
 
     private void OpenSelectedSearchOrder()
