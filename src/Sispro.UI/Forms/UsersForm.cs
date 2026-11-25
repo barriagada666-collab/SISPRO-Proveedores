@@ -746,7 +746,7 @@ public sealed class UsersForm : UserControl
         Label lblDragHint = new()
         {
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 7.8f, FontStyle.Italic),
+            Font = CambiasoTheme.SmallItalicFont,
             ForeColor = CambiasoTheme.TextMuted,
             Text = "Arrastre usuarios aquí para mover de grupo",
             TextAlign = ContentAlignment.MiddleCenter

@@ -66,7 +66,7 @@ public sealed class AuditLogDialog : Form
         _txtSearch.KeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; LoadEntries(); } };
 
         _cmbModulo = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 175 };
-        _cmbModulo.Items.AddRange(["Todos", "Usuarios", "Grupos", "Seguridad", "Órdenes de Trabajo", "Mantenedores", "Árbol de Activos", "Configuración"]);
+        _cmbModulo.Items.AddRange(["Todos", "Usuarios", "Perfiles", "Grupos", "Seguridad", "Órdenes de Trabajo", "Mantenedores", "Importación MDB", "Árbol de Activos", "Configuración"]);
         _cmbModulo.SelectedIndex = 0;
         _cmbModulo.SelectedIndexChanged += (_, _) => LoadEntries();
 

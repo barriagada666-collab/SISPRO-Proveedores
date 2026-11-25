@@ -121,7 +121,7 @@ public sealed class MdbImportDialog : Form
         };
 
         _btnBrowse = CambiasoTheme.CreateButton("Examinar...", AppIcon.Upload, ButtonTone.Secondary, _toolTip, "Seleccionar archivo Microsoft Access (.mdb)", width: 126, height: 30);
-        _btnBrowse.Click += (_, _) => BrowseMdbFile();
+        _btnBrowse.Click += async (_, _) => await BrowseMdbFileAsync();
 
         _btnAnalyze = CambiasoTheme.CreateButton("Analizar MDB", AppIcon.Search, ButtonTone.Primary, _toolTip, "Leer archivo .mdb y calcular cuántos datos cambiarán", width: 138, height: 30);
         _btnAnalyze.Click += async (_, _) => await RunAnalysisAsync();
@@ -139,9 +139,10 @@ public sealed class MdbImportDialog : Form
             Height = 104,
             ColumnCount = 5,
             RowCount = 1,
-            Padding = new Padding(14, 8, 14, 12),
+            Padding = new Padding(14, 8, 14, 10),
             BackColor = CambiasoTheme.Surface
         };
+        kpiStrip.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         for (int i = 0; i < 5; i++)
         {
             kpiStrip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20f));
@@ -399,7 +400,7 @@ public sealed class MdbImportDialog : Form
         Label lblTitle = new()
         {
             Text = title,
-            Font = new Font(CambiasoTheme.SmallFont.FontFamily, 7.5f, FontStyle.Bold),
+            Font = CambiasoTheme.KpiTitleFont,
             ForeColor = CambiasoTheme.TextMuted,
             Dock = DockStyle.Top,
             Height = 16
@@ -408,7 +409,7 @@ public sealed class MdbImportDialog : Form
         lblValue = new Label
         {
             Text = "0",
-            Font = new Font(CambiasoTheme.TitleFont.FontFamily, 15f, FontStyle.Bold),
+            Font = CambiasoTheme.KpiCompactValueFont,
             ForeColor = accentColor,
             Dock = DockStyle.Top,
             Height = 26
@@ -417,7 +418,7 @@ public sealed class MdbImportDialog : Form
         lblSub = new Label
         {
             Text = string.Empty,
-            Font = new Font(CambiasoTheme.SmallFont.FontFamily, 7.5f, FontStyle.Regular),
+            Font = CambiasoTheme.KpiSubFont,
             ForeColor = CambiasoTheme.TextMuted,
             Dock = DockStyle.Fill
         };
@@ -439,7 +440,7 @@ public sealed class MdbImportDialog : Form
         _kpiExtraSub.Text = "Solicitantes / OTs";
     }
 
-    private async void BrowseMdbFile()
+    private async Task BrowseMdbFileAsync()
     {
         using OpenFileDialog dlg = new()
         {
@@ -674,5 +675,15 @@ public sealed class MdbImportDialog : Form
         {
             UpdateApplyStateAndSummary();
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _toolTip.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }

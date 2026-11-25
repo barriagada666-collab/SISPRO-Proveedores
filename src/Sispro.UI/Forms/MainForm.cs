@@ -10,7 +10,7 @@ using Sispro.UI.Theme;
 namespace Sispro.UI.Forms;
 
 /// <summary>
-/// Ventana principal corporativa de SISPRO v4.2 (.NET 10).
+/// Ventana principal corporativa de SISPRO (.NET 10).
 /// Provee barra lateral con control estricto RBAC, Panel de Control con gráficas vectoriales
 /// analíticas en vivo de Trabajos Externos, botón principal + Nueva OT Externa y gestión integral.
 /// </summary>
@@ -451,7 +451,7 @@ public sealed class MainForm : Form
         Label heroTitle = new()
         {
             Text = "Trabajos Externos — Crear y Gestionar Órdenes de Trabajo",
-            Font = new Font("Segoe UI", 11.5f, FontStyle.Bold),
+            Font = CambiasoTheme.HeroTitleFont,
             ForeColor = Color.White,
             AutoSize = true
         };
@@ -485,7 +485,7 @@ public sealed class MainForm : Form
             "Acción principal: crear inmediatamente una nueva Orden de Trabajo externa",
             width: 248,
             height: 44);
-        BtnHeroNewExternalOt.Font = new Font("Segoe UI", 11f, FontStyle.Bold);
+        BtnHeroNewExternalOt.Font = CambiasoTheme.HeroButtonFont;
         BtnHeroNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
         BtnHeroNewExternalOt.Click += (_, _) => StartNewExternalOrderFlow();
 

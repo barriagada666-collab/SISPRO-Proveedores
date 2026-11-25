@@ -1,67 +1,73 @@
-# Guía de Despliegue, Actualización y Respaldo — SISPRO v4.4.0
+# Guía de Despliegue, Actualización y Respaldo — SISPRO v4.5.0
 
 ## 1. Requisitos del Equipo de Producción
 
 - **Sistema Operativo**: Windows 10 (19041 / 2004+) o Windows 11 de 64 bits (`x64`).
 - **Memoria RAM**: mínimo 2 GB (recomendado 4 GB).
 - **Espacio en disco**: 250 MB libres para aplicación + espacio para respaldos de base de datos.
-- **Dependencias externas requeridas**: **Ninguna** (el instalador oficial incluye el runtime `.NET 10` autocontenido, motor SQLite embebido, OpenXML, renderizado nativo de PDF vía `Windows.Data.Pdf` y generador PDF vectorial; no requiere Microsoft Access, Excel ni Word).
+- **Dependencias externas**: **Ninguna** (el instalador incluye el runtime `.NET 10` autocontenido, motor SQLite embebido, OpenXML, renderizado PDF nativo vía `Windows.Data.Pdf` y generador PDF vectorial; la función opcional de importación `.mdb` utiliza el host Windows `SysWOW64` integrado en el sistema operativo).
 
 ---
 
 ## 2. Instalación
 
-### Instalación Interactiva
-1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt` (`61B43AB4934864526FA5788C67C15E93F5711D60CA3E1C713501481A10EC6FFA` para `v4.4.0`):
-   ```powershell
-   Get-FileHash SISPRO_Setup_v4.4.0_win-x64.exe -Algorithm SHA256
-   ```
-2. Ejecute `SISPRO_Setup_v4.4.0_win-x64.exe`.
-3. **Ruta predeterminada:** `C:\Temp` (editable libremente por el usuario durante la instalación).
-4. Seleccione instalación para el usuario actual (no requiere privilegios de administrador) o para todos los usuarios.
-5. Complete el asistente y opcionalmente cree acceso directo en el escritorio.
+### Verificación de Integridad (SHA-256)
+Verifique el instalador `SISPRO_Setup_v4.5.0_win-x64.exe` (`57.968.544` bytes) contra `checksums_sha256.txt`:
 
-### Instalación Desatendida (Despliegue Corporativo)
 ```powershell
-.\SISPRO_Setup_v4.4.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="C:\Temp"
+Get-FileHash SISPRO_Setup_v4.5.0_win-x64.exe -Algorithm SHA256
+# Esperado: 13E206BFAFA1569AD1810129502AA80D3454C3595614A9E442DB5DECDD6435DA
+```
+
+### Instalación Interactiva
+1. Ejecute `SISPRO_Setup_v4.5.0_win-x64.exe`.
+2. **Ruta predeterminada:** `C:\Temp` (editable por el usuario durante el asistente).
+3. Elija instalación para el usuario actual (no requiere elevación) o para todos los usuarios.
+4. Complete el asistente y, si desea, cree el acceso directo en el escritorio.
+
+### Instalación Desatendida (Despliegue Masivo)
+```powershell
+.\SISPRO_Setup_v4.5.0_win-x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR="C:\Temp"
 ```
 
 ---
 
-## 3. Ubicación de Datos y Configuración
-
-Para evitar conflictos de permisos en `Program Files`, al iniciarse por primera vez SISPRO copia la base inicial `Data\sispro.db` al directorio de datos local del usuario:
+## 3. Ubicación de Datos, Red Compartida y Sincronización MDB
 
 - **Base de datos activa**: `%LOCALAPPDATA%\Cambiaso\SISPRO\sispro.db`
-- **Archivo de configuración**: `%LOCALAPPDATA%\Cambiaso\SISPRO\settings.json`
+- **Configuración local**: `%LOCALAPPDATA%\Cambiaso\SISPRO\settings.json`
+- **Respaldos automáticos pre-importación MDB**: `%LOCALAPPDATA%\Cambiaso\SISPRO\backups\sispro_pre_mdb_*.db`
 
-### Uso en Red Compartida (Múltiples Estaciones)
-Para compartir una misma base SQLite entre estaciones de trabajo en red local:
-1. Ubique `sispro.db` en una carpeta compartida con permisos de lectura/escritura (ej. `\\Servidor\Mantencion\SISPRO\sispro.db`).
-2. Abra **Configuración** en SISPRO → **Examinar** → seleccione la ruta de red → **Guardar**.
+Para operar con una base SQLite compartida en red local:
+1. Ubique `sispro.db` en una carpeta compartida con lectura/escritura.
+2. En SISPRO abra **Configuración → Examinar → Guardar**.
+
+Para actualizar proveedores u órdenes desde una base Access histórica (`.mdb`):
+1. Ingrese con perfil **Administrador**.
+2. Abra **Mantenedores → Proveedores → `Importar MDB`** (o **Configuración → `Importar MDB`**).
+3. Seleccione el `.mdb`, presione **Analizar MDB**, revise el resumen de cambios y presione **Actualizar BD desde MDB** (manteniendo marcada la opción de respaldo automático previo).
 
 ---
 
-## 4. Proceso de Actualización (Upgrade)
+## 4. Actualización (Upgrade)
 
 1. Cierre todas las instancias abiertas de `SISPRO.exe`.
-2. (Recomendado) Genere un respaldo desde **Configuración → Respaldar BD**.
-3. Ejecute el nuevo instalador `SISPRO_Setup_vX.Y.Z_win-x64.exe` sobre la instalación existente.
-4. El instalador conserva el mismo `AppId`, actualiza únicamente los binarios de programa y **nunca sobrescribe** la base de datos existente (`Flags: onlyifdoesntexist uninsneveruninstall`).
+2. Ejecute `SISPRO_Setup_v4.5.0_win-x64.exe` sobre la carpeta existente.
+3. El instalador mantiene el `AppId` corporativo, actualiza únicamente los binarios y **nunca sobrescribe** `Data\sispro.db` (`Flags: onlyifdoesntexist uninsneveruninstall`).
 
 ---
 
 ## 5. Desinstalación
 
-- Desde **Configuración de Windows → Aplicaciones → SISPRO → Desinstalar**, o ejecutando silenciosamente:
+- Desde **Configuración de Windows → Aplicaciones → SISPRO → Desinstalar**, o silenciosamente:
   ```powershell
   & "<RutaInstalacion>\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
   ```
-- Por seguridad operativa, la base de datos de producción en `%LOCALAPPDATA%\Cambiaso\SISPRO\sispro.db` se conserva para evitar pérdida accidental de registros históricos.
+- Por seguridad operativa, la base de datos SQLite (`Data\sispro.db` y `%LOCALAPPDATA%\Cambiaso\SISPRO\sispro.db`) se conserva intacta.
 
 ---
 
-## 6. Política de Respaldos y Recuperación
+## 6. Respaldo y Recuperación
 
-- **Respaldo manual en caliente**: **Configuración → Respaldar BD** (usa la API nativa `SqliteConnection.BackupDatabase`, consistente incluso con sesiones activas).
-- **Recuperación**: reemplace `sispro.db` con el archivo respaldado (con la aplicación cerrada) o apunte al respaldo desde **Configuración → Examinar**.
+- **Respaldo manual en caliente**: **Configuración → Respaldar BD** (`SqliteConnection.BackupDatabase`).
+- **Recuperación**: con la aplicación cerrada, reemplace `sispro.db` por el respaldo deseado o seleccione el respaldo desde **Configuración → Examinar**.

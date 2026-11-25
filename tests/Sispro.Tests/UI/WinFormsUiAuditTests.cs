@@ -190,6 +190,17 @@ public sealed class WinFormsUiAuditTests
 
             using MdbImportDialog mdbDlg = new(temp.Context, admin, string.Empty);
             AssertAllButtonsValid(mdbDlg, "MdbImportDialog");
+
+            using AuditLogDialog auditModuleDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
+            AssertAllButtonsValid(auditModuleDlg, "AuditLogDialog.Modules");
+            ComboBox auditModuleCombo = Assert.Single(CollectControls<ComboBox>(auditModuleDlg), c => c.Items.Contains("Seguridad"));
+            Assert.Contains("Perfiles", auditModuleCombo.Items.Cast<object>().Select(x => x.ToString()));
+            Assert.Contains("Importación MDB", auditModuleCombo.Items.Cast<object>().Select(x => x.ToString()));
+
+            using SplashForm splash = new();
+            List<Label> splashLabels = CollectControls<Label>(splash);
+            Assert.Contains(splashLabels, l => l.Text.Contains("Versión 4.5", StringComparison.Ordinal));
+            Assert.Contains("v4.5", main.Text, StringComparison.Ordinal);
         });
     }
 

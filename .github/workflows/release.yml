@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Etiqueta de versión a publicar (ej. v4.4.0)'
+        description: 'Etiqueta de versión a publicar (ej. v4.5.0)'
         required: false
         default: ''
 
@@ -59,7 +59,9 @@ jobs:
           if (-not $iscc) {
             throw "No se pudo localizar ISCC.exe después de instalar Inno Setup."
           }
-          Write-Host "ISCC localizado en: $iscc ($((Get-Item $iscc).VersionInfo.ProductVersion))"
+          $vi = (Get-Item $iscc).VersionInfo
+          $isccVer = if (-not [string]::IsNullOrWhiteSpace($vi.FileVersion) -and $vi.FileVersion -ne '0.0.0.0') { $vi.FileVersion.Trim() } else { $vi.ProductVersion.Trim() }
+          Write-Host "ISCC localizado en: $iscc ($isccVer)"
 
       - name: Build, Test, Publish & Compile Inno Setup Installer
         shell: pwsh

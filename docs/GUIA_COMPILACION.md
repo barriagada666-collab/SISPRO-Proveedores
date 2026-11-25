@@ -1,80 +1,65 @@
-# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.4.0
+# Guía de Compilación, Pruebas y Empaquetado — SISPRO v4.5.0
 
 ## 1. Requisitos del Entorno de Desarrollo
 
-- **Sistema Operativo**: Windows 10 (1809+ / SDK 10.0.19041.0) / Windows 11 (x64).
+- **Sistema Operativo**: Windows 10 (19041+) / Windows 11 (x64).
 - **SDK**: [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (`10.0.100` o superior).
-- **Empaquetado de Instalador (opcional)**: [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`ISCC.exe`).
-- **Migración desde Access heredado (opcional)**: PowerShell 32-bit + Python 3.10+ (solo si requiere re-importar `OT_PROV.mdb`).
+- **Instalador**: [Inno Setup 7](https://jrsoftware.org/isinfo.php) (`7.1.1` recomendado; retrocompatible con Inno Setup 6).
+- **Lectura nativa de `.mdb` en tiempo de ejecución**: Windows PowerShell x86 (`SysWOW64`, incluido de fábrica en Windows 10/11) con proveedor `Microsoft.Jet.OLEDB.4.0`.
 
 ---
 
-## 2. Compilación desde Línea de Comandos
+## 2. Compilación (`0` errores, `0` advertencias)
 
-El proyecto tiene activado `TreatWarningsAsErrors=true`, `Nullable=enable` y `AnalysisLevel=latest-recommended` en `Directory.Build.props`, garantizando **0 errores y 0 advertencias**.
+`Directory.Build.props` habilita `TreatWarningsAsErrors=true`, `WarningLevel=9999`, `Nullable=enable` y `AnalysisLevel=latest-recommended`.
 
-### Restaurar paquetes NuGet
 ```powershell
+# Restaurar dependencias
 dotnet restore SISPRO.sln
-```
 
-### Compilar en Debug
-```powershell
+# Compilar Debug
 dotnet build SISPRO.sln -c Debug --no-restore
-```
 
-### Compilar en Release
-```powershell
+# Compilar Release
 dotnet build SISPRO.sln -c Release --no-restore
 ```
 
 ---
 
-## 3. Ejecución de Pruebas Automatizadas
-
-La suite `tests/Sispro.Tests` cubre 6 categorías (**68 casos automatizados**):
-- **Unit**: RUT chileno, PBKDF2 + compatibilidad VB6, jerarquía de permisos RBAC y normalización de tipos de nodos (`AssetNodeTypes`).
-- **Integration**: base SQLite real (`7.284` OTs externas, `1.824` activos, `214` proveedores activos), migración idempotente de esquema legado en `Solicitantes`, `Niveles` y `OrdenesTrabajo` (`observacion`, `valor_neto`, `firmas_mask`, `firma_jefatura`, `firma_tecnico`, `firma_supervisor`) sin perder registros, árbol 10 niveles, sincronización/concurrencia y respaldos en caliente.
-- **Functional**: flujo E2E (OT Externa → Excel → Seguridad/Lockout/SQLi), catálogo de firmantes desde Personal/Usuarios y CRUD de **Perfiles de Usuarios** (`ProfilesSignersAndUiFeaturesTests`), gestión de `Solicitado Por` con firma `PNG`/`JPG`/`PDF` y renderizado PDF en exportaciones (`RequestersSignaturesAndApproversTests`), exportación masiva exclusiva de OTs seleccionadas (`.xlsx`/`.csv`/`.pdf` sin duplicar ítems), persistencia de Observación/Valor Neto (`>= 0`)/firmas al pie y operaciones masivas + diálogo de dependencias/reasignaciones con RBAC Admin (`BulkOperationsAndExtendedWorkOrderTests`), módulo CRUD `GESTIÓN DE USUARIOS` y `GESTIÓN DE GRUPOS`, administración del Árbol de Activos (`AssetTreeAdministrationTests`) y exportaciones multiformato (`MultiFormatExportTests`).
-- **UI**: auditoría en hilo STA de formularios y diálogos (`WinFormsUiAuditTests`, incluyendo confirmación explícita de ausencia de módulos de Facturas y Mantención Industrial), capturas visuales (`ScreenshotCaptureTests`), ordenamiento/paginación (`GridSortingAndPaginationTests`), menús contextuales seguros (`ContextMenuHelperTests`) e iconos Lucide aislados por hilo STA (`IconCatalog`).
-- **Regression**: validación explícita contra defectos históricos de VB6 (sin inversión VBS/VBJ, actualización/eliminación de OT sin dependencias obsoletas de facturas).
-- **Stress**: concurrencia multi-hilo, búsqueda indexada y exportación sobre la base real `data/sispro.db`.
+## 3. Suite de Pruebas Automatizadas (`74` casos `xUnit`)
 
 ```powershell
 dotnet test SISPRO.sln -c Release --no-build --verbosity normal
 ```
 
+Cobertura por categoría:
+- **Unit (`23`)**: RUT chileno, PBKDF2 + compatibilidad VB6, jerarquía RBAC y `AssetNodeTypes`.
+- **Integration (`7`)**: integridad real sobre `data/sispro.db`, migraciones idempotentes, árbol 10 niveles, respaldo en caliente, sincronización `SisproSyncHub` y concurrencia optimista.
+- **Functional (`29`)**:
+  - `MdbImportTests` (`6`): análisis comparativo exacto, inserción/actualización preservando campos SISPRO y firmas digitales, sobrescritura de vacíos opcional, RBAC solo Administrador, auditoría UI STA de `MdbImportDialog` y validación real contra `OT_PROV.mdb` cuando existe.
+  - `ProfilesSignersAndUiFeaturesTests` (`3`), `BulkOperationsAndExtendedWorkOrderTests` (`3`), `RequestersSignaturesAndApproversTests` (`2`), `AssetTreeAdministrationTests` (`5`), `UserManagementModuleTests` (`5`), `GroupsAndBatchOperationsTests` (`3`), `EndToEndWorkflowTests` (`2`), `MultiFormatExportTests` (`2` — incluido en el total).
+- **UI STA (`8`)**: auditoría completa de formularios, diálogos, botones, íconos, versiones dinámicas y módulos de auditoría (`WinFormsUiAuditTests`), menús contextuales (`ContextMenuHelperTests`), ordenamiento/paginación (`GridSortingAndPaginationTests`) y capturas (`ScreenshotCaptureTests`).
+- **Regression (`3`)** y **Stress (`2`)**.
+
 ---
 
-## 4. Publicación y Generación de Instalador
+## 4. Publicación y Generación del Instalador Inno Setup 7
 
-### Opción A: Script integral automatizado
-Ejecuta compilación Debug y Release, pruebas automatizadas, publicación autocontenida `win-x64` (`ReadyToRun`), compilación de Inno Setup 6 y generación de checksum SHA-256:
+### Script integral automatizado
+Restaura paquetes (incluyendo RID `win-x64` + `ReadyToRun`), compila `Debug` y `Release`, ejecuta las `74` pruebas, publica binario autocontenido `win-x64`, compila el instalador con Inno Setup `7.1.1` y genera `checksums_sha256.txt`:
 
 ```powershell
 .\scripts\Build-Release.ps1
 ```
 
-### Opción B: Paso a paso manual
-```powershell
-# 1. Publicar binario autocontenido (no requiere .NET 10 instalado en el equipo destino)
-dotnet publish src\Sispro.UI\Sispro.UI.csproj -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -o publish\win-x64
-
-# 2. Compilar instalador Inno Setup 6
-& "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" installer\Setup_SISPRO.iss
-```
-
-El instalador resultante se genera en:
-- `installer\Output\SISPRO_Setup_v4.4.0_win-x64.exe`
+### Artefactos generados
+- `installer\Output\SISPRO_Setup_v4.5.0_win-x64.exe`
 - `installer\Output\checksums_sha256.txt`
 
 ---
 
-## 5. Re-ejecutar Migración Base desde `OT_PROV.mdb` (Opcional)
-
-Si requiere reconstruir o inicializar una base vacía y aprovisionar la cuenta Administrador inicial de forma segura e idempotente (sin clave en código):
+## 5. Aprovisionamiento de Administrador Inicial (Opcional)
 
 ```powershell
-# Aprovisionar cuenta Administrador inicial de forma segura e idempotente (sin clave en código)
 .\scripts\Initialize-AdminUser.ps1 -DatabasePath "data\sispro.db" -Username "barriagada"
 ```

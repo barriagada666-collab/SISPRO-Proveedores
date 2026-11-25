@@ -55,7 +55,12 @@ if (-not $SkipInstaller) {
         throw "No se encontró Inno Setup 7 ni 6 (ISCC.exe)."
     }
 
-    $innoVer = (Get-Item $iscc).VersionInfo.ProductVersion
+    $verInfo = (Get-Item $iscc).VersionInfo
+    $innoVer = if (-not [string]::IsNullOrWhiteSpace($verInfo.FileVersion) -and $verInfo.FileVersion -ne "0.0.0.0") {
+        $verInfo.FileVersion.Trim()
+    } else {
+        $verInfo.ProductVersion.Trim()
+    }
     Write-Host "=== 6. Compilando instalador Inno Setup ($innoVer) ==="
     & $iscc (Join-Path $root "installer\Setup_SISPRO.iss")
     Assert-LastExitCode "ISCC.exe"

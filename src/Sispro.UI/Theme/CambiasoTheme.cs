@@ -41,8 +41,16 @@ public static class CambiasoTheme
     public static readonly Font LabelFont = new("Segoe UI", 9f, FontStyle.Bold);
     public static readonly Font BodyFont = new("Segoe UI", 9.5f, FontStyle.Regular);
     public static readonly Font SmallFont = new("Segoe UI", 8.5f, FontStyle.Regular);
+    public static readonly Font SmallItalicFont = new("Segoe UI", 7.8f, FontStyle.Italic);
     public static readonly Font ButtonFont = new("Segoe UI", 9f, FontStyle.Bold);
     public static readonly Font MetricNumberFont = new("Segoe UI", 22f, FontStyle.Bold);
+    public static readonly Font KpiTitleFont = new("Segoe UI", 7.8f, FontStyle.Bold);
+    public static readonly Font KpiValueFont = new("Segoe UI", 19.5f, FontStyle.Bold);
+    public static readonly Font KpiCompactValueFont = new("Segoe UI", 15f, FontStyle.Bold);
+    public static readonly Font KpiSubFont = new("Segoe UI", 7.8f, FontStyle.Regular);
+    public static readonly Font HeroTitleFont = new("Segoe UI", 11.5f, FontStyle.Bold);
+    public static readonly Font HeroButtonFont = new("Segoe UI", 11f, FontStyle.Bold);
+    public static readonly Font SplashDeptFont = new("Segoe UI", 10.5f, FontStyle.Regular);
 
     public static Button CreateButton(
         string text,
@@ -259,7 +267,7 @@ public static class CambiasoTheme
         Label lblTitle = new()
         {
             Text = title.ToUpperInvariant(),
-            Font = new Font("Segoe UI", 7.8f, FontStyle.Bold),
+            Font = KpiTitleFont,
             ForeColor = TextMuted,
             Location = new Point(14, 10),
             AutoSize = true
@@ -268,7 +276,7 @@ public static class CambiasoTheme
         valueLabel = new Label
         {
             Text = "0",
-            Font = new Font("Segoe UI", 19.5f, FontStyle.Bold),
+            Font = KpiValueFont,
             ForeColor = TextPrimary,
             Location = new Point(14, 30),
             AutoSize = true
@@ -282,7 +290,7 @@ public static class CambiasoTheme
             card.Controls.Add(new Label
             {
                 Text = subtitle,
-                Font = new Font("Segoe UI", 7.8f, FontStyle.Regular),
+                Font = KpiSubFont,
                 ForeColor = TextMuted,
                 Location = new Point(14, 67),
                 AutoSize = true

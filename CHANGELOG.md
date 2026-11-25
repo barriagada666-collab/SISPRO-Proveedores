@@ -8,13 +8,19 @@ Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Prove
 - **Importación y Comparación desde Base de Datos Microsoft Access (`.mdb`) (`Jet32MdbTableReader`, `MdbImportService`, `MdbImportDialog`)**:
   - Nueva funcionalidad exclusiva para perfil **Administrador** accesible desde **Mantenedores → Proveedores → `Importar MDB`** y **Configuración → `Importar MDB`**, compatible con aplicaciones `win-x64` mediante lector `IMdbTableReader` / `Jet32MdbTableReader` (`SysWOW64` PowerShell 32 bits + `Microsoft.Jet.OLEDB.4.0`, sin paquetes externos vulnerables).
   - **Análisis comparativo previo sin mutación de datos (`AnalyzeMdb`)**: muestra mediante 5 tarjetas KPI y grilla comparativa con filtros exactos **cuántos datos cambiarán** entre el `.mdb` y `sispro.db` (**Proveedores en MDB vs BD actual**, **Nuevos a agregar**, **Existentes a actualizar** con columnas exactas `Dirección / Teléfono / Fax / Correo` y vista `Actual → Nuevo`, **Sin cambios**, **Solicitantes nuevos/actualizados** y **OTs nuevas detectadas con sus ítems**).
-  - **Actualización transaccional segura (`ApplyImport`)**: permite seleccionar si agregar nuevos proveedores, actualizar existentes (preservando por defecto los campos no vacíos y los datos propios de SISPRO como `Contacto`, `Correo Contacto`, `Observaciones` y `Firmas Digitales`), sincronizar solicitantes/OTs nuevas y generar respaldo automático previo en `backups/sispro_pre_mdb_*.db`, registrando bitácora (`IMPORTAR_MDB`) y publicando sincronización inmediata vía `SisproSyncHub`.
-- **Actualización de Versión a `v4.5.0`**: Título dinámico en `MainForm`, `SplashForm`, `PrintService`, `Directory.Build.props` e instalador Inno Setup `7.1.1`.
+  - **Actualización transaccional segura (`ApplyImport`)**: consolida duplicados por nombre en el `.mdb`, permite seleccionar si agregar nuevos proveedores, actualizar existentes (preservando por defecto los campos no vacíos y los datos propios de SISPRO como `Contacto`, `Correo Contacto`, `Observaciones` y `Firmas Digitales`), sincronizar solicitantes/OTs nuevas y generar respaldo automático previo en `backups/sispro_pre_mdb_*.db`, registrando bitácora (`IMPORTAR_MDB`) y publicando sincronización inmediata vía `SisproSyncHub`.
+- **Optimización GDI+, Auditoría y Versionado Dinámico**:
+  - Centralizadas todas las fuentes KPI/Hero/Splash/Auxiliares como instancias estáticas cacheadas en `CambiasoTheme`, añadido `Dispose` explícito de `ToolTip` en `MdbImportDialog` y eliminado `async void` (`BrowseMdbFileAsync`).
+  - Incorporados los módulos **`Perfiles`** e **`Importación MDB`** en el filtro de `AuditLogDialog`.
+  - Versionado dinámico leído desde el ensamblado en `MainForm`, `SplashForm` y `PrintService`.
+- **Gráficas y Descripciones Simplificadas del Instalador (`v4.5.0`)**:
+  - Actualizado `installer/Assets/wizard_banner.bmp` (`Versión 4.5`) y simplificadas las descripciones internas genéricas en `Directory.Build.props` e `installer/Setup_SISPRO.iss`.
+  - Mejorada la lectura de `FileVersion` de Inno Setup 7 en `scripts/Build-Release.ps1` y `.github/workflows/release.yml`.
 
 ### Verificado
-- **Compilación y Seguridad**: `Debug` y `Release` con `0` errores y `0` advertencias.
-- **Suite Automatizada (`Release`)**: `74 / 74` pruebas `xUnit` aprobadas (`MdbImportTests` + validación contra `OT_PROV.mdb` cuando está presente + `WinFormsUiAuditTests`, `9 s`) e inspección visual de `docs/screenshots/15_importar_mdb.png`.
-- **Instalador `SISPRO_Setup_v4.5.0_win-x64.exe` (Inno Setup `7.1.1`)**: `57.956.910` bytes (`SHA-256`: `1ADD4161619A546238D73251D7C9D54A4424F4F113E3EC72AC6DD20203FD0E3F`).
+- **Compilación y Seguridad NuGet**: `Debug` y `Release` con `0` errores y `0` advertencias; `0` vulnerabilidades en los 5 proyectos.
+- **Suite Automatizada (`Release`)**: `74 / 74` pruebas `xUnit` aprobadas (`MdbImportTests` + validación contra `OT_PROV.mdb` cuando está presente + `WinFormsUiAuditTests` ampliada, `9 s`) e inspección visual de `docs/screenshots/00_splash.png` y `15_importar_mdb.png`.
+- **Instalador `SISPRO_Setup_v4.5.0_win-x64.exe` (Inno Setup `7.1.1`)**: `57.968.544` bytes (`SHA-256`: `13E206BFAFA1569AD1810129502AA80D3454C3595614A9E442DB5DECDD6435DA`), validada actualización silenciosa `v4.4.0 → v4.5.0` (preservación íntegra de `Data\sispro.db` con hash `F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`) y desinstalación limpia.
 
 ---
 

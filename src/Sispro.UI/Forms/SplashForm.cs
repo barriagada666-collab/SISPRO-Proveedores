@@ -60,7 +60,7 @@ public sealed class SplashForm : Form
         Label lblDivision = new()
         {
             Text = "ÓRDENES DE TRABAJO EXTERNAS\nPlacilla, Valparaíso",
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+            Font = CambiasoTheme.SmallFont,
             ForeColor = Color.FromArgb(205, 226, 240),
             TextAlign = ContentAlignment.MiddleCenter,
             BackColor = Color.Transparent,
@@ -90,7 +90,7 @@ public sealed class SplashForm : Form
         Label lblTitle = new()
         {
             Text = "SISPRO · Gestión Proveedores",
-            Font = new Font("Segoe UI", 14.5f, FontStyle.Bold),
+            Font = CambiasoTheme.TitleFont,
             ForeColor = CambiasoTheme.TextPrimary,
             Location = new Point(26, 68),
             AutoSize = true
@@ -99,7 +99,7 @@ public sealed class SplashForm : Form
         Label lblDept = new()
         {
             Text = "Departamento Mantención",
-            Font = new Font("Segoe UI", 10.5f, FontStyle.Regular),
+            Font = CambiasoTheme.SplashDeptFont,
             ForeColor = CambiasoTheme.TextMuted,
             Location = new Point(26, 100),
             AutoSize = true
@@ -138,9 +138,12 @@ public sealed class SplashForm : Form
             Size = new Size(284, 38)
         };
 
+        Version? asmVer = typeof(SplashForm).Assembly.GetName().Version;
+        string shortVer = asmVer is not null ? $"{asmVer.Major}.{asmVer.Minor}" : "4.5";
+
         Label lblVersion = new()
         {
-            Text = "Versión 4.5 (.NET 10)",
+            Text = $"Versión {shortVer} (.NET 10)",
             Font = CambiasoTheme.LabelFont,
             ForeColor = CambiasoTheme.Accent,
             TextAlign = ContentAlignment.MiddleRight,
