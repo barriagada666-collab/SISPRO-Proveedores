@@ -1,3 +1,4 @@
+using System.Globalization;
 using Sispro.Core.Dtos;
 using Sispro.Services;
 using Sispro.UI.Forms;
@@ -10,6 +11,10 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        CultureInfo clCulture = CultureInfo.GetCultureInfo("es-CL");
+        CultureInfo.DefaultThreadCurrentCulture = clCulture;
+        CultureInfo.DefaultThreadCurrentUICulture = clCulture;
+
         ApplicationConfiguration.Initialize();
 
         Application.ThreadException += (_, e) =>

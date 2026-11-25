@@ -12,7 +12,7 @@
 ## 2. Instalación
 
 ### Instalación Interactiva
-1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt` (`3D0962B22EFC1144C03DB61D5B068C9EF3FAAB54B036E3B191A75E3ED3ADB878` para `v4.4.0`):
+1. Verifique la integridad del instalador comparando el hash SHA-256 con `checksums_sha256.txt` (`AFD9B7605F593FCE458B041BFBF9442385B96D6A052B09A2685B977C42663876` para `v4.4.0`):
    ```powershell
    Get-FileHash SISPRO_Setup_v4.4.0_win-x64.exe -Algorithm SHA256
    ```

@@ -22,7 +22,7 @@ Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Prove
 ### Verificado
 - **Compilación y Seguridad NuGet**: `Debug` y `Release` `0` errores, `0` advertencias; `0` paquetes vulnerables en los 5 proyectos (`dotnet list SISPRO.sln package --vulnerable --include-transitive`).
 - **Suite Automatizada (`Release`)**: `68 / 68` pruebas `xUnit` aprobadas (`ProfilesSignersAndUiFeaturesTests` + suite previa, `9 s`) e inspección visual directa de las 14 capturas regeneradas en `docs/screenshots/` (incluyendo `14_perfiles_usuarios.png`).
-- **Instalador `SISPRO_Setup_v4.4.0_win-x64.exe`**: `57.891.351` bytes (`SHA-256`: `3D0962B22EFC1144C03DB61D5B068C9EF3FAAB54B036E3B191A75E3ED3ADB878`), validada actualización silenciosa `v4.3.0 → v4.4.0` (preservación íntegra de `Data\sispro.db` con hash `F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`) y desinstalación limpia.
+- **Instalador `SISPRO_Setup_v4.4.0_win-x64.exe`**: `57.905.034` bytes (`SHA-256`: `AFD9B7605F593FCE458B041BFBF9442385B96D6A052B09A2685B977C42663876`), validada actualización silenciosa `v4.3.0 → v4.4.0` (preservación íntegra de `Data\sispro.db` con hash `F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`) y desinstalación limpia.
 
 ---
 

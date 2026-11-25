@@ -33,8 +33,8 @@
 - **Auditoría NuGet (`dotnet list SISPRO.sln package --vulnerable --include-transitive`):** **0 paquetes vulnerables** en los 5 proyectos (`Sispro.Core`, `Sispro.Data`, `Sispro.Services`, `Sispro.UI`, `Sispro.Tests`).
 - **Suite Automatizada `xUnit` (`Release`):** **`68 / 68` aprobadas** (`0` fallidas, `0` omitidas, `9 s`), incluyendo [ProfilesSignersAndUiFeaturesTests.cs](file:///D:/archivos%20qlabel/Proveedores/tests/Sispro.Tests/Functional/ProfilesSignersAndUiFeaturesTests.cs) y protección ante excepciones UI en [TempTestDatabase.cs](file:///D:/archivos%20qlabel/Proveedores/tests/Sispro.Tests/TempTestDatabase.cs), más inspección visual directa de [02_dashboard.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/02_dashboard.png), [03_ordenes_trabajo.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/03_ordenes_trabajo.png), [11_generar_imprimir_ot.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/11_generar_imprimir_ot.png), [12_busqueda_ot_masiva.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/12_busqueda_ot_masiva.png), [06_usuarios_rbac.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/06_usuarios_rbac.png) y [14_perfiles_usuarios.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/14_perfiles_usuarios.png).
 - **Instalador Inno Setup `6.7.3`:**
-  - Artefacto: `installer/Output/SISPRO_Setup_v4.4.0_win-x64.exe` (**57.891.351 bytes**)
-  - `SHA-256`: `3D0962B22EFC1144C03DB61D5B068C9EF3FAAB54B036E3B191A75E3ED3ADB878`
+  - Artefacto: `installer/Output/SISPRO_Setup_v4.4.0_win-x64.exe` (**57.905.034 bytes**)
+  - `SHA-256`: `AFD9B7605F593FCE458B041BFBF9442385B96D6A052B09A2685B977C42663876`
   - Prueba real silenciosa (`v4.3.0 → v4.4.0 → desinstalación` sobre `C:\Temp\SISPRO_QA_v440`):
     - Instalación `v4.3.0`: `V430_EXIT=0`, `EXE_VER=4.3.0.0`, `DB_HASH1=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`
     - Actualización `v4.4.0`: `V440_UPGRADE_EXIT=0`, `EXE_VER=4.4.0.0`, `DB_HASH2=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`, `DB_PRESERVED=True`

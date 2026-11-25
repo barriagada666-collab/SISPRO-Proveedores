@@ -380,7 +380,15 @@ public sealed class WorkOrdersForm : UserControl
         _btnClearEntry = CambiasoTheme.CreateButton("Limpiar", AppIcon.Eraser, ButtonTone.Secondary, _toolTip, "Limpiar formulario para nueva OT", width: 98);
         _btnClearEntry.Click += (_, _) => ClearEntryForm();
 
-        _lblEntryStatus = new Label { AutoSize = true, Font = CambiasoTheme.SmallFont, ForeColor = CambiasoTheme.TextMuted };
+        _lblEntryStatus = new Label
+        {
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(4, 0, 4, 0),
+            Font = CambiasoTheme.SmallFont,
+            ForeColor = CambiasoTheme.TextMuted
+        };
 
         BuildEntryTabLayout();
 
@@ -816,7 +824,7 @@ public sealed class WorkOrdersForm : UserControl
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 168));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
 
         GroupBox grpHeader = CambiasoTheme.CreateGroupBox("Datos Generales de la Orden de Trabajo");
         grpHeader.Dock = DockStyle.Fill;
@@ -924,14 +932,21 @@ public sealed class WorkOrdersForm : UserControl
         grpGrid.Dock = DockStyle.Fill;
         grpGrid.Controls.Add(_gridEntryDetails);
 
-        FlowLayoutPanel footer = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 6, 2, 4), WrapContents = false };
-        footer.Controls.AddRange([_btnSaveOt, _btnSaveAndExportOt, _btnEntryPreview, _btnUpdateOt, _btnDeleteOt, _btnClearEntry, _lblEntryStatus]);
+        TableLayoutPanel footerHost = new() { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2, Margin = Padding.Empty };
+        footerHost.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        footerHost.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+
+        FlowLayoutPanel footerButtons = new() { Dock = DockStyle.Fill, Padding = new Padding(2, 2, 2, 0), WrapContents = false };
+        footerButtons.Controls.AddRange([_btnSaveOt, _btnSaveAndExportOt, _btnEntryPreview, _btnUpdateOt, _btnDeleteOt, _btnClearEntry]);
+
+        footerHost.Controls.Add(footerButtons, 0, 0);
+        footerHost.Controls.Add(_lblEntryStatus, 0, 1);
 
         layout.Controls.Add(grpHeader, 0, 0);
         layout.Controls.Add(grpDetail, 0, 1);
         layout.Controls.Add(obsAndMoneySplit, 0, 2);
         layout.Controls.Add(grpGrid, 0, 3);
-        layout.Controls.Add(footer, 0, 4);
+        layout.Controls.Add(footerHost, 0, 4);
         _tabEntry.Controls.Add(layout);
     }
 
@@ -1182,7 +1197,7 @@ public sealed class WorkOrdersForm : UserControl
         _btnUpdateOt.Enabled = true;
         _btnDeleteOt.Enabled = true;
         UpdateEntrySignatureHint();
-        _lblEntryStatus.Text = $"OT #{order.NumeroOt} cargada";
+        _lblEntryStatus.Text = $"OT N° {order.NumeroOt} cargada · Neto: $ {order.ValorNeto.ToString("N0", ClCulture)} · Firmas: {order.FirmasSeleccionadas.FormatResumen()}";
     }
 
     private void AddEntryDetail()

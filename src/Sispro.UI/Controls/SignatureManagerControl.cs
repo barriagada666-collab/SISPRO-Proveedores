@@ -330,7 +330,8 @@ public sealed class SignatureManagerControl : UserControl
             SelectionController.EnsureSelectColumnAndSync();
 
             int totalWithSig = _allRequesters.Count(r => r.TieneFirma);
-            LblStats.Text = $"Firmas registradas: {totalWithSig} de {_allRequesters.Count} solicitante(s) · Mostrando {rows.Count}";
+            LblStats.AutoEllipsis = true;
+            LblStats.Text = $"Con firma: {totalWithSig}/{_allRequesters.Count} · Visibles: {rows.Count}";
 
             if (selectIdSol.HasValue)
             {
