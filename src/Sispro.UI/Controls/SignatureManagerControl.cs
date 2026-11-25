@@ -312,8 +312,9 @@ public sealed class SignatureManagerControl : UserControl
         try
         {
             List<Requester> rows = GetFiltered();
+            IReadOnlyDictionary<int, int> countsByRequester = _ctx.MaintainerService.GetRequesterWorkOrderCounts();
             GridSignatures.DataSource = new SortableBindingList<SignatureGridRow>(
-                rows.Select(r => new SignatureGridRow(r, _ctx.MaintainerService)));
+                rows.Select(r => new SignatureGridRow(r, countsByRequester.GetValueOrDefault(r.IdSol, 0))));
 
             if (GridSignatures.Columns.Count >= 9)
             {
@@ -527,7 +528,7 @@ public sealed class SignatureManagerControl : UserControl
         base.Dispose(disposing);
     }
 
-    private sealed class SignatureGridRow(Requester source, MaintainerService svc) : IGridRowSource<Requester>
+    private sealed class SignatureGridRow(Requester source, int otsAsoc) : IGridRowSource<Requester>
     {
         [Browsable(false)]
         public Requester Source { get; } = source;
@@ -537,7 +538,7 @@ public sealed class SignatureManagerControl : UserControl
         public string Formato => Source.FirmaBadge;
         public string Archivo => string.IsNullOrWhiteSpace(Source.FirmaNombre) ? "—" : Source.FirmaNombre;
         public string Peso => Source.FirmaBytes is { Length: > 0 } ? $"{Math.Max(1, Source.FirmaBytes.Length / 1024)} KB" : "—";
-        public int OtsAsoc => svc.GetRequesterWorkOrderCount(Source.IdSol);
+        public int OtsAsoc => otsAsoc;
         public string Estado => Source.Activo ? "Activo" : "Inactivo";
     }
 }

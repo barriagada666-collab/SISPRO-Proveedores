@@ -57,6 +57,7 @@ public sealed class WorkOrdersForm : UserControl
     private readonly List<WorkOrderDetail> _entryDetails = [];
     private WorkOrder? _loadedOrder;
     private bool _suppressEntrySignerSync;
+    private bool _entryCatalogHasHistorical;
     private IReadOnlyList<SignaturePersonOption> _signatureCatalog = [];
 
     internal TextBox TxtObservacionEntry { get; }
@@ -1555,6 +1556,10 @@ public sealed class WorkOrdersForm : UserControl
         list.Add(match);
         combo.DataSource = list;
         combo.SelectedValue = idProv;
+        if (ReferenceEquals(combo, _cmbProviderEntry))
+        {
+            _entryCatalogHasHistorical = true;
+        }
     }
 
     private void SelectOrBindHistoricalRequester(ComboBox combo, int idSol)
@@ -1576,6 +1581,10 @@ public sealed class WorkOrdersForm : UserControl
         list.Add(match);
         combo.DataSource = list;
         combo.SelectedValue = idSol;
+        if (ReferenceEquals(combo, _cmbRequesterEntry))
+        {
+            _entryCatalogHasHistorical = true;
+        }
     }
 
     private void ClearEntryForm()
@@ -1585,7 +1594,11 @@ public sealed class WorkOrdersForm : UserControl
         _suppressEntrySignerSync = true;
         try
         {
-            LoadCatalogs();
+            if (_entryCatalogHasHistorical)
+            {
+                LoadCatalogs();
+                _entryCatalogHasHistorical = false;
+            }
             _txtNumeroOt.Text = _ctx.WorkOrderService.GetNextWorkOrderNumber().ToString(CultureInfo.InvariantCulture);
             RefreshNextOtBadge();
             _dtFechaOt.Value = DateTime.Today;

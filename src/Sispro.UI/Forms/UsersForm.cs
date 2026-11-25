@@ -46,6 +46,9 @@ public sealed class UsersForm : UserControl
     private readonly SisproApplicationContext _ctx;
     private readonly UserSession _session;
     private readonly ToolTip _toolTip = new();
+    private readonly Font _groupSubFont = new("Segoe UI", 7.8f, FontStyle.Regular);
+    private readonly Font _groupSubItalicFont = new("Segoe UI", 7.8f, FontStyle.Italic);
+    private readonly Font _compactBtnFont = new("Segoe UI", 8.2f, FontStyle.Bold);
 
     private EditorMode _mode = EditorMode.View;
     private bool _suppressGridSelection;
@@ -1392,7 +1395,7 @@ public sealed class UsersForm : UserControl
         TextRenderer.DrawText(
             g,
             subText,
-            new Font("Segoe UI", 7.8f, item.IsActive ? FontStyle.Regular : FontStyle.Italic),
+            item.IsActive ? _groupSubFont : _groupSubItalicFont,
             subRect,
             isDropHover ? CambiasoTheme.Accent : (!item.IsActive ? CambiasoTheme.Danger : CambiasoTheme.TextMuted),
             TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
@@ -2357,7 +2360,7 @@ public sealed class UsersForm : UserControl
     private Button CreateCompactButton(string text, AppIcon icon, ButtonTone tone, string tooltip)
     {
         Button btn = CambiasoTheme.CreateButton(text, icon, tone, _toolTip, tooltip, width: 72, height: 26);
-        btn.Font = new Font("Segoe UI", 8.2f, FontStyle.Bold);
+        btn.Font = _compactBtnFont;
         btn.Padding = new Padding(4, 0, 4, 0);
         return btn;
     }
@@ -2410,6 +2413,9 @@ public sealed class UsersForm : UserControl
 
             _picUserSig.Image?.Dispose();
             _picUserSig.Image = null;
+            _groupSubFont.Dispose();
+            _groupSubItalicFont.Dispose();
+            _compactBtnFont.Dispose();
             _toolTip.Dispose();
         }
 

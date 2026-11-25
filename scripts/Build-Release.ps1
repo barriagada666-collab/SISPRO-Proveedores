@@ -15,7 +15,7 @@ function Assert-LastExitCode([string]$stepName) {
 Write-Host "=== 1. Restaurando dependencias ==="
 dotnet restore SISPRO.sln
 Assert-LastExitCode "dotnet restore SISPRO.sln"
-dotnet restore src\Sispro.UI\Sispro.UI.csproj -r win-x64
+dotnet restore src\Sispro.UI\Sispro.UI.csproj -r win-x64 -p:PublishReadyToRun=true
 Assert-LastExitCode "dotnet restore win-x64"
 
 Write-Host "=== 2. Compilando Debug (0 errores, 0 advertencias) ==="
@@ -42,6 +42,9 @@ if (-not (Test-Path (Join-Path $pubDir "SISPRO.exe"))) {
 if (-not $SkipInstaller) {
     $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
     $isccCandidates = @(
+        "$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",
+        "C:\Program Files\Inno Setup 7\ISCC.exe",
+        "C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
         "C:\Program Files\Inno Setup 6\ISCC.exe",
@@ -49,10 +52,11 @@ if (-not $SkipInstaller) {
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $iscc) {
-        throw "No se encontró Inno Setup 6 (ISCC.exe)."
+        throw "No se encontró Inno Setup 7 ni 6 (ISCC.exe)."
     }
 
-    Write-Host "=== 6. Compilando instalador Inno Setup 6 ==="
+    $innoVer = (Get-Item $iscc).VersionInfo.ProductVersion
+    Write-Host "=== 6. Compilando instalador Inno Setup ($innoVer) ==="
     & $iscc (Join-Path $root "installer\Setup_SISPRO.iss")
     Assert-LastExitCode "ISCC.exe"
 

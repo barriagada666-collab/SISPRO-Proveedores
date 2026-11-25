@@ -32,9 +32,9 @@
 - **Compilación `Debug` y `Release` (`SISPRO.sln`):** **0 errores**, **0 advertencias** (`TreatWarningsAsErrors=true`, `Nullable=enable`).
 - **Auditoría NuGet (`dotnet list SISPRO.sln package --vulnerable --include-transitive`):** **0 paquetes vulnerables** en los 5 proyectos (`Sispro.Core`, `Sispro.Data`, `Sispro.Services`, `Sispro.UI`, `Sispro.Tests`).
 - **Suite Automatizada `xUnit` (`Release`):** **`68 / 68` aprobadas** (`0` fallidas, `0` omitidas, `9 s`), incluyendo [ProfilesSignersAndUiFeaturesTests.cs](file:///D:/archivos%20qlabel/Proveedores/tests/Sispro.Tests/Functional/ProfilesSignersAndUiFeaturesTests.cs) y protección ante excepciones UI en [TempTestDatabase.cs](file:///D:/archivos%20qlabel/Proveedores/tests/Sispro.Tests/TempTestDatabase.cs), más inspección visual directa de [02_dashboard.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/02_dashboard.png), [03_ordenes_trabajo.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/03_ordenes_trabajo.png), [11_generar_imprimir_ot.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/11_generar_imprimir_ot.png), [12_busqueda_ot_masiva.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/12_busqueda_ot_masiva.png), [06_usuarios_rbac.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/06_usuarios_rbac.png) y [14_perfiles_usuarios.png](file:///D:/archivos%20qlabel/Proveedores/docs/screenshots/14_perfiles_usuarios.png).
-- **Instalador Inno Setup `6.7.3`:**
-  - Artefacto: `installer/Output/SISPRO_Setup_v4.4.0_win-x64.exe` (**57.901.866 bytes**)
-  - `SHA-256`: `279BAA4EB257363AAF046F692FE8B89DC1DAED0FFDE711F88C15AC560144A702`
+- **Instalador Inno Setup `7.1.1`:**
+  - Artefacto: `installer/Output/SISPRO_Setup_v4.4.0_win-x64.exe` (**57.891.122 bytes**)
+  - `SHA-256`: `61B43AB4934864526FA5788C67C15E93F5711D60CA3E1C713501481A10EC6FFA`
   - Prueba real silenciosa (`v4.3.0 → v4.4.0 → desinstalación` sobre `C:\Temp\SISPRO_QA_v440`):
     - Instalación `v4.3.0`: `V430_EXIT=0`, `EXE_VER=4.3.0.0`, `DB_HASH1=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`
     - Actualización `v4.4.0`: `V440_UPGRADE_EXIT=0`, `EXE_VER=4.4.0.0`, `DB_HASH2=F4123E08623EB1DDA8DAAE53073C26D764A525C577B5774A74268C4D47809654`, `DB_PRESERVED=True`

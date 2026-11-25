@@ -116,6 +116,8 @@ public sealed class MaintainerService(
 
     public int GetRequesterWorkOrderCount(int idSol) => requesters.CountWorkOrders(idSol);
 
+    public IReadOnlyDictionary<int, int> GetRequesterWorkOrderCounts() => requesters.CountWorkOrdersByRequester();
+
     public int SaveProvider(UserSession session, Provider provider)
     {
         AuthService.EnsurePermission(session, p => p.MenuMantenedor, "Administrar proveedores");

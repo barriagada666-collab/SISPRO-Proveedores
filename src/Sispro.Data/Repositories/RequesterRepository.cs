@@ -207,6 +207,21 @@ public sealed class RequesterRepository(SqliteConnectionFactory factory) : IRequ
         return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
     }
 
+    public IReadOnlyDictionary<int, int> CountWorkOrdersByRequester()
+    {
+        Dictionary<int, int> counts = [];
+        using SqliteConnection conn = factory.OpenConnection();
+        using SqliteCommand cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id_sol, COUNT(*) FROM OrdenesTrabajo WHERE id_sol IS NOT NULL GROUP BY id_sol;";
+        using SqliteDataReader rdr = cmd.ExecuteReader();
+        while (rdr.Read())
+        {
+            counts[rdr.GetInt32(0)] = rdr.GetInt32(1);
+        }
+
+        return counts;
+    }
+
     public IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> requesterIds, string relationLabel)
     {
         int[] ids = RepositoryHelpers.NormalizePositiveIds(requesterIds);

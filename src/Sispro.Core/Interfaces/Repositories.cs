@@ -78,6 +78,7 @@ public interface IRequesterRepository
     void EnsureFromUser(User user);
     bool HasWorkOrders(int idSol);
     int CountWorkOrders(int idSol);
+    IReadOnlyDictionary<int, int> CountWorkOrdersByRequester();
     IReadOnlyList<RelatedWorkOrderInfo> GetRelatedWorkOrders(IReadOnlyCollection<int> requesterIds, string relationLabel);
     int ReassignWorkOrders(IReadOnlyCollection<int> sourceRequesterIds, int targetRequesterId);
     void Delete(int idSol);

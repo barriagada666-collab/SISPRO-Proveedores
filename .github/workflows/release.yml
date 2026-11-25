@@ -29,18 +29,29 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Ensure Inno Setup 6 is installed
+      - name: Ensure Inno Setup 7 is installed
         shell: pwsh
         run: |
           $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
           $candidates = @(
+            "$env:LOCALAPPDATA\Programs\Inno Setup 7\ISCC.exe",
+            "C:\Program Files\Inno Setup 7\ISCC.exe",
+            "C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
             "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
             "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
             "C:\Program Files\Inno Setup 6\ISCC.exe",
             ($isccCmd?.Source)
           ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-          if (-not ($candidates | Where-Object { Test-Path $_ })) {
-            choco install innosetup -y --no-progress
+          $inno7Exists = $candidates | Where-Object { $_ -like "*Inno Setup 7*" -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $inno7Exists) {
+            try {
+              winget install -e --id JRSoftware.InnoSetup.7 --accept-package-agreements --accept-source-agreements --silent
+            } catch {
+              Write-Warning "winget falló; intentando fallback choco..."
+            }
+            if (-not ($candidates | Where-Object { Test-Path $_ })) {
+              choco install innosetup -y --no-progress
+            }
             $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
             if ($isccCmd) { $candidates += $isccCmd.Source }
           }
@@ -48,7 +59,7 @@ jobs:
           if (-not $iscc) {
             throw "No se pudo localizar ISCC.exe después de instalar Inno Setup."
           }
-          Write-Host "ISCC localizado en: $iscc"
+          Write-Host "ISCC localizado en: $iscc ($((Get-Item $iscc).VersionInfo.ProductVersion))"
 
       - name: Build, Test, Publish & Compile Inno Setup Installer
         shell: pwsh
