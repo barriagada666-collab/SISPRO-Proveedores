@@ -466,21 +466,27 @@ public sealed class BulkOperationsAndExtendedWorkOrderTests
         Assert.True(syncHits > 0);
         Assert.Contains(ctx.Audit.GetRecent(40), a => a.Accion == "ACCESO_NO_AUTORIZADO" && a.Usuario == "sup_test");
 
-        // 7. Verificar UI 4 pestañas en MaintainersForm STA (Admin vs Supervisor no ve botones destructivos)
+        // 7. Verificar UI 7 pestañas en MaintainersForm STA para Admin (y sin pestañas Admin para Supervisor)
         TempTestDatabase.RunOnStaThread(() =>
         {
             using MaintainersForm form = new(ctx, admin);
-            Assert.Equal(4, form.TabControlMain.TabPages.Count);
+            Assert.Equal(7, form.TabControlMain.TabPages.Count);
             Assert.Equal("Proveedores", form.TabControlMain.TabPages[0].Text);
             Assert.Equal("Solicitantes", form.TabControlMain.TabPages[1].Text);
             Assert.Equal("Firmas", form.TabControlMain.TabPages[2].Text);
             Assert.Equal("Árbol de Activos", form.TabControlMain.TabPages[3].Text);
+            Assert.Equal("Editor de Árbol", form.TabControlMain.TabPages[4].Text);
+            Assert.Equal("Configuración", form.TabControlMain.TabPages[5].Text);
+            Assert.Equal("Mi Clave", form.TabControlMain.TabPages[6].Text);
             Assert.True(form.AssetTreePanelControl.ShowCheckBoxes);
             Assert.NotNull(form.GridProviders.Columns[GridCheckboxSelectionController<Provider>.SelectColumnName]);
             Assert.NotNull(form.RequestersControl.GridRequesters.Columns[GridCheckboxSelectionController<Requester>.SelectColumnName]);
             Assert.NotNull(form.SignaturesControl.GridSignatures.Columns[GridCheckboxSelectionController<Requester>.SelectColumnName]);
 
             using MaintainersForm supForm = new(ctx, supervisor);
+            Assert.Single(supForm.TabControlMain.TabPages);
+            Assert.Equal("Mi Clave", supForm.TabControlMain.TabPages[0].Text);
+            Assert.DoesNotContain(supForm.TabControlMain.TabPages.Cast<TabPage>(), t => t.Text is "Editor de Árbol" or "Configuración");
             Assert.False(supForm.RequestersControl.BtnEliminar.Visible);
             Assert.False(supForm.RequestersControl.BtnDesactivar.Visible);
             Assert.False(supForm.RequestersControl.BtnReasignar.Visible);

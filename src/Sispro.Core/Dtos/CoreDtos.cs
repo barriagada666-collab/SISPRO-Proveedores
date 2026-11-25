@@ -83,6 +83,7 @@ public sealed class WorkOrderSearchRow
     public string Detalle { get; set; } = string.Empty;
     public string Observacion { get; set; } = string.Empty;
     public decimal ValorNeto { get; set; }
+    public bool MostrarValorNeto { get; set; } = true;
     public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
     public SignatureOption FirmasSeleccionadas { get; set; } = SignatureOption.AmbasConSolicitante;
     public string RutaActivo { get; set; } = string.Empty;
@@ -98,7 +99,7 @@ public sealed class WorkOrderSearchRow
 
     public string FirmasDisplay => FirmasSeleccionadas.FormatResumen();
 
-    public string ValorNetoDisplay => $"$ {ValorNeto:N0}";
+    public string ValorNetoDisplay => MostrarValorNeto ? $"$ {ValorNeto:N0}" : "Oculto";
 
     public string VbsDisplay => TieneVbs
         ? (string.IsNullOrWhiteSpace(VbsUsuario) ? "Sí" : $"Sí ({VbsUsuario})")
@@ -329,3 +330,9 @@ public sealed record SignaturePersonOption(
 {
     public override string ToString() => Etiqueta;
 }
+
+public sealed record SystemConfigTestResult(
+    bool Succeeded,
+    IReadOnlyList<string> Checks,
+    IReadOnlyList<string> Errors,
+    string Summary);

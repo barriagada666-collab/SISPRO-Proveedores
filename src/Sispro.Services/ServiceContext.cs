@@ -105,6 +105,7 @@ public sealed class SisproApplicationContext : IDisposable
     public IAssetTreeRepository AssetTree { get; private set; }
     public IWorkOrderRepository WorkOrders { get; private set; }
     public IAuditRepository Audit { get; private set; }
+    public ISystemConfigRepository SystemConfig { get; private set; }
 
     public AuthService AuthService { get; private set; }
     public WorkOrderService WorkOrderService { get; private set; }
@@ -121,6 +122,9 @@ public sealed class SisproApplicationContext : IDisposable
     public PrintService PrintService { get; private set; }
     public IMdbTableReader MdbTableReader { get; private set; }
     public MdbImportService MdbImportService { get; private set; }
+    public SystemConfigService SystemConfigService { get; private set; }
+
+    public event EventHandler<bool>? ConfigurationChanged;
 
     public UserSession? CurrentSession { get; set; }
 
@@ -139,6 +143,10 @@ public sealed class SisproApplicationContext : IDisposable
         AssetTree = new AssetTreeRepository(ConnectionFactory);
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
+        SystemConfig = new SystemConfigRepository(ConnectionFactory);
+
+        SystemConfigService = new SystemConfigService(this);
+        SystemConfigService.LoadFromDatabaseIntoSettings(Settings);
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
@@ -157,12 +165,43 @@ public sealed class SisproApplicationContext : IDisposable
         MdbImportService = new MdbImportService(ConnectionFactory, Providers, Requesters, Audit, MdbTableReader, SyncHub, Users);
     }
 
-    public void ReloadDatabase(string newDatabasePath)
+    public void ReloadDatabase(string newDatabasePath, bool preserveProvidedCompanySettings = false)
     {
         Settings.DatabasePath = newDatabasePath;
         AppSettingsStore.Save(Settings);
 
-        ConnectionFactory = new SqliteConnectionFactory(newDatabasePath);
+        AttachDatabaseServices(newDatabasePath);
+        if (!preserveProvidedCompanySettings)
+        {
+            SystemConfigService.LoadFromDatabaseIntoSettings(Settings);
+        }
+
+        SyncHub.Publish(Sispro.Core.Enums.DataChangeKind.All, "RECARGAR_BASE_DATOS");
+        NotifyConfigurationChanged(isTemporary: false);
+    }
+
+    internal void SwitchDatabaseTemporary(string temporaryDatabasePath, AppSettings temporaryValues)
+    {
+        Settings.DatabasePath = temporaryDatabasePath;
+        Settings.CompanyName = temporaryValues.CompanyName;
+        Settings.CompanyRut = temporaryValues.CompanyRut;
+        Settings.CompanyDepartment = temporaryValues.CompanyDepartment;
+        Settings.CompanyAddress = temporaryValues.CompanyAddress;
+        Settings.CompanyCity = temporaryValues.CompanyCity;
+
+        AttachDatabaseServices(temporaryDatabasePath);
+        SyncHub.Publish(Sispro.Core.Enums.DataChangeKind.All, "APLICAR_CONFIGURACION_TEMPORAL");
+        NotifyConfigurationChanged(isTemporary: true);
+    }
+
+    internal void NotifyConfigurationChanged(bool isTemporary)
+    {
+        ConfigurationChanged?.Invoke(this, isTemporary);
+    }
+
+    private void AttachDatabaseServices(string databasePath)
+    {
+        ConnectionFactory = new SqliteConnectionFactory(databasePath);
         SchemaInitializer.EnsureInitialized(ConnectionFactory);
         SyncHub.AttachDatabase(ConnectionFactory);
 
@@ -174,6 +213,7 @@ public sealed class SisproApplicationContext : IDisposable
         AssetTree = new AssetTreeRepository(ConnectionFactory);
         WorkOrders = new WorkOrderRepository(ConnectionFactory);
         Audit = new AuditRepository(ConnectionFactory);
+        SystemConfig = new SystemConfigRepository(ConnectionFactory);
 
         AuthService = new AuthService(Users, Audit);
         WorkOrderService = new WorkOrderService(WorkOrders, Providers, Requesters, AssetTree, Audit, SyncHub, Users);
@@ -190,8 +230,6 @@ public sealed class SisproApplicationContext : IDisposable
         PrintService = new PrintService(Settings);
         MdbTableReader ??= new Jet32MdbTableReader();
         MdbImportService = new MdbImportService(ConnectionFactory, Providers, Requesters, Audit, MdbTableReader, SyncHub, Users);
-
-        SyncHub.Publish(Sispro.Core.Enums.DataChangeKind.All, "RECARGAR_BASE_DATOS");
     }
 
     public void Dispose()

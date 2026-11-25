@@ -81,7 +81,7 @@ public sealed partial class WorkOrderService(
 
     public IReadOnlyList<WorkOrder> GetByIds(UserSession session, IReadOnlyCollection<int> idOts)
     {
-        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.BusquedaOt || p.IngresoOt || p.ImpresionOt), "Consultar órdenes de trabajo");
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.BusquedaOt || p.IngresoOt), "Consultar órdenes de trabajo");
         IReadOnlyList<WorkOrder> list = workOrders.GetByIds(idOts);
         if (list.Count > 0)
         {
@@ -136,7 +136,7 @@ public sealed partial class WorkOrderService(
 
     public IReadOnlyList<WorkOrderSearchRow> Search(UserSession session, WorkOrderSearchFilter filter)
     {
-        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.BusquedaOt || p.IngresoOt || p.ImpresionOt), "Buscar órdenes de trabajo");
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.BusquedaOt || p.IngresoOt), "Buscar órdenes de trabajo");
 
         if (filter.FechaInicio.HasValue && filter.FechaFin.HasValue && filter.FechaInicio.Value.Date > filter.FechaFin.Value.Date)
         {
@@ -190,7 +190,7 @@ public sealed partial class WorkOrderService(
         string? firmaTecnico = null,
         string? firmaSupervisor = null)
     {
-        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && (p.IngresoOt || p.ImpresionOt), "Actualizar selección de firmas de OT");
+        AuthService.EnsurePermission(session, p => p.MenuOrdenesTrabajo && p.IngresoOt, "Actualizar selección de firmas de OT");
         WorkOrder existing = workOrders.GetById(idOt)
             ?? throw new InvalidOperationException("La orden de trabajo seleccionada no existe.");
 

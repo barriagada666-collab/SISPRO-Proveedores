@@ -378,10 +378,10 @@ public sealed class PdfExportService(AppSettings settings)
         sb.AppendLine(BorderStroke);
         sb.AppendLine(Fmt($"{marginX} {y} {contentW} {tableStart - y} re S"));
 
-        // Bloque de Observaciones y Valor Neto destacado
+        // Bloque de Observaciones y (condicionalmente) Valor Neto destacado
         y -= 10;
-        double obsBoxW = contentW - 165;
-        double netBoxW = 155;
+        double netBoxW = order.MostrarValorNeto ? 155 : 0;
+        double obsBoxW = order.MostrarValorNeto ? contentW - 165 : contentW;
         string obsBody = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
         List<string> obsLines = WrapText($"Observaciones: {obsBody}", obsBoxW - 14, 8.2);
         double summaryH = Math.Max(36, 12 + (obsLines.Count * 11.5));
@@ -408,17 +408,20 @@ public sealed class PdfExportService(AppSettings settings)
             obsY -= 11.5;
         }
 
-        double netX = marginX + obsBoxW + 10;
-        sb.AppendLine(GoldFill);
-        sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re f"));
-        sb.AppendLine("0.8 w");
-        sb.AppendLine(PrimaryDarkFill.Replace(" rg", " RG"));
-        sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re S"));
+        if (order.MostrarValorNeto)
+        {
+            double netX = marginX + obsBoxW + 10;
+            sb.AppendLine(GoldFill);
+            sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re f"));
+            sb.AppendLine("0.8 w");
+            sb.AppendLine(PrimaryDarkFill.Replace(" rg", " RG"));
+            sb.AppendLine(Fmt($"{netX} {y - summaryH} {netBoxW} {summaryH} re S"));
 
-        sb.AppendLine(PrimaryDarkFill);
-        DrawText(sb, "F2", 7.8, netX + 8, y - 13, "VALOR NETO");
-        string netStr = $"$ {order.ValorNeto.ToString("N0", ClCulture)}";
-        DrawText(sb, "F2", 13.5, netX + 8, y - 30, TruncateText(netStr, netBoxW - 16, 13.5));
+            sb.AppendLine(PrimaryDarkFill);
+            DrawText(sb, "F2", 7.8, netX + 8, y - 13, "VALOR NETO");
+            string netStr = $"$ {order.ValorNeto.ToString("N0", ClCulture)}";
+            DrawText(sb, "F2", 13.5, netX + 8, y - 30, TruncateText(netStr, netBoxW - 16, 13.5));
+        }
 
         y -= summaryH;
 

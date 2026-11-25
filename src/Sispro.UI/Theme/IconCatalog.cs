@@ -54,6 +54,7 @@ public enum AppIcon
     Gauge,
     Download,
     Upload,
+    Info,
     Calendar,
     Copy,
     Expand,
@@ -431,6 +432,12 @@ public static class IconCatalog
                 g.DrawLines(pen, [new PointF(21, 15), new PointF(21, 19), new PointF(19, 21), new PointF(5, 21), new PointF(3, 19), new PointF(3, 15)]);
                 g.DrawLines(pen, [new PointF(17, 8), new PointF(12, 3), new PointF(7, 8)]);
                 g.DrawLine(pen, 12, 3, 12, 15);
+                break;
+
+            case AppIcon.Info: // lucide: info
+                g.DrawEllipse(pen, 2, 2, 20, 20);
+                g.DrawLine(pen, 12, 16, 12, 12);
+                g.DrawLine(pen, 12, 8, 12.05f, 8);
                 break;
 
             case AppIcon.Calendar: // lucide: calendar

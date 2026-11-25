@@ -109,13 +109,15 @@ public sealed class UserPermissions
 
     public void NormalizeHierarchy()
     {
+        // Opción Generar / Imprimir OT eliminada del sistema: revocar en jerarquía para evitar accesos directos
+        ImpresionOt = false;
+
         if (!MenuOrdenesTrabajo)
         {
             IngresoOt = false;
             VistoBuenoJefatura = false;
             VistoBuenoSupervisor = false;
             BusquedaOt = false;
-            ImpresionOt = false;
         }
 
         if (!MenuUsuarios)
@@ -219,8 +221,10 @@ public sealed class WorkOrder
         : AliasSolicitante;
     public DateTime FechaOt { get; set; } = DateTime.Today;
     public WorkOrderStatus Estado { get; set; } = WorkOrderStatus.Abierta;
+    public string TipoOrden { get; set; } = "Externa";
     public string Observacion { get; set; } = string.Empty;
     public decimal ValorNeto { get; set; }
+    public bool MostrarValorNeto { get; set; } = true;
     public SignatureOption FirmasSeleccionadas { get; set; } = SignatureOption.AmbasConSolicitante;
     public string FirmaJefaturaNombre { get; set; } = string.Empty;
     public string FirmaTecnicoNombre { get; set; } = string.Empty;

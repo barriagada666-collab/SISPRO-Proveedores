@@ -138,12 +138,9 @@ public sealed class SplashForm : Form
             Size = new Size(284, 38)
         };
 
-        Version? asmVer = typeof(SplashForm).Assembly.GetName().Version;
-        string shortVer = asmVer is not null ? $"{asmVer.Major}.{asmVer.Minor}" : "4.5";
-
         Label lblVersion = new()
         {
-            Text = $"Versión {shortVer} (.NET 10)",
+            Text = $"Versión {Sispro.Core.AppMetadata.Version} (.NET 10)",
             Font = CambiasoTheme.LabelFont,
             ForeColor = CambiasoTheme.Accent,
             TextAlign = ContentAlignment.MiddleRight,

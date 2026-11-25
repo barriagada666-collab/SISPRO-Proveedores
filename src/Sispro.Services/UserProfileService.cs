@@ -80,7 +80,7 @@ public sealed class UserProfileService(
             profile.PermisosPorDefecto.MenuOrdenesTrabajo = true;
             profile.PermisosPorDefecto.IngresoOt = true;
             profile.PermisosPorDefecto.BusquedaOt = true;
-            profile.PermisosPorDefecto.ImpresionOt = true;
+            profile.PermisosPorDefecto.ImpresionOt = false;
             profile.PermisosPorDefecto.MenuMantenedor = true;
             profile.PermisosPorDefecto.MenuUsuarios = true;
             profile.PermisosPorDefecto.IngresoUsuarios = true;

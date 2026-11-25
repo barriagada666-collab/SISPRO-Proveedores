@@ -12,9 +12,12 @@
     <Product>SISPRO - Gestión de Proveedores y Órdenes de Trabajo</Product>
     <Description>Sistema corporativo de gestión de proveedores, órdenes de trabajo externas, activos y usuarios (.NET 10)</Description>
     <Copyright>Copyright © Cambiaso Hnos S.A.C.</Copyright>
-    <Version>4.5.0</Version>
-    <AssemblyVersion>4.5.0.0</AssemblyVersion>
-    <FileVersion>4.5.0.0</FileVersion>
+    <Version>4.6.0</Version>
+    <AssemblyVersion>4.6.0.0</AssemblyVersion>
+    <FileVersion>4.6.0.0</FileVersion>
     <NeutralLanguage>es-CL</NeutralLanguage>
   </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="ReleaseDate" Value="25-11-2026" />
+  </ItemGroup>
 </Project>

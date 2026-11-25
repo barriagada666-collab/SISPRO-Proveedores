@@ -17,33 +17,36 @@ namespace Sispro.UI.Forms;
 public sealed class MainForm : Form
 {
     private readonly SisproApplicationContext _ctx;
-    private readonly UserSession _session;
+    private UserSession _session;
     private readonly ToolTip _toolTip = new();
 
     private readonly Panel _contentHost;
     private readonly Label _lblModuleTitle;
+    private readonly Label _lblUserBadge;
     private readonly ToolStripStatusLabel _statusUser;
     private readonly ToolStripStatusLabel _statusDb;
     private readonly ToolStripStatusLabel _statusClock;
     private readonly System.Windows.Forms.Timer _clockTimer;
     private readonly System.Windows.Forms.Timer _syncTimer;
     private bool _syncSubscribed;
+    private bool _configSubscribed;
 
-    // Navigation buttons (exposed internally for automated RBAC/UI testing)
+    // Navigation & top-bar buttons (exposed internally for automated RBAC/UI testing)
     internal Button NavDashboard { get; }
     internal Button NavWorkOrders { get; }
     internal Button NavMaintainers { get; }
-    internal Button NavTreeEditor { get; }
     internal Button NavUsers { get; }
     internal Button NavAudit { get; }
-    internal Button BtnTopNewExternalOt { get; }
+    internal Button BtnTopSwitchUser { get; }
+    internal Button BtnTopAbout { get; }
+    internal Button BtnTopLogout { get; }
     internal Button? BtnHeroNewExternalOt { get; private set; }
+    internal UserSession ActiveSession => _session;
 
     // Cached module views for instant tab-switching without slow reloads
     private Panel? _dashboardView;
     private WorkOrdersForm? _workOrdersView;
     private MaintainersForm? _maintainersView;
-    private AssetTreeEditorView? _treeEditorView;
     private UsersForm? _usersView;
 
     // Dashboard KPI labels & modern vector charts
@@ -65,11 +68,10 @@ public sealed class MainForm : Form
     {
         _ctx = ctx;
         _session = session;
+        _ctx.CurrentSession = session;
         CambiasoTheme.EnableDoubleBuffering(this);
 
-        Version? asmVer = typeof(MainForm).Assembly.GetName().Version;
-        string shortVer = asmVer is not null ? $"{asmVer.Major}.{asmVer.Minor}" : "4.5";
-        Text = $"SISPRO v{shortVer} — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario})";
+        UpdateWindowTitle();
         Icon = IconCatalog.GetAppIcon();
         Size = new Size(1380, 840);
         MinimumSize = new Size(1120, 680);
@@ -78,7 +80,7 @@ public sealed class MainForm : Form
         BackColor = CambiasoTheme.Surface;
         Font = CambiasoTheme.BodyFont;
 
-        // --- TOP BAR ---
+        // --- TOP BAR (solo: Cambiar usuario · Acerca de · Cerrar sesión) ---
         Panel topBar = new()
         {
             Dock = DockStyle.Top,
@@ -105,51 +107,24 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 4, 0, 0)
         };
 
-        Button btnLogout = CambiasoTheme.CreateButton("Cerrar Sesión", AppIcon.Logout, ButtonTone.Danger, _toolTip, "Cerrar sesión actual y volver al ingreso", width: 134, height: 32);
-        btnLogout.Click += (_, _) =>
-        {
-            if (CambiasoTheme.Confirm(this, "¿Desea cerrar la sesión actual?"))
-            {
-                _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Seguridad", "LOGOUT", "Cierre de sesión por el usuario.");
-                LogoutRequested = true;
-                Close();
-            }
-        };
+        BtnTopLogout = CambiasoTheme.CreateButton("Cerrar sesión", AppIcon.Logout, ButtonTone.Danger, _toolTip, "Cerrar sesión actual y volver al inicio de sesión", width: 136, height: 32);
+        BtnTopLogout.Click += (_, _) => PerformLogout();
 
-        Button btnChangePwd = CambiasoTheme.CreateButton("Mi Clave", AppIcon.Key, ButtonTone.Accent, _toolTip, "Cambiar su contraseña personal", width: 112, height: 32);
-        btnChangePwd.Click += (_, _) =>
+        BtnTopAbout = CambiasoTheme.CreateButton("Acerca de", AppIcon.Info, ButtonTone.Accent, _toolTip, "Información del software, versión y fecha de actualización", width: 118, height: 32);
+        BtnTopAbout.Click += (_, _) =>
         {
-            using ChangePasswordDialog dlg = new(_ctx.AuthService, _session);
+            using AboutDialog dlg = new(_ctx);
             dlg.ShowDialog(this);
         };
 
-        bool isAdmin = _session.Usuario.Nivel == UserRoleLevel.Administrador && _session.Usuario.Activo;
+        BtnTopSwitchUser = CambiasoTheme.CreateButton("Cambiar usuario", AppIcon.Users, ButtonTone.Secondary, _toolTip, "Cambiar la cuenta activa sin cerrar la aplicación", width: 150, height: 32);
+        BtnTopSwitchUser.Click += (_, _) => PromptSwitchUser();
 
-        Button btnSettings = CambiasoTheme.CreateButton("Configuración", AppIcon.Settings, ButtonTone.Secondary, _toolTip, "Configurar base de datos, respaldos y datos de empresa", width: 136, height: 32);
-        btnSettings.Enabled = isAdmin;
-        btnSettings.Click += (_, _) =>
-        {
-            using SettingsDialog dlg = new(_ctx);
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-            {
-                if (_statusDb is not null)
-                {
-                    _statusDb.Text = $"BD: {_ctx.Settings.DatabasePath}";
-                }
-
-                RefreshDashboard();
-            }
-        };
-
-        BtnTopNewExternalOt = CambiasoTheme.CreateButton("Nueva OT Externa", AppIcon.Add, ButtonTone.Gold, _toolTip, "Crear inmediatamente una nueva Orden de Trabajo externa", width: 156, height: 32);
-        BtnTopNewExternalOt.Enabled = _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt;
-        BtnTopNewExternalOt.Click += (_, _) => StartNewExternalOrderFlow();
-
-        topActions.Controls.AddRange([btnLogout, btnChangePwd, btnSettings, BtnTopNewExternalOt]);
+        topActions.Controls.AddRange([BtnTopLogout, BtnTopAbout, BtnTopSwitchUser]);
         topBar.Controls.Add(_lblModuleTitle);
         topBar.Controls.Add(topActions);
 
-        // --- SIDEBAR ---
+        // --- SIDEBAR (Editor de Árbol movido exclusivamente dentro de Mantenedores) ---
         Panel sidebar = new()
         {
             Dock = DockStyle.Left,
@@ -168,7 +143,7 @@ public sealed class MainForm : Form
             Padding = new Padding(6, 4, 6, 4)
         };
 
-        Label lblUserBadge = new()
+        _lblUserBadge = new Label
         {
             Dock = DockStyle.Top,
             Height = 46,
@@ -186,34 +161,32 @@ public sealed class MainForm : Form
             WrapContents = false
         };
 
-        NavDashboard = CreateNavButton("Inicio / Analítica", AppIcon.Dashboard, "Resumen operativo, KPIs y gráficas de Órdenes Externas");
+        NavDashboard = CreateNavButton("Inicio / Analítica", AppIcon.Dashboard, "Resumen operativo, KPIs y gráficas de Órdenes de Trabajo");
         NavDashboard.Click += (_, _) => ShowDashboard();
 
-        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Ingreso, búsqueda, exportación y vista previa de Órdenes de Trabajo (M1)");
-        NavWorkOrders.Enabled = _session.Permisos.MenuOrdenesTrabajo;
+        NavWorkOrders = CreateNavButton("Trabajos Externos", AppIcon.WorkOrder, "Búsqueda de OT con CRUD completo e Ingreso / Edición de Órdenes de Trabajo (M1)");
         NavWorkOrders.Click += (_, _) => ShowWorkOrders();
 
-        NavMaintainers = CreateNavButton("Mantenedores", AppIcon.Provider, "Proveedores, solicitantes con firmas y árbol de activos (M2)");
-        NavMaintainers.Enabled = _session.Permisos.MenuMantenedor;
+        NavMaintainers = CreateNavButton("Mantenedores", AppIcon.Provider, "Proveedores, solicitantes, firmas, activos, Editor de Árbol, Configuración y Mi Clave");
         NavMaintainers.Click += (_, _) => ShowMaintainers();
 
-        NavTreeEditor = CreateNavButton("Editor de Árbol", AppIcon.Tree, "Crear, editar, mover, activar/desactivar y eliminar nodos del árbol de activos (exclusivo Administrador)");
-        NavTreeEditor.Enabled = isAdmin;
-        NavTreeEditor.Click += (_, _) => ShowTreeEditor();
-
         NavUsers = CreateNavButton("Usuarios y Perfiles", AppIcon.Users, "Gestión de usuarios, solicitados por con firma PNG/JPG/PDF, grupos y perfiles de usuario (exclusivo Administrador)");
-        NavUsers.Enabled = isAdmin;
         NavUsers.Click += (_, _) => ShowUsers();
 
-        NavAudit = CreateNavButton("Auditoría", AppIcon.Audit, "Registro de auditoría de seguridad y operaciones");
-        NavAudit.Enabled = isAdmin;
+        NavAudit = CreateNavButton("Auditoría", AppIcon.Audit, "Registro de auditoría de seguridad y operaciones (exclusivo Administrador)");
         NavAudit.Click += (_, _) =>
         {
+            if (!IsCurrentSessionAdmin())
+            {
+                CambiasoTheme.ShowWarning(this, "Acceso denegado: el registro de auditoría es exclusivo del perfil Administrador.");
+                return;
+            }
+
             using AuditLogDialog dlg = new(_ctx.Audit, _ctx.DocumentExportService);
             dlg.ShowDialog(this);
         };
 
-        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavMaintainers, NavTreeEditor, NavUsers, NavAudit]);
+        navFlow.Controls.AddRange([NavDashboard, NavWorkOrders, NavMaintainers, NavUsers, NavAudit]);
         navContainer.Controls.Add(navFlow);
 
         Button btnExit = CreateNavButton("Salir del Sistema", AppIcon.Exit, "Cerrar completamente SISPRO");
@@ -221,7 +194,7 @@ public sealed class MainForm : Form
         btnExit.Click += (_, _) => Close();
 
         sidebar.Controls.Add(navContainer);
-        sidebar.Controls.Add(lblUserBadge);
+        sidebar.Controls.Add(_lblUserBadge);
         sidebar.Controls.Add(picLogo);
         sidebar.Controls.Add(btnExit);
 
@@ -252,12 +225,125 @@ public sealed class MainForm : Form
         _ctx.SyncHub.DataChanged += OnSyncDataChanged;
         _syncSubscribed = true;
 
+        _ctx.ConfigurationChanged += OnConfigurationChanged;
+        _configSubscribed = true;
+
         Controls.Add(_contentHost);
         Controls.Add(sidebar);
         Controls.Add(topBar);
         Controls.Add(status);
 
+        ApplySessionPermissionsToChrome();
         ShowDashboard();
+    }
+
+    private bool IsCurrentSessionAdmin() =>
+        _session.Usuario.Nivel == UserRoleLevel.Administrador && _session.Usuario.Activo;
+
+    private void UpdateWindowTitle()
+    {
+        string tempTag = _ctx.SystemConfigService.HasTemporaryChanges ? " [Config. Temporal]" : string.Empty;
+        Text = $"{Sispro.Core.AppMetadata.ShortName} v{Sispro.Core.AppMetadata.ShortVersion} — {_ctx.Settings.CompanyName} ({_session.Usuario.AliasUsuario}){tempTag}";
+    }
+
+    private void ApplySessionPermissionsToChrome()
+    {
+        bool isAdmin = IsCurrentSessionAdmin();
+        NavWorkOrders.Enabled = _session.Permisos.MenuOrdenesTrabajo;
+        // Mantenedores permanece accesible para que cualquier usuario pueda usar "Mi Clave";
+        // las pestañas internas de catálogos, Editor de Árbol y Configuración aplican RBAC estricto.
+        NavMaintainers.Enabled = true;
+        NavUsers.Enabled = isAdmin;
+        NavAudit.Enabled = isAdmin;
+
+        _lblUserBadge.Text = $"{_session.Usuario.NombreCompleto}\nPerfil: {_session.Usuario.PerfilDisplay}";
+        _statusUser.Text = $"Usuario: {_session.Usuario.AliasUsuario} ({_session.Usuario.PerfilDisplay})";
+        _statusDb.Text = $"BD: {_ctx.Settings.DatabasePath}";
+        UpdateWindowTitle();
+    }
+
+    private void PerformLogout()
+    {
+        if (!CambiasoTheme.Confirm(this, "¿Desea cerrar la sesión actual?"))
+        {
+            return;
+        }
+
+        _ctx.Audit.Log(_session.Usuario.AliasUsuario, "Seguridad", "LOGOUT", "Cierre de sesión por el usuario.");
+        _ctx.CurrentSession = null;
+        DisposeCachedModuleViews();
+        LogoutRequested = true;
+        Close();
+    }
+
+    private void PromptSwitchUser()
+    {
+        using LoginForm dlg = new(_ctx, isSwitchUserMode: true);
+        if (dlg.ShowDialog(this) != DialogResult.OK || dlg.AuthenticatedSession is null)
+        {
+            return;
+        }
+
+        SwitchActiveSession(dlg.AuthenticatedSession);
+    }
+
+    /// <summary>
+    /// Cambia la cuenta activa en caliente sin cerrar la aplicación, descartando vistas en caché
+    /// y refrescando permisos, menús, barra de estado y datos visibles para el nuevo usuario.
+    /// </summary>
+    public void SwitchActiveSession(UserSession newSession)
+    {
+        ArgumentNullException.ThrowIfNull(newSession);
+        string previousAlias = _session.Usuario.AliasUsuario;
+        _session = newSession;
+        _ctx.CurrentSession = newSession;
+
+        _ctx.Audit.Log(
+            newSession.Usuario.AliasUsuario,
+            "Seguridad",
+            "CAMBIO_USUARIO",
+            $"Cambio de sesión activa sin cerrar aplicación: '{previousAlias}' → '{newSession.Usuario.AliasUsuario}' (Perfil: {newSession.Usuario.PerfilDisplay}).");
+
+        DisposeCachedModuleViews();
+        ApplySessionPermissionsToChrome();
+        ShowDashboard();
+    }
+
+    private void DisposeCachedModuleViews()
+    {
+        _contentHost.Controls.Clear();
+        _dashboardView?.Dispose();
+        _dashboardView = null;
+        _workOrdersView?.Dispose();
+        _workOrdersView = null;
+        _maintainersView?.Dispose();
+        _maintainersView = null;
+        _usersView?.Dispose();
+        _usersView = null;
+    }
+
+    private void OnConfigurationChanged(object? sender, bool isTemporary)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        void RefreshChrome()
+        {
+            if (IsDisposed) return;
+            UpdateWindowTitle();
+            _statusDb.Text = isTemporary
+                ? $"BD (Temporal): {_ctx.Settings.DatabasePath}"
+                : $"BD: {_ctx.Settings.DatabasePath}";
+            if (_dashboardView is not null && _dashboardView.Visible)
+            {
+                RefreshDashboard();
+            }
+        }
+
+        if (InvokeRequired && IsHandleCreated) BeginInvoke(RefreshChrome);
+        else if (!InvokeRequired) RefreshChrome();
     }
 
     private void OnSyncDataChanged(object? sender, DataChangedEventArgs e)
@@ -301,7 +387,7 @@ public sealed class MainForm : Form
 
     private void HighlightNav(Button active)
     {
-        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavMaintainers, NavTreeEditor, NavUsers, NavAudit })
+        foreach (Button b in new[] { NavDashboard, NavWorkOrders, NavMaintainers, NavUsers, NavAudit })
         {
             b.BackColor = b == active ? CambiasoTheme.Accent : CambiasoTheme.PrimaryDark;
         }
@@ -346,44 +432,22 @@ public sealed class MainForm : Form
         }
     }
 
-    public void ShowWorkOrderPrint(int numeroOt)
+    public void ShowMaintainers(string? initialTabTitle = null)
     {
-        ShowWorkOrders();
-        _workOrdersView?.ShowPrintForOrder(numeroOt);
-    }
-
-    public void ShowMaintainers()
-    {
-        if (!_session.Permisos.MenuMantenedor)
-        {
-            CambiasoTheme.ShowWarning(this, "No tiene permisos para acceder al módulo de Mantenedores.");
-            return;
-        }
-
         HighlightNav(NavMaintainers);
-        _lblModuleTitle.Text = "Mantenedores — Proveedores, Solicitantes y Activos";
+        _lblModuleTitle.Text = "Mantenedores — Administración, Configuración y Mi Clave";
         if (_maintainersView is null)
         {
             _maintainersView = new MaintainersForm(_ctx, _session);
             _maintainersView.CatalogsChanged += (_, _) => RefreshDashboard();
-            _maintainersView.OpenTreeEditorRequested += (_, _) => ShowTreeEditor();
+        }
+
+        if (!string.IsNullOrWhiteSpace(initialTabTitle))
+        {
+            _maintainersView.SelectTabByTitle(initialTabTitle);
         }
 
         HostControl(_maintainersView);
-    }
-
-    public void ShowTreeEditor()
-    {
-        if (!_ctx.AssetTreeService.IsAdministrator(_session))
-        {
-            CambiasoTheme.ShowWarning(this, "Acceso denegado: el Editor del Árbol de Activos es exclusivo del perfil Administrador.");
-            return;
-        }
-
-        HighlightNav(NavTreeEditor);
-        _lblModuleTitle.Text = "Editor del Árbol de Activos (Administrador)";
-        _treeEditorView ??= new AssetTreeEditorView(_ctx, _session);
-        HostControl(_treeEditorView);
     }
 
     public void ShowUsers(bool openRequestersTab = false)
@@ -529,8 +593,8 @@ public sealed class MainForm : Form
                 _workOrdersView?.OpenSearchTab();
             }
         });
-        MakeCardClickable(c2, () => { if (_session.Permisos.MenuMantenedor) ShowMaintainers(); });
-        MakeCardClickable(c3, () => { if (_ctx.AssetTreeService.IsAdministrator(_session)) ShowTreeEditor(); });
+        MakeCardClickable(c2, () => { if (_session.Permisos.MenuMantenedor || IsCurrentSessionAdmin()) ShowMaintainers("Proveedores"); });
+        MakeCardClickable(c3, () => { if (IsCurrentSessionAdmin()) ShowMaintainers("Editor de Árbol"); else if (_session.Permisos.MenuMantenedor) ShowMaintainers("Árbol de Activos"); });
         MakeCardClickable(c4, () =>
         {
             if (_session.Permisos.MenuOrdenesTrabajo && _session.Permisos.BusquedaOt)
@@ -604,8 +668,7 @@ public sealed class MainForm : Form
             return
             [
                 ContextMenuHelper.Item("Visualizar OT (Vista Previa)", AppIcon.Preview, CambiasoTheme.Primary, () => ExportUiHelper.ShowWorkOrderPreview(this, _ctx, numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo),
-                ContextMenuHelper.Item("Exportar / Imprimir OT", AppIcon.Print, CambiasoTheme.TextMuted, () => ShowWorkOrderPrint(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.ImpresionOt),
+                ContextMenuHelper.Item("Abrir / Editar OT", AppIcon.Edit, CambiasoTheme.Accent, () => ShowWorkOrders(numOt), enabled: _session.Permisos.MenuOrdenesTrabajo && _session.Permisos.IngresoOt),
                 ContextMenuHelper.Separator(),
                 ContextMenuHelper.Item("Actualizar listado", AppIcon.Refresh, CambiasoTheme.Primary, RefreshDashboard)
             ];
@@ -729,6 +792,12 @@ public sealed class MainForm : Form
                 _syncSubscribed = false;
             }
 
+            if (_configSubscribed)
+            {
+                _ctx.ConfigurationChanged -= OnConfigurationChanged;
+                _configSubscribed = false;
+            }
+
             _syncTimer.Stop();
             _syncTimer.Dispose();
             _clockTimer.Stop();
@@ -737,7 +806,6 @@ public sealed class MainForm : Form
             _dashboardView?.Dispose();
             _workOrdersView?.Dispose();
             _maintainersView?.Dispose();
-            _treeEditorView?.Dispose();
             _usersView?.Dispose();
         }
 

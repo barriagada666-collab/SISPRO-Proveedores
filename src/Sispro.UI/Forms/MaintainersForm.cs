@@ -22,11 +22,16 @@ public sealed class MaintainersForm : UserControl
     private readonly bool _isAdmin;
 
     public event EventHandler? CatalogsChanged;
-    public event EventHandler? OpenTreeEditorRequested;
     private bool _syncSubscribed;
     private bool _suppressTreeSync;
 
     internal TabControl TabControlMain { get; }
+    internal AssetTreeEditorView? TreeEditorView { get; private set; }
+    internal SystemSettingsControl? SettingsControl { get; private set; }
+    internal MyPasswordControl PasswordControl { get; }
+    private TabPage? _tabTreeEditor;
+    private TabPage? _tabSettings;
+    private TabPage _tabMyPassword;
 
     // Proveedores controls
     private readonly TextBox _txtProvSearch;
@@ -267,16 +272,56 @@ public sealed class MaintainersForm : UserControl
         };
         BuildAssetsTab(tabAssets);
 
-        TabControlMain.TabPages.AddRange([tabProv, tabSol, tabFirmas, tabAssets]);
+        bool canAccessCatalogTabs = _session.Permisos.MenuMantenedor || _isAdmin;
+        if (canAccessCatalogTabs)
+        {
+            TabControlMain.TabPages.AddRange([tabProv, tabSol, tabFirmas, tabAssets]);
+        }
+
+        if (_isAdmin)
+        {
+            _tabTreeEditor = new TabPage("Editor de Árbol") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+            TreeEditorView = new AssetTreeEditorView(_ctx, _session) { Dock = DockStyle.Fill };
+            _tabTreeEditor.Controls.Add(TreeEditorView);
+            TabControlMain.TabPages.Add(_tabTreeEditor);
+
+            _tabSettings = new TabPage("Configuración") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+            SettingsControl = new SystemSettingsControl(_ctx, _session) { Dock = DockStyle.Fill };
+            _tabSettings.Controls.Add(SettingsControl);
+            TabControlMain.TabPages.Add(_tabSettings);
+        }
+
+        _tabMyPassword = new TabPage("Mi Clave") { BackColor = CambiasoTheme.Surface, Padding = new Padding(4) };
+        PasswordControl = new MyPasswordControl(_ctx.AuthService, _session) { Dock = DockStyle.Fill };
+        _tabMyPassword.Controls.Add(PasswordControl);
+        TabControlMain.TabPages.Add(_tabMyPassword);
+
         Controls.Add(TabControlMain);
 
-        LoadProviders();
-        BindSelectedAsset(_assetTree.SelectedAsset);
-        UpdateProviderActionStates();
-        UpdateAssetBatchButtonsState();
+        if (canAccessCatalogTabs)
+        {
+            LoadProviders();
+            BindSelectedAsset(_assetTree.SelectedAsset);
+            UpdateProviderActionStates();
+            UpdateAssetBatchButtonsState();
+        }
 
         _ctx.SyncHub.DataChanged += OnSyncChanged;
         _syncSubscribed = true;
+    }
+
+    public bool SelectTabByTitle(string tabTitle)
+    {
+        foreach (TabPage page in TabControlMain.TabPages)
+        {
+            if (string.Equals(page.Text, tabTitle, StringComparison.OrdinalIgnoreCase))
+            {
+                TabControlMain.SelectedTab = page;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private Button CreateActionBtn(string text, AppIcon icon, ButtonTone tone, string tooltip)
@@ -305,12 +350,15 @@ public sealed class MaintainersForm : UserControl
         void RefreshCatalogs()
         {
             if (IsDisposed) return;
-            LoadProviders();
-            if ((e.Kind & DataChangeKind.Catalogs) != 0)
+            if (_session.Permisos.MenuMantenedor || _isAdmin)
             {
-                _assetTree.ReloadPreservingSelection();
-                BindSelectedAsset(_assetTree.SelectedAsset);
-                UpdateAssetBatchButtonsState();
+                LoadProviders();
+                if ((e.Kind & DataChangeKind.Catalogs) != 0)
+                {
+                    _assetTree.ReloadPreservingSelection();
+                    BindSelectedAsset(_assetTree.SelectedAsset);
+                    UpdateAssetBatchButtonsState();
+                }
             }
         }
 
@@ -427,9 +475,15 @@ public sealed class MaintainersForm : UserControl
         btnUpdateNode.Visible = canEdit;
         btnUpdateNode.Click += (_, _) => SaveSelectedAsset();
 
-        Button btnOpenTreeEditor = CreateActionBtn("Editor de Árbol", AppIcon.Tree, ButtonTone.Accent, "Abrir módulo completo de edición estructural del árbol (solo Administrador)");
+        Button btnOpenTreeEditor = CreateActionBtn("Editor de Árbol", AppIcon.Tree, ButtonTone.Accent, "Abrir pestaña de edición estructural del árbol dentro de Mantenedores (solo Administrador)");
         btnOpenTreeEditor.Visible = canEdit;
-        btnOpenTreeEditor.Click += (_, _) => OpenTreeEditorRequested?.Invoke(this, EventArgs.Empty);
+        btnOpenTreeEditor.Click += (_, _) =>
+        {
+            if (_tabTreeEditor is not null)
+            {
+                TabControlMain.SelectedTab = _tabTreeEditor;
+            }
+        };
 
         Label lblReadOnlyHint = new()
         {

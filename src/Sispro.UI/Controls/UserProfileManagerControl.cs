@@ -42,7 +42,6 @@ public sealed class UserProfileManagerControl : UserControl
     internal CheckBox ChkM1Ot { get; }
     internal CheckBox ChkIngresoOt { get; }
     internal CheckBox ChkBusquedaOt { get; }
-    internal CheckBox ChkImpresionOt { get; }
     internal CheckBox ChkM2Mantenedor { get; }
 
     internal Button BtnNuevo { get; }
@@ -107,9 +106,8 @@ public sealed class UserProfileManagerControl : UserControl
         };
 
         ChkM1Ot = new CheckBox { Text = "M1 — Trabajos Externos (OT)", AutoSize = true, Font = CambiasoTheme.LabelFont, Checked = true };
-        ChkIngresoOt = new CheckBox { Text = "Ingreso y Edición OT", AutoSize = true, Checked = true, Margin = new Padding(18, 2, 10, 2) };
-        ChkBusquedaOt = new CheckBox { Text = "Búsqueda y Exportación Masiva", AutoSize = true, Checked = true, Margin = new Padding(0, 2, 10, 2) };
-        ChkImpresionOt = new CheckBox { Text = "Generar / Imprimir OT", AutoSize = true, Checked = true, Margin = new Padding(0, 2, 10, 2) };
+        ChkIngresoOt = new CheckBox { Text = "Crear / Editar / Eliminar OT", AutoSize = true, Checked = true, Margin = new Padding(18, 2, 10, 2) };
+        ChkBusquedaOt = new CheckBox { Text = "Búsqueda, Consulta y Exportación", AutoSize = true, Checked = true, Margin = new Padding(0, 2, 10, 2) };
         ChkM2Mantenedor = new CheckBox { Text = "M2 — Acceso a Mantenedores (consulta)", AutoSize = true, Font = CambiasoTheme.LabelFont };
 
         ChkM1Ot.CheckedChanged += (_, _) => UpdatePermissionCheckboxes();
@@ -273,7 +271,7 @@ public sealed class UserProfileManagerControl : UserControl
         tbl.SetColumnSpan(TxtDescripcion, 5);
 
         FlowLayoutPanel permRow1 = new() { Dock = DockStyle.Fill, WrapContents = false, Margin = Padding.Empty };
-        permRow1.Controls.AddRange([ChkM1Ot, ChkIngresoOt, ChkBusquedaOt, ChkImpresionOt]);
+        permRow1.Controls.AddRange([ChkM1Ot, ChkIngresoOt, ChkBusquedaOt]);
         tbl.Controls.Add(MakeFieldLabel("Módulo OT:"), 0, 2);
         tbl.Controls.Add(permRow1, 1, 2);
         tbl.SetColumnSpan(permRow1, 5);
@@ -331,7 +329,6 @@ public sealed class UserProfileManagerControl : UserControl
             ChkM1Ot.Checked = true;
             ChkIngresoOt.Checked = true;
             ChkBusquedaOt.Checked = true;
-            ChkImpresionOt.Checked = true;
             ChkM2Mantenedor.Checked = false;
             return;
         }
@@ -347,7 +344,6 @@ public sealed class UserProfileManagerControl : UserControl
         ChkM1Ot.Checked = p.MenuOrdenesTrabajo;
         ChkIngresoOt.Checked = p.IngresoOt;
         ChkBusquedaOt.Checked = p.BusquedaOt;
-        ChkImpresionOt.Checked = p.ImpresionOt;
         ChkM2Mantenedor.Checked = p.MenuMantenedor;
     }
 
@@ -371,7 +367,6 @@ public sealed class UserProfileManagerControl : UserControl
             ChkM1Ot.Enabled = false;
             ChkIngresoOt.Enabled = false;
             ChkBusquedaOt.Enabled = false;
-            ChkImpresionOt.Enabled = false;
             ChkM2Mantenedor.Enabled = false;
         }
 
@@ -395,12 +390,10 @@ public sealed class UserProfileManagerControl : UserControl
         bool m1 = ChkM1Ot.Checked;
         ChkIngresoOt.Enabled = canEdit && m1;
         ChkBusquedaOt.Enabled = canEdit && m1;
-        ChkImpresionOt.Enabled = canEdit && m1;
         if (!m1)
         {
             ChkIngresoOt.Checked = false;
             ChkBusquedaOt.Checked = false;
-            ChkImpresionOt.Checked = false;
         }
 
         ChkM2Mantenedor.Enabled = canEdit;
@@ -535,7 +528,7 @@ public sealed class UserProfileManagerControl : UserControl
             MenuOrdenesTrabajo = ChkM1Ot.Checked,
             IngresoOt = ChkIngresoOt.Checked,
             BusquedaOt = ChkBusquedaOt.Checked,
-            ImpresionOt = ChkImpresionOt.Checked,
+            ImpresionOt = false,
             MenuMantenedor = ChkM2Mantenedor.Checked
         }
     };
@@ -631,7 +624,6 @@ public sealed class UserProfileManagerControl : UserControl
                 List<string> m1 = [];
                 if (pr.IngresoOt) m1.Add("Ingreso");
                 if (pr.BusquedaOt) m1.Add("Búsqueda");
-                if (pr.ImpresionOt) m1.Add("Impresión");
                 parts.Add(m1.Count > 0 ? $"OT ({string.Join("/", m1)})" : "OT");
             }
             if (pr.MenuMantenedor)

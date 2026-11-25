@@ -2,6 +2,38 @@
 
 Todos los cambios relevantes del proyecto **SISPRO (Sistema de Gestión de Proveedores y Órdenes de Trabajo — Cambiaso Hnos S.A.C.)** se documentan en este archivo siguiendo el estándar [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y [Semantic Versioning](https://semver.org/).
 
+## [4.6.0] — 2026-11-25
+
+### Agregado y Mejorado
+- **Reorganización del Menú Principal y Centralización en Mantenedores (`MainForm`, `MaintainersForm`, `SystemSettingsControl`, `MyPasswordControl`)**:
+  - Centralizados **Editor de Árbol**, **Configuración** y **Mi Clave** como pestañas dedicadas dentro de **Mantenedores** junto a `Proveedores`, `Solicitantes`, `Firmas` y `Árbol de Activos`.
+  - Retirado `Editor de Árbol` como ítem independiente de la barra lateral, respetando estrictamente RBAC (`Mi Clave` disponible para todo usuario autenticado; catálogos según `MenuMantenedor` o `Administrador`; `Editor de Árbol` y `Configuración` exclusivos de `Administrador`).
+- **Barra Superior Derecha Simplificada (`MainForm`, `LoginForm`, `AboutDialog`, `AppMetadata`)**:
+  - Retirados `Nueva OT`, `Configuración` y `Mi Clave` de la barra superior derecha, conservando únicamente **Cambiar usuario**, **Acerca de** y **Cerrar sesión**.
+  - **Cambiar usuario** (`LoginForm(ctx, isSwitchUserMode: true)` + `MainForm.SwitchActiveSession`): permite autenticar otra cuenta sin cerrar la aplicación, actualizando de inmediato permisos, vistas en caché, cabecera, barra de estado y bitácora (`CAMBIO_USUARIO`).
+  - **Acerca de** (`AboutDialog` + `AppMetadata`): ventana modal informativa alimentada dinámicamente desde los metadatos de compilación centralizados en `Directory.Build.props` (`SoftwareName`, `Version`, `ReleaseDate`, `DeveloperCompany`, `Description`).
+- **Eliminación de `Generar / Imprimir OT` y `Exportar / Imprimir` (`WorkOrdersForm`, `UserPermissionsDialog`, `UserProfileManagerControl`, `PermissionPresets`, `WorkOrderService`)**:
+  - Retirada la pestaña `Generar / Imprimir OT`, el botón `Exportar / Imprimir OT`, las opciones equivalentes de menú contextual y los permisos asociados (`ImpresionOt = false`), manteniendo intactos los motores compartidos de exportación y Vista Previa.
+- **Control de Visibilidad de Valor Neto en OT Externa (`WorkOrdersForm`, `SchemaInitializer`, `WorkOrderRepository`, exportadores PDF/Word/Excel/CSV/Impresión)**:
+  - Añadido checkbox **Mostrar valor neto en OT externa** (`OrdenesTrabajo.mostrar_valor_neto`, migración idempotente no destructiva con valor por defecto `1`).
+  - Oculta/muestra el campo `Valor Neto ($)` inmediatamente sin recargar, no exige ingresarlo al estar desmarcado, **conserva intacto `valor_neto` en SQLite** sin borrar datos económicos, restaura automáticamente el estado guardado al editar OTs existentes y omite la sección `VALOR NETO` en plantillas PDF, Word, Excel, CSV e impresión/Vista Previa cuando está desmarcado.
+- **Configuración del Sistema con `Probar`, `Aplicar` y `Guardar` (`SystemConfigRepository`, `SystemConfigService`, `SystemSettingsControl`)**:
+  - Nueva tabla centralizada `ConfiguracionSistema` en SQLite (idempotente) cargada automáticamente al iniciar la aplicación.
+  - **Probar**: valida parámetros, RUT e integridad SQLite (`PRAGMA quick_check`) sin alterar configuración activa ni BD.
+  - **Aplicar**: aplica cambios temporalmente en la sesión en memoria (actualizando título con indicador `[Config. Temporal]`, barra de estado y conexión activa) sin sobrescribir la BD, con botón **Revertir Temp.**.
+  - **Guardar**: solicita confirmación, persiste en `ConfiguracionSistema` + `settings.json`, audita (`GUARDAR_CONFIGURACION`) y publica sincronización inmediata (`SisproSyncHub`), sobreviviendo cierres de sesión y reinicios. Restringido estrictamente a `Administrador` en UI y backend.
+- **Búsqueda de OT — CRUD Completo y Tipo de Orden (`WorkOrdersForm`, `WorkOrderDetailDialog`)**:
+  - **Búsqueda de OT** como pestaña principal de `Trabajos Externos` con barra CRUD completa (**Nuevo**, **Consultar**, **Editar**, **Eliminar**).
+  - Soporte para crear y distinguir OTs **Externa** e **Interna** (`OrdenesTrabajo.tipo_ot`, migración idempotente no destructiva con defecto `'Externa'`).
+  - **Consultar** (`WorkOrderDetailDialog`): vista detallada de solo lectura con datos generales, proveedor, solicitante, ruta de activo, ítems, observaciones, estado de visibilidad de valor neto, firmantes y acceso directo a Vista Previa.
+
+### Verificado
+- **Compilación y Calidad**: `Debug` y `Release` con `0` errores y `0` advertencias (`TreatWarningsAsErrors=true`, `WarningLevel=9999`).
+- **Suite Automatizada (`Release`)**: `80 / 80` pruebas `xUnit` aprobadas (`NavigationConfigNetValueAndCrudTests` + `WinFormsUiAuditTests` ampliada + regresión completa, `10 s`) e inspección visual de todas las pantallas nuevas y modificadas (`docs/screenshots/`).
+- **Instalador `SISPRO_Setup_v4.6.0_win-x64.exe` (Inno Setup `7.1.1`)**: `58.006.777` bytes (`SHA-256`: `34FDA6DE164035C25168837DFD55B63C53A442285DF36A65F6C29DF039472958`).
+
+---
+
 ## [4.5.0] — 2026-11-24
 
 ### Agregado y Mejorado

@@ -164,6 +164,8 @@ public static class SchemaInitializer
             ruta_activo TEXT NOT NULL DEFAULT '',
             observacion TEXT NOT NULL DEFAULT '',
             valor_neto REAL NOT NULL DEFAULT 0,
+            mostrar_valor_neto INTEGER NOT NULL DEFAULT 1,
+            tipo_ot TEXT NOT NULL DEFAULT 'Externa',
             firmas_mask INTEGER NOT NULL DEFAULT 7,
             firma_jefatura TEXT NOT NULL DEFAULT '',
             firma_tecnico TEXT NOT NULL DEFAULT '',
@@ -205,6 +207,13 @@ public static class SchemaInitializer
         );
 
         CREATE INDEX IF NOT EXISTS IX_AuditLog_Fecha ON AuditLog(fecha_utc DESC);
+
+        CREATE TABLE IF NOT EXISTS ConfiguracionSistema (
+            clave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL DEFAULT '',
+            fecha_modificacion TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            modificado_por TEXT NOT NULL DEFAULT 'SISTEMA'
+        );
         """;
 
     public static void EnsureInitialized(SqliteConnectionFactory factory, InitialAdminSeedOptions? initialAdmin = null)
@@ -275,6 +284,8 @@ public static class SchemaInitializer
         [
             ("observacion", "TEXT NOT NULL DEFAULT ''"),
             ("valor_neto", "REAL NOT NULL DEFAULT 0"),
+            ("mostrar_valor_neto", "INTEGER NOT NULL DEFAULT 1"),
+            ("tipo_ot", "TEXT NOT NULL DEFAULT 'Externa'"),
             ("firmas_mask", "INTEGER NOT NULL DEFAULT 7"),
             ("firma_jefatura", "TEXT NOT NULL DEFAULT ''"),
             ("firma_tecnico", "TEXT NOT NULL DEFAULT ''"),

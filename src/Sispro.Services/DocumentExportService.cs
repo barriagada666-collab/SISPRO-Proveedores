@@ -85,7 +85,7 @@ public sealed class DocumentExportService(
         {
             r.NumeroOt, r.Fecha, r.Proveedor, r.Solicitante, r.Cantidad,
             r.Detalle, r.RutaActivo,
-            r.Observacion, r.ValorNeto, r.EstadoDisplay, r.FirmasDisplay
+            r.Observacion, r.MostrarValorNeto ? r.ValorNeto : null, r.EstadoDisplay, r.FirmasDisplay
         }).ToList()
     };
 
@@ -132,13 +132,13 @@ public sealed class DocumentExportService(
                 {
                     o.NumeroOt,
                     o.FechaOt,
-                    "OT Externa",
+                    $"OT {o.TipoOrden}",
                     o.SolicitanteDisplayNombre,
                     o.NombreProveedor,
                     o.RutaActivo,
                     detalleConsolidado,
                     o.Observacion,
-                    o.ValorNeto,
+                    o.MostrarValorNeto ? o.ValorNeto : null,
                     o.Estado.ToString(),
                     o.FirmasSeleccionadas.FormatResumen()
                 };
@@ -334,13 +334,9 @@ public sealed class DocumentExportService(
         }).ToList()
     };
 
-    private static TabularReportData BuildSingleWorkOrderTabular(WorkOrder order) => new()
+    private static TabularReportData BuildSingleWorkOrderTabular(WorkOrder order)
     {
-        Title = $"ORDEN DE TRABAJO EXTERNA N° {order.NumeroOt:D6}",
-        SheetName = $"OT_{order.NumeroOt}",
-        FilterSummary = $"Proveedor: {order.NombreProveedor} | Fecha: {order.FechaOt:dd-MM-yyyy} | Valor Neto: $ {order.ValorNeto:N0}",
-        Landscape = false,
-        Columns =
+        List<ExportColumn> cols =
         [
             new("N° OT", ExportColumnKind.Integer, 0.7),
             new("Fecha", ExportColumnKind.Date, 0.9),
@@ -348,17 +344,43 @@ public sealed class DocumentExportService(
             new("Solicitante", ExportColumnKind.Text, 1.2),
             new("Cant.", ExportColumnKind.Integer, 0.6, SumInFooter: true),
             new("Detalle", ExportColumnKind.Text, 2.8),
-            new("Observaciones", ExportColumnKind.Text, 1.6),
-            new("Valor Neto", ExportColumnKind.Currency, 0.9),
-            new("Estado", ExportColumnKind.Text, 0.8),
-            new("Firmas", ExportColumnKind.Text, 1.2),
-            new("Activo", ExportColumnKind.Text, 1.7)
-        ],
-        Rows = order.Detalles.Select(d => new object?[]
+            new("Observaciones", ExportColumnKind.Text, 1.6)
+        ];
+        if (order.MostrarValorNeto)
         {
-            order.NumeroOt, order.FechaOt, order.NombreProveedor, order.SolicitanteDisplayNombre,
-            d.Cantidad, d.Descripcion, order.Observacion, order.ValorNeto, order.Estado.ToString(),
-            order.FirmasSeleccionadas.FormatResumen(), order.RutaActivo
-        }).ToList()
-    };
+            cols.Add(new("Valor Neto", ExportColumnKind.Currency, 0.9));
+        }
+
+        cols.Add(new("Estado", ExportColumnKind.Text, 0.8));
+        cols.Add(new("Firmas", ExportColumnKind.Text, 1.2));
+        cols.Add(new("Activo", ExportColumnKind.Text, 1.7));
+
+        return new TabularReportData
+        {
+            Title = $"ORDEN DE TRABAJO {order.TipoOrden.ToUpperInvariant()} N° {order.NumeroOt:D6}",
+            SheetName = $"OT_{order.NumeroOt}",
+            FilterSummary = order.MostrarValorNeto
+                ? $"Proveedor: {order.NombreProveedor} | Fecha: {order.FechaOt:dd-MM-yyyy} | Valor Neto: $ {order.ValorNeto:N0}"
+                : $"Proveedor: {order.NombreProveedor} | Fecha: {order.FechaOt:dd-MM-yyyy}",
+            Landscape = false,
+            Columns = cols,
+            Rows = order.Detalles.Select(d =>
+            {
+                List<object?> row =
+                [
+                    order.NumeroOt, order.FechaOt, order.NombreProveedor, order.SolicitanteDisplayNombre,
+                    d.Cantidad, d.Descripcion, order.Observacion
+                ];
+                if (order.MostrarValorNeto)
+                {
+                    row.Add(order.ValorNeto);
+                }
+
+                row.Add(order.Estado.ToString());
+                row.Add(order.FirmasSeleccionadas.FormatResumen());
+                row.Add(order.RutaActivo);
+                return row.ToArray();
+            }).ToList()
+        };
+    }
 }

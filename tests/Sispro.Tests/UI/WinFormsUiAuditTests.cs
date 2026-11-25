@@ -56,17 +56,25 @@ public sealed class WinFormsUiAuditTests
 
             main.ShowDashboard();
             AssertAllButtonsValid(main, "MainForm.Dashboard");
-            Assert.True(main.NavTreeEditor.Enabled);
-            Assert.True(main.BtnTopNewExternalOt.Enabled);
+            Assert.True(main.BtnTopSwitchUser.Enabled);
+            Assert.Equal("Cambiar usuario", main.BtnTopSwitchUser.Text);
+            Assert.True(main.BtnTopAbout.Enabled);
+            Assert.Equal("Acerca de", main.BtnTopAbout.Text);
+            Assert.True(main.BtnTopLogout.Enabled);
+            Assert.Equal("Cerrar sesión", main.BtnTopLogout.Text);
             Assert.NotNull(main.BtnHeroNewExternalOt);
             Assert.True(main.BtnHeroNewExternalOt.Enabled);
             Assert.Equal("Nueva OT Externa", main.BtnHeroNewExternalOt.Text);
 
-            // Confirm Facturas y Guías & Explorar BD Mantención & Mantención Industrial are completely absent
+            // Confirm removed features (Facturas, Explorar BD Mantención, Mantención Industrial, Editor de Árbol en sidebar,
+            // y Nueva OT / Configuración / Mi Clave en barra superior) are absent
             List<Button> dashButtons = CollectControls<Button>(main);
             Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Factura", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Explorar BD Mant", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(dashButtons, b => b.Text.Contains("Mantención Industrial", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(dashButtons, b => b.Text == "Editor de Árbol");
+            Assert.DoesNotContain(dashButtons, b => b.Text == "Configuración");
+            Assert.DoesNotContain(dashButtons, b => b.Text == "Mi Clave");
 
             main.ShowWorkOrders(14752);
             AssertAllButtonsValid(main, "MainForm.WorkOrders");
@@ -76,9 +84,17 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.Maintainers");
             AssertNoForbiddenTypos(main, "MainForm.Maintainers");
 
-            main.ShowTreeEditor();
-            AssertAllButtonsValid(main, "MainForm.TreeEditor");
-            AssertNoForbiddenTypos(main, "MainForm.TreeEditor");
+            main.ShowMaintainers("Editor de Árbol");
+            AssertAllButtonsValid(main, "MainForm.Maintainers.TreeEditor");
+            AssertNoForbiddenTypos(main, "MainForm.Maintainers.TreeEditor");
+
+            main.ShowMaintainers("Configuración");
+            AssertAllButtonsValid(main, "MainForm.Maintainers.Config");
+            AssertNoForbiddenTypos(main, "MainForm.Maintainers.Config");
+
+            main.ShowMaintainers("Mi Clave");
+            AssertAllButtonsValid(main, "MainForm.Maintainers.MyPassword");
+            AssertNoForbiddenTypos(main, "MainForm.Maintainers.MyPassword");
 
             main.ShowUsers();
             AssertAllButtonsValid(main, "MainForm.Users");
@@ -87,26 +103,28 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(main, "MainForm.Users.RequestersTab");
 
             using WorkOrdersForm directWorkOrders = new(temp.Context, admin);
-            Assert.Equal("Nueva OT Externa", directWorkOrders.BtnNewExternalOt.Text);
-            Assert.True(directWorkOrders.ChkSigJefatura.Checked);
-            Assert.True(directWorkOrders.ChkSigTecnico.Checked);
-            Assert.True(directWorkOrders.ChkSigSupervisor.Checked);
+            Assert.Equal("Nueva OT", directWorkOrders.BtnNewExternalOt.Text);
+            Assert.Equal(2, directWorkOrders.TabsMain.TabPages.Count);
+            Assert.DoesNotContain(directWorkOrders.TabsMain.TabPages.Cast<TabPage>(), t => t.Text.Contains("Imprimir", StringComparison.OrdinalIgnoreCase));
+            Assert.True(directWorkOrders.ChkEntrySigJefatura.Checked);
+            Assert.True(directWorkOrders.ChkEntrySigTecnico.Checked);
+            Assert.True(directWorkOrders.ChkEntrySigSupervisor.Checked);
             Assert.Equal(SignatureOption.AmbasConSolicitante, directWorkOrders.SelectedSignature);
 
             // Verificar selector libre de firmas (incluyendo dejar vacío para no imprimir firmas al pie)
-            directWorkOrders.ChkSigSupervisor.Checked = false;
+            directWorkOrders.ChkEntrySigSupervisor.Checked = false;
             Assert.Equal(SignatureOption.JefaturaYTecnico, directWorkOrders.SelectedSignature);
-            directWorkOrders.ChkSigJefatura.Checked = false;
-            directWorkOrders.ChkSigSupervisor.Checked = true;
+            directWorkOrders.ChkEntrySigJefatura.Checked = false;
+            directWorkOrders.ChkEntrySigSupervisor.Checked = true;
             Assert.Equal(SignatureOption.SupervisorYTecnico, directWorkOrders.SelectedSignature);
-            directWorkOrders.ChkSigTecnico.Checked = false;
-            directWorkOrders.ChkSigSupervisor.Checked = false;
+            directWorkOrders.ChkEntrySigTecnico.Checked = false;
+            directWorkOrders.ChkEntrySigSupervisor.Checked = false;
             Assert.Equal(SignatureOption.Ninguna, directWorkOrders.SelectedSignature);
 
             // Restaurar antes de auditar botones
-            directWorkOrders.ChkSigJefatura.Checked = true;
-            directWorkOrders.ChkSigTecnico.Checked = true;
-            directWorkOrders.ChkSigSupervisor.Checked = true;
+            directWorkOrders.ChkEntrySigJefatura.Checked = true;
+            directWorkOrders.ChkEntrySigTecnico.Checked = true;
+            directWorkOrders.ChkEntrySigSupervisor.Checked = true;
             AssertAllButtonsValid(directWorkOrders, "WorkOrdersForm.Direct");
 
             using UsersForm directUsers = new(temp.Context, admin);
@@ -152,6 +170,20 @@ public sealed class WinFormsUiAuditTests
             List<CheckBox> permBoxes = CollectControls<CheckBox>(permsDlg);
             Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("Factura", StringComparison.OrdinalIgnoreCase));
             Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("VB Supervisor", StringComparison.OrdinalIgnoreCase) || cb.Text.Contains("VB Jefatura", StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(permBoxes, cb => cb.Text.Contains("Imprimir OT", StringComparison.OrdinalIgnoreCase) || cb.Text.Contains("Generar / Imprimir", StringComparison.OrdinalIgnoreCase));
+
+            using AboutDialog aboutDlg = new(temp.Context);
+            AssertAllButtonsValid(aboutDlg, "AboutDialog");
+            AssertNoForbiddenTypos(aboutDlg, "AboutDialog");
+
+            WorkOrder? sampleOrder = temp.Context.WorkOrderService.GetByNumber(14752);
+            Assert.NotNull(sampleOrder);
+            using WorkOrderDetailDialog detailDlg = new(temp.Context, sampleOrder);
+            AssertAllButtonsValid(detailDlg, "WorkOrderDetailDialog");
+            AssertNoForbiddenTypos(detailDlg, "WorkOrderDetailDialog");
+
+            using LoginForm switchLoginDlg = new(temp.Context, isSwitchUserMode: true);
+            AssertAllButtonsValid(switchLoginDlg, "LoginForm.SwitchUser");
 
             using AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService);
             AssertAllButtonsValid(auditDlg, "AuditLogDialog");
@@ -185,8 +217,8 @@ public sealed class WinFormsUiAuditTests
             AssertAllButtonsValid(depDlg, "MaintainerDependenciesDialog");
 
             using MaintainersForm directMaintainers = new(temp.Context, admin);
-            Assert.Equal(4, directMaintainers.TabControlMain.TabPages.Count);
-            AssertAllButtonsValid(directMaintainers, "MaintainersForm.Direct4Tabs");
+            Assert.Equal(7, directMaintainers.TabControlMain.TabPages.Count);
+            AssertAllButtonsValid(directMaintainers, "MaintainersForm.Direct7Tabs");
 
             using MdbImportDialog mdbDlg = new(temp.Context, admin, string.Empty);
             AssertAllButtonsValid(mdbDlg, "MdbImportDialog");
@@ -199,8 +231,8 @@ public sealed class WinFormsUiAuditTests
 
             using SplashForm splash = new();
             List<Label> splashLabels = CollectControls<Label>(splash);
-            Assert.Contains(splashLabels, l => l.Text.Contains("Versión 4.5", StringComparison.Ordinal));
-            Assert.Contains("v4.5", main.Text, StringComparison.Ordinal);
+            Assert.Contains(splashLabels, l => l.Text.Contains($"Versión {Sispro.Core.AppMetadata.Version}", StringComparison.Ordinal));
+            Assert.Contains($"v{Sispro.Core.AppMetadata.ShortVersion}", main.Text, StringComparison.Ordinal);
         });
     }
 
@@ -227,14 +259,18 @@ public sealed class WinFormsUiAuditTests
             using MainForm main = new(temp.Context, opSession);
             Assert.True(main.NavDashboard.Enabled);
             Assert.True(main.NavWorkOrders.Enabled);
-            Assert.False(main.NavMaintainers.Enabled);
-            Assert.False(main.NavTreeEditor.Enabled);
+            Assert.True(main.NavMaintainers.Enabled); // Habilitado para acceder a Mi Clave dentro de Mantenedores
             Assert.False(main.NavUsers.Enabled);
             Assert.False(main.NavAudit.Enabled);
+
+            using MaintainersForm opMaintainers = new(temp.Context, opSession);
+            Assert.Single(opMaintainers.TabControlMain.TabPages);
+            Assert.Equal("Mi Clave", opMaintainers.TabControlMain.TabPages[0].Text);
 
             // Intento directo de instanciar módulos exclusivos de Administrador debe bloquearse
             Assert.Throws<UnauthorizedAccessException>(() => new UsersForm(temp.Context, opSession));
             Assert.Throws<UnauthorizedAccessException>(() => new AssetTreeEditorView(temp.Context, opSession));
+            Assert.Throws<UnauthorizedAccessException>(() => new Sispro.UI.Controls.SystemSettingsControl(temp.Context, opSession));
         });
 
         Assert.Contains(temp.Context.Audit.GetRecent(20), e => e.Accion == "ACCESO_NO_AUTORIZADO" && e.Usuario == "operador1");

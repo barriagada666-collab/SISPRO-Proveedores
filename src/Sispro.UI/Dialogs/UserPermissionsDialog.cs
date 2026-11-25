@@ -19,7 +19,6 @@ public sealed class UserPermissionsDialog : Form
     private readonly CheckBox _chkM1;
     private readonly CheckBox _chkTab01IngresoOt;
     private readonly CheckBox _chkTab02BusquedaOt;
-    private readonly CheckBox _chkTab03ImpresionOt;
     private readonly CheckBox _chkM2Mantenedor;
     private readonly CheckBox _chkM3;
     private readonly CheckBox _chkTab20IngresoUs;
@@ -71,10 +70,9 @@ public sealed class UserPermissionsDialog : Form
         });
 
         _chkM1 = new CheckBox { Text = "M1 — Menú Trabajos Externos (Órdenes de Trabajo)", Font = CambiasoTheme.LabelFont, AutoSize = true };
-        _chkTab01IngresoOt = new CheckBox { Text = "Ingreso y edición de OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkTab02BusquedaOt = new CheckBox { Text = "Búsqueda y exportación de OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkTab03ImpresionOt = new CheckBox { Text = "Generar / Imprimir OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
-        _chkM1.CheckedChanged += (_, _) => SyncChildCheckboxes(_chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt, _chkTab03ImpresionOt);
+        _chkTab01IngresoOt = new CheckBox { Text = "Crear, editar y eliminar OT (Ingreso / Edición)", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
+        _chkTab02BusquedaOt = new CheckBox { Text = "Búsqueda, consulta y exportación de OT", AutoSize = true, Margin = new Padding(24, 2, 2, 2) };
+        _chkM1.CheckedChanged += (_, _) => SyncChildCheckboxes(_chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt);
 
         _chkM2Mantenedor = new CheckBox { Text = "M2 — Mantenedores (Proveedores, Solicitantes y Activos)", Font = CambiasoTheme.LabelFont, AutoSize = true, Margin = new Padding(0, 10, 0, 2) };
 
@@ -86,7 +84,7 @@ public sealed class UserPermissionsDialog : Form
         TableLayoutPanel list = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
         list.Controls.AddRange(
         [
-            _chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt, _chkTab03ImpresionOt,
+            _chkM1, _chkTab01IngresoOt, _chkTab02BusquedaOt,
             _chkM2Mantenedor,
             _chkM3, _chkTab20IngresoUs, _chkTab21ListadoUs
         ]);
@@ -144,7 +142,6 @@ public sealed class UserPermissionsDialog : Form
         _chkM1.Enabled = canEditNonAdmin;
         _chkTab01IngresoOt.Enabled = canEditNonAdmin && _chkM1.Checked;
         _chkTab02BusquedaOt.Enabled = canEditNonAdmin && _chkM1.Checked;
-        _chkTab03ImpresionOt.Enabled = canEditNonAdmin && _chkM1.Checked;
 
         _chkM2Mantenedor.Enabled = canEditNonAdmin;
 
@@ -172,7 +169,6 @@ public sealed class UserPermissionsDialog : Form
         _chkM1.Checked = p.MenuOrdenesTrabajo;
         _chkTab01IngresoOt.Checked = p.IngresoOt;
         _chkTab02BusquedaOt.Checked = p.BusquedaOt;
-        _chkTab03ImpresionOt.Checked = p.ImpresionOt;
 
         _chkM2Mantenedor.Checked = p.MenuMantenedor;
 
@@ -189,7 +185,7 @@ public sealed class UserPermissionsDialog : Form
         VistoBuenoSupervisor = false,
         VistoBuenoJefatura = false,
         BusquedaOt = _chkTab02BusquedaOt.Checked,
-        ImpresionOt = _chkTab03ImpresionOt.Checked,
+        ImpresionOt = false,
         MenuMantenedor = _chkM2Mantenedor.Checked,
         MenuUsuarios = _roleLevel == UserRoleLevel.Administrador,
         IngresoUsuarios = _roleLevel == UserRoleLevel.Administrador,

@@ -180,13 +180,14 @@ public sealed class ProfilesSignersAndUiFeaturesTests
                 Assert.DoesNotContain(woChecks, c => c.Text.Contains("VB Jefatura", StringComparison.OrdinalIgnoreCase));
                 Assert.DoesNotContain(woChecks, c => c.Text.Contains("Pendientes VB", StringComparison.OrdinalIgnoreCase));
 
-                // 2. Los 6 combos de firmantes deben estar poblados y habilitados cuando su checkbox está activo
+                // 2. Los 3 combos de firmantes en Ingreso/Edición deben estar poblados y habilitados cuando su checkbox está activo
+                //    y la pestaña Generar / Imprimir OT ya no debe existir
+                Assert.Equal(2, wo.TabsMain.TabPages.Count);
                 Assert.True(wo.CmbEntrySigJefatura.Items.Count > 0);
                 Assert.True(wo.CmbEntrySigTecnico.Items.Count > 0);
                 Assert.True(wo.CmbEntrySigSupervisor.Items.Count > 0);
-                Assert.True(wo.CmbPrintSigJefatura.Items.Count > 0);
-                Assert.True(wo.CmbPrintSigTecnico.Items.Count > 0);
-                Assert.True(wo.CmbPrintSigSupervisor.Items.Count > 0);
+                Assert.Equal(2, wo.CmbTipoOrdenEntry.Items.Count);
+                Assert.True(wo.ChkMostrarValorNetoEntry.Checked);
 
                 wo.ChkEntrySigJefatura.Checked = false;
                 Assert.False(wo.CmbEntrySigJefatura.Enabled);

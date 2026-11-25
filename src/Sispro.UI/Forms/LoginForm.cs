@@ -17,16 +17,19 @@ public sealed class LoginForm : Form
     private readonly Button _btnExit;
     private readonly Button _btnSettings;
 
+    private readonly bool _isSwitchUserMode;
+
     public UserSession? AuthenticatedSession { get; private set; }
 
-    public LoginForm(SisproApplicationContext ctx)
+    public LoginForm(SisproApplicationContext ctx, bool isSwitchUserMode = false)
     {
         _ctx = ctx;
+        _isSwitchUserMode = isSwitchUserMode;
 
-        Text = "SISPRO — Acceso al Sistema";
+        Text = isSwitchUserMode ? "SISPRO — Cambiar Usuario" : "SISPRO — Acceso al Sistema";
         Icon = IconCatalog.GetAppIcon();
         ClientSize = new Size(444, 434);
-        StartPosition = FormStartPosition.CenterScreen;
+        StartPosition = isSwitchUserMode ? FormStartPosition.CenterParent : FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         BackColor = CambiasoTheme.Surface;
@@ -64,7 +67,9 @@ public sealed class LoginForm : Form
 
         Label lblSubtitle = new()
         {
-            Text = "SISPRO · Gestión de Proveedores y Órdenes de Trabajo",
+            Text = isSwitchUserMode
+                ? "Ingrese credenciales para cambiar de cuenta activa"
+                : "SISPRO · Gestión de Proveedores y Órdenes de Trabajo",
             Font = CambiasoTheme.SmallFont,
             ForeColor = Color.FromArgb(208, 228, 242),
             BackColor = Color.Transparent,
@@ -139,17 +144,18 @@ public sealed class LoginForm : Form
         // Footer Actions
         _btnSettings = CambiasoTheme.CreateButton("Config.", AppIcon.Settings, ButtonTone.Secondary, _toolTip, "Configurar base de datos y empresa", width: 102, height: 34);
         _btnSettings.Location = new Point(28, 356);
+        _btnSettings.Visible = !isSwitchUserMode;
         _btnSettings.Click += (_, _) => OpenSettings();
 
-        _btnExit = CambiasoTheme.CreateButton("Salir", AppIcon.Exit, ButtonTone.Secondary, _toolTip, "Cerrar aplicación", width: 100, height: 34);
-        _btnExit.Location = new Point(196, 356);
+        _btnExit = CambiasoTheme.CreateButton(isSwitchUserMode ? "Cancelar" : "Salir", isSwitchUserMode ? AppIcon.Cancel : AppIcon.Exit, ButtonTone.Secondary, _toolTip, isSwitchUserMode ? "Mantener sesión actual" : "Cerrar aplicación", width: 104, height: 34);
+        _btnExit.Location = new Point(192, 356);
         _btnExit.Click += (_, _) =>
         {
             DialogResult = DialogResult.Cancel;
             Close();
         };
 
-        _btnLogin = CambiasoTheme.CreateButton("Ingresar", AppIcon.Login, ButtonTone.Primary, _toolTip, "Iniciar sesión en SISPRO", width: 112, height: 34);
+        _btnLogin = CambiasoTheme.CreateButton(isSwitchUserMode ? "Cambiar" : "Ingresar", AppIcon.Login, ButtonTone.Primary, _toolTip, isSwitchUserMode ? "Cambiar cuenta activa sin cerrar SISPRO" : "Iniciar sesión en SISPRO", width: 112, height: 34);
         _btnLogin.Location = new Point(304, 356);
         _btnLogin.Click += (_, _) => AttemptLogin();
 
@@ -196,7 +202,11 @@ public sealed class LoginForm : Form
         }
 
         AuthenticatedSession = result.Session;
-        _ctx.CurrentSession = result.Session;
+        if (!_isSwitchUserMode)
+        {
+            _ctx.CurrentSession = result.Session;
+        }
+
         DialogResult = DialogResult.OK;
         Close();
     }

@@ -65,7 +65,7 @@ public sealed class ScreenshotCaptureTests
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "03_ordenes_trabajo.png"));
 
-            // Captura de Búsqueda de OT con checkboxes y Exportar seleccionadas
+            // Captura de Búsqueda de OT con CRUD (Nuevo, Consultar, Editar, Eliminar) y selección masiva
             WorkOrdersForm? woCtrl = FindChildControl<WorkOrdersForm>(main);
             if (woCtrl is not null)
             {
@@ -74,21 +74,30 @@ public sealed class ScreenshotCaptureTests
                 SaveFormBitmap(main, Path.Combine(outDir, "12_busqueda_ot_masiva.png"));
             }
 
-            main.ShowWorkOrderPrint(14828);
-            Application.DoEvents();
-            SaveFormBitmap(main, Path.Combine(outDir, "11_generar_imprimir_ot.png"));
-
             main.ShowMaintainers();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "05_mantenedores.png"));
 
-            // Captura de pestaña dedicada Firmas en Mantenedores
+            // Captura de pestañas dedicadas dentro de Mantenedores (Firmas, Editor de Árbol, Configuración, Mi Clave)
             MaintainersForm? maintCtrl = FindChildControl<MaintainersForm>(main);
-            if (maintCtrl is not null && maintCtrl.TabControlMain.TabPages.Count >= 3)
+            if (maintCtrl is not null)
             {
-                maintCtrl.TabControlMain.SelectedIndex = 2;
+                maintCtrl.SelectTabByTitle("Firmas");
                 Application.DoEvents();
                 SaveFormBitmap(main, Path.Combine(outDir, "13_mantenedores_firmas.png"));
+
+                maintCtrl.SelectTabByTitle("Editor de Árbol");
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "09_editor_arbol.png"));
+
+                maintCtrl.SelectTabByTitle("Configuración");
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "16_configuracion_sistema.png"));
+
+                maintCtrl.SelectTabByTitle("Mi Clave");
+                Application.DoEvents();
+                SaveFormBitmap(main, Path.Combine(outDir, "19_mi_clave.png"));
+
                 maintCtrl.TabControlMain.SelectedIndex = 0;
             }
 
@@ -109,14 +118,35 @@ public sealed class ScreenshotCaptureTests
                 usrCtrl.MainTabs.SelectedIndex = 0;
             }
 
-            main.ShowTreeEditor();
-            Application.DoEvents();
-            SaveFormBitmap(main, Path.Combine(outDir, "09_editor_arbol.png"));
-
             main.ShowWorkOrders();
-            main.BtnTopNewExternalOt.PerformClick();
+            WorkOrdersForm? woNew = FindChildControl<WorkOrdersForm>(main);
+            woNew?.BtnSearchNewOt.PerformClick();
             Application.DoEvents();
             SaveFormBitmap(main, Path.Combine(outDir, "10_ot_externa.png"));
+
+            using (Sispro.UI.Dialogs.AboutDialog aboutDlg = new(temp.Context))
+            {
+                aboutDlg.ShowInTaskbar = false;
+                aboutDlg.StartPosition = FormStartPosition.Manual;
+                aboutDlg.Location = new Point(-2000, -2000);
+                aboutDlg.Show();
+                Application.DoEvents();
+                SaveFormBitmap(aboutDlg, Path.Combine(outDir, "17_acerca_de.png"));
+                aboutDlg.Hide();
+            }
+
+            Sispro.Core.Entities.WorkOrder? detailOrder = temp.Context.WorkOrderService.GetByNumber(14752);
+            if (detailOrder is not null)
+            {
+                using Sispro.UI.Dialogs.WorkOrderDetailDialog detailDlg = new(temp.Context, detailOrder);
+                detailDlg.ShowInTaskbar = false;
+                detailDlg.StartPosition = FormStartPosition.Manual;
+                detailDlg.Location = new Point(-2000, -2000);
+                detailDlg.Show();
+                Application.DoEvents();
+                SaveFormBitmap(detailDlg, Path.Combine(outDir, "18_consulta_ot.png"));
+                detailDlg.Hide();
+            }
 
             using (Sispro.UI.Dialogs.AuditLogDialog auditDlg = new(temp.Context.Audit, temp.Context.DocumentExportService))
             {

@@ -355,31 +355,43 @@ public sealed class ExcelExportService(AppSettings settings)
         itemsBox.Style.Border.OutsideBorderColor = CambiasoOlive;
         itemsBox.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
 
-        // Bloque de Observaciones y Valor Neto destacado
+        // Bloque de Observaciones y (condicionalmente) Valor Neto destacado
         int obsRow = row + 1;
         string obsText = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
-        IXLRange obsRange = ws.Range(obsRow, 1, obsRow, 4).Merge();
-        obsRange.Value = ExportSanitizer.SanitizeXmlText($"OBSERVACIONES: {obsText}");
-        obsRange.Style.Alignment.WrapText = true;
-        obsRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        obsRange.Style.Fill.BackgroundColor = CambiasoLight;
-        obsRange.Style.Font.FontSize = 9.5;
+        if (order.MostrarValorNeto)
+        {
+            IXLRange obsRange = ws.Range(obsRow, 1, obsRow, 4).Merge();
+            obsRange.Value = ExportSanitizer.SanitizeXmlText($"OBSERVACIONES: {obsText}");
+            obsRange.Style.Alignment.WrapText = true;
+            obsRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            obsRange.Style.Fill.BackgroundColor = CambiasoLight;
+            obsRange.Style.Font.FontSize = 9.5;
 
-        ws.Cell(obsRow, 5).Value = "VALOR NETO:";
-        ws.Cell(obsRow, 5).Style.Font.Bold = true;
-        ws.Cell(obsRow, 5).Style.Font.FontColor = CambiasoNavy;
-        ws.Cell(obsRow, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        ws.Cell(obsRow, 5).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        ws.Cell(obsRow, 5).Style.Fill.BackgroundColor = CambiasoGold;
+            ws.Cell(obsRow, 5).Value = "VALOR NETO:";
+            ws.Cell(obsRow, 5).Style.Font.Bold = true;
+            ws.Cell(obsRow, 5).Style.Font.FontColor = CambiasoNavy;
+            ws.Cell(obsRow, 5).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            ws.Cell(obsRow, 5).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Cell(obsRow, 5).Style.Fill.BackgroundColor = CambiasoGold;
 
-        ws.Cell(obsRow, 6).Value = order.ValorNeto;
-        ws.Cell(obsRow, 6).Style.NumberFormat.Format = "$#,##0";
-        ws.Cell(obsRow, 6).Style.Font.Bold = true;
-        ws.Cell(obsRow, 6).Style.Font.FontSize = 13;
-        ws.Cell(obsRow, 6).Style.Font.FontColor = CambiasoNavy;
-        ws.Cell(obsRow, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
-        ws.Cell(obsRow, 6).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
-        ws.Cell(obsRow, 6).Style.Fill.BackgroundColor = CambiasoGold;
+            ws.Cell(obsRow, 6).Value = order.ValorNeto;
+            ws.Cell(obsRow, 6).Style.NumberFormat.Format = "$#,##0";
+            ws.Cell(obsRow, 6).Style.Font.Bold = true;
+            ws.Cell(obsRow, 6).Style.Font.FontSize = 13;
+            ws.Cell(obsRow, 6).Style.Font.FontColor = CambiasoNavy;
+            ws.Cell(obsRow, 6).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Right;
+            ws.Cell(obsRow, 6).Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            ws.Cell(obsRow, 6).Style.Fill.BackgroundColor = CambiasoGold;
+        }
+        else
+        {
+            IXLRange obsRange = ws.Range(obsRow, 1, obsRow, 6).Merge();
+            obsRange.Value = ExportSanitizer.SanitizeXmlText($"OBSERVACIONES: {obsText}");
+            obsRange.Style.Alignment.WrapText = true;
+            obsRange.Style.Alignment.Vertical = XLAlignmentVerticalValues.Center;
+            obsRange.Style.Fill.BackgroundColor = CambiasoLight;
+            obsRange.Style.Font.FontSize = 9.5;
+        }
 
         IXLRange summaryBox = ws.Range(obsRow, 1, obsRow, 6);
         summaryBox.Style.Border.OutsideBorder = XLBorderStyleValues.Thin;

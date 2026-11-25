@@ -20,7 +20,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                o.id_nivel, o.ruta_activo,
                COALESCE(s.nombre_sol, ''), COALESCE(s.ape_pat_sol, ''), COALESCE(s.ape_mat_sol, ''),
                COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), COALESCE(o.firmas_mask, 7),
-               COALESCE(o.firma_jefatura, ''), COALESCE(o.firma_tecnico, ''), COALESCE(o.firma_supervisor, '')
+               COALESCE(o.firma_jefatura, ''), COALESCE(o.firma_tecnico, ''), COALESCE(o.firma_supervisor, ''),
+               COALESCE(o.mostrar_valor_neto, 1), COALESCE(NULLIF(TRIM(o.tipo_ot), ''), 'Externa')
         FROM OrdenesTrabajo o
         INNER JOIN Proveedores p ON p.id_prov = o.id_prov
         LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -118,12 +119,12 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                 INSERT INTO OrdenesTrabajo(
                     n_ot, id_prov, id_sol, fecha_ot, estado,
                     id_n1, id_n2, id_n3, id_n4, id_n5, id_n6, id_n7, id_n8, id_n9, id_n10,
-                    id_nivel, ruta_activo, observacion, valor_neto, firmas_mask,
+                    id_nivel, ruta_activo, observacion, valor_neto, mostrar_valor_neto, tipo_ot, firmas_mask,
                     firma_jefatura, firma_tecnico, firma_supervisor
                 ) VALUES (
                     $not, $prov, $sol, $fecha, $est,
                     $n1, $n2, $n3, $n4, $n5, $n6, $n7, $n8, $n9, $n10,
-                    $niv, $ruta, $obs, $vneto, $fmask,
+                    $niv, $ruta, $obs, $vneto, $mvneto, $tipoot, $fmask,
                     $fjef, $ftec, $fsup
                 );
                 SELECT last_insert_rowid();
@@ -152,7 +153,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                     id_n1 = $n1, id_n2 = $n2, id_n3 = $n3, id_n4 = $n4, id_n5 = $n5,
                     id_n6 = $n6, id_n7 = $n7, id_n8 = $n8, id_n9 = $n9, id_n10 = $n10,
                     id_nivel = $niv, ruta_activo = $ruta,
-                    observacion = $obs, valor_neto = $vneto, firmas_mask = $fmask,
+                    observacion = $obs, valor_neto = $vneto, mostrar_valor_neto = $mvneto, tipo_ot = $tipoot, firmas_mask = $fmask,
                     firma_jefatura = $fjef, firma_tecnico = $ftec, firma_supervisor = $fsup
                 WHERE id_ot = $id;
                 """;
@@ -445,7 +446,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                    o.fecha_ot, d.cantidad_det, d.detalle_ot, o.ruta_activo,
                    vbs.id_vb IS NOT NULL, COALESCE(us_vbs.alias_usuario, COALESCE(vbs.id_usuario, '')), vbs.fecha_vb,
                    vbj.id_vb IS NOT NULL, COALESCE(us_vbj.alias_usuario, COALESCE(vbj.id_usuario, '')), vbj.fecha_vb,
-                   d.id_det, COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), o.estado, COALESCE(o.firmas_mask, 7)
+                   d.id_det, COALESCE(o.observacion, ''), COALESCE(o.valor_neto, 0), o.estado, COALESCE(o.firmas_mask, 7),
+                   COALESCE(o.mostrar_valor_neto, 1), COALESCE(NULLIF(TRIM(o.tipo_ot), ''), 'Externa')
             FROM OrdenesTrabajo o
             INNER JOIN Proveedores p ON p.id_prov = o.id_prov
             LEFT JOIN Solicitantes s ON s.id_sol = o.id_sol
@@ -467,7 +469,7 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
             {
                 IdOt = rdr.GetInt32(0),
                 NumeroOt = rdr.GetInt32(1),
-                TipoOrden = "Externa",
+                TipoOrden = rdr.IsDBNull(20) ? "Externa" : rdr.GetString(20),
                 Proveedor = rdr.GetString(2),
                 Solicitante = rdr.GetString(3),
                 Fecha = DateTime.ParseExact(rdr.GetString(4), "yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -484,7 +486,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
                 Observacion = rdr.IsDBNull(15) ? string.Empty : rdr.GetString(15),
                 ValorNeto = rdr.IsDBNull(16) ? 0m : Convert.ToDecimal(rdr.GetDouble(16), CultureInfo.InvariantCulture),
                 Estado = rdr.IsDBNull(17) ? WorkOrderStatus.Abierta : (WorkOrderStatus)rdr.GetInt32(17),
-                FirmasSeleccionadas = rdr.IsDBNull(18) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(18), 0, 7)
+                FirmasSeleccionadas = rdr.IsDBNull(18) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(18), 0, 7),
+                MostrarValorNeto = rdr.IsDBNull(19) || rdr.GetInt32(19) != 0
             });
         }
 
@@ -690,6 +693,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         cmd.Parameters.AddWithValue("$ruta", o.RutaActivo.Trim());
         cmd.Parameters.AddWithValue("$obs", o.Observacion.Trim());
         cmd.Parameters.AddWithValue("$vneto", Convert.ToDouble(Math.Max(0m, o.ValorNeto)));
+        cmd.Parameters.AddWithValue("$mvneto", o.MostrarValorNeto ? 1 : 0);
+        cmd.Parameters.AddWithValue("$tipoot", string.Equals(o.TipoOrden?.Trim(), "Interna", StringComparison.OrdinalIgnoreCase) ? "Interna" : "Externa");
         cmd.Parameters.AddWithValue("$fmask", (int)o.FirmasSeleccionadas & 7);
         cmd.Parameters.AddWithValue("$fjef", o.FirmaJefaturaNombre.Trim());
         cmd.Parameters.AddWithValue("$ftec", o.FirmaTecnicoNombre.Trim());
@@ -736,6 +741,8 @@ public sealed class WorkOrderRepository(SqliteConnectionFactory factory) : IWork
         FirmasSeleccionadas = rdr.IsDBNull(32) ? SignatureOption.AmbasConSolicitante : (SignatureOption)Math.Clamp(rdr.GetInt32(32), 0, 7),
         FirmaJefaturaNombre = rdr.IsDBNull(33) ? string.Empty : rdr.GetString(33),
         FirmaTecnicoNombre = rdr.IsDBNull(34) ? string.Empty : rdr.GetString(34),
-        FirmaSupervisorNombre = rdr.IsDBNull(35) ? string.Empty : rdr.GetString(35)
+        FirmaSupervisorNombre = rdr.IsDBNull(35) ? string.Empty : rdr.GetString(35),
+        MostrarValorNeto = rdr.IsDBNull(36) || rdr.GetInt32(36) != 0,
+        TipoOrden = rdr.IsDBNull(37) ? "Externa" : rdr.GetString(37)
     };
 }

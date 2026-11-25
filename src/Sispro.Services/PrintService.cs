@@ -174,12 +174,12 @@ public sealed class PrintService(AppSettings settings)
                 detailsFinished = true;
             }
 
-            // Bloque de Observaciones y Valor Neto
+            // Bloque de Observaciones y (condicionalmente) Valor Neto
             if (!summaryDrawn)
             {
                 string obsText = string.IsNullOrWhiteSpace(order.Observacion) ? "Sin observaciones." : order.Observacion;
-                int netBoxW = 190;
-                int obsBoxW = bounds.Width - netBoxW - 10;
+                int netBoxW = order.MostrarValorNeto ? 190 : 0;
+                int obsBoxW = order.MostrarValorNeto ? bounds.Width - netBoxW - 10 : bounds.Width;
                 SizeF obsSize = g.MeasureString($"Observaciones: {obsText}", regularFont, obsBoxW - 14);
                 float summaryH = Math.Max(42f, obsSize.Height + 14f);
 
@@ -192,21 +192,24 @@ public sealed class PrintService(AppSettings settings)
 
                 y += 10;
                 RectangleF obsRect = new(bounds.Left, y, obsBoxW, summaryH);
-                RectangleF netRect = new(bounds.Right - netBoxW, y, netBoxW, summaryH);
 
                 g.FillRectangle(lightBrush, obsRect);
                 g.DrawRectangle(gridPen, obsRect.X, obsRect.Y, obsRect.Width, obsRect.Height);
                 g.DrawString($"Observaciones: {obsText}", regularFont, Brushes.Black,
                     new RectangleF(obsRect.X + 7, obsRect.Y + 6, obsRect.Width - 14, obsRect.Height - 10));
 
-                g.FillRectangle(goldBrush, netRect);
-                g.DrawRectangle(olivePen, netRect.X, netRect.Y, netRect.Width, netRect.Height);
-                using Font netTitleFont = new("Segoe UI", 8f, FontStyle.Bold);
-                using Font netValueFont = new("Segoe UI", 13.5f, FontStyle.Bold);
-                using StringFormat rightAlign = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
-                g.DrawString("VALOR NETO", netTitleFont, navyBrush, netRect.X + 8, netRect.Y + 5);
-                g.DrawString($"$ {order.ValorNeto.ToString("N0", ClCulture)}", netValueFont, navyBrush,
-                    new RectangleF(netRect.X + 8, netRect.Y + 18, netRect.Width - 16, summaryH - 22), rightAlign);
+                if (order.MostrarValorNeto)
+                {
+                    RectangleF netRect = new(bounds.Right - netBoxW, y, netBoxW, summaryH);
+                    g.FillRectangle(goldBrush, netRect);
+                    g.DrawRectangle(olivePen, netRect.X, netRect.Y, netRect.Width, netRect.Height);
+                    using Font netTitleFont = new("Segoe UI", 8f, FontStyle.Bold);
+                    using Font netValueFont = new("Segoe UI", 13.5f, FontStyle.Bold);
+                    using StringFormat rightAlign = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
+                    g.DrawString("VALOR NETO", netTitleFont, navyBrush, netRect.X + 8, netRect.Y + 5);
+                    g.DrawString($"$ {order.ValorNeto.ToString("N0", ClCulture)}", netValueFont, navyBrush,
+                        new RectangleF(netRect.X + 8, netRect.Y + 18, netRect.Width - 16, summaryH - 22), rightAlign);
+                }
 
                 y += summaryH + 6;
                 summaryDrawn = true;
@@ -384,9 +387,7 @@ public sealed class PrintService(AppSettings settings)
     private void DrawFooter(Graphics g, Rectangle bounds, Font smallFont, int pageNumber)
     {
         g.DrawLine(Pens.LightGray, bounds.Left, bounds.Bottom - 20, bounds.Right, bounds.Bottom - 20);
-        Version? asmVer = typeof(PrintService).Assembly.GetName().Version;
-        string shortVer = asmVer is not null ? $"{asmVer.Major}.{asmVer.Minor}" : "4.5";
-        g.DrawString($"SISPRO v{shortVer} — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
+        g.DrawString($"{Sispro.Core.AppMetadata.ShortName} v{Sispro.Core.AppMetadata.ShortVersion} — {settings.CompanyName} ({DateTime.Now:dd-MM-yyyy HH:mm})", smallFont, Brushes.Gray, bounds.Left, bounds.Bottom - 16);
         using StringFormat right = new() { Alignment = StringAlignment.Far };
         g.DrawString($"Página {pageNumber}", smallFont, Brushes.Gray, new RectangleF(bounds.Left, bounds.Bottom - 16, bounds.Width, 16), right);
     }

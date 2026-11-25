@@ -145,3 +145,10 @@ public interface IMdbTableReader
 {
     MdbSnapshot ReadSnapshot(string mdbPath);
 }
+
+public interface ISystemConfigRepository
+{
+    IReadOnlyDictionary<string, string> GetAll();
+    string? GetValue(string key);
+    void SaveAll(IReadOnlyDictionary<string, string> values, string modifiedBy);
+}
