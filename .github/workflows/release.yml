@@ -1,0 +1,106 @@
+name: Release — Build Inno Setup & Publish GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Etiqueta de versión a publicar (ej. v4.4.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Ensure Inno Setup 6 is installed
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          if (-not ($candidates | Where-Object { Test-Path $_ })) {
+            choco install innosetup -y --no-progress
+          }
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            throw "No se pudo localizar ISCC.exe después de instalar Inno Setup."
+          }
+          Write-Host "ISCC localizado en: $iscc"
+
+      - name: Build, Test, Publish & Compile Inno Setup Installer
+        shell: pwsh
+        run: .\scripts\Build-Release.ps1
+
+      - name: Publish or Update GitHub Release with Installer Assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $appVer = $props.Project.PropertyGroup.Version.Trim()
+          $tagName = if ($env:GITHUB_REF_TYPE -eq 'tag') {
+            $env:GITHUB_REF_NAME
+          } elseif (-not [string]::IsNullOrWhiteSpace($env:INPUT_TAG)) {
+            $env:INPUT_TAG.Trim()
+          } else {
+            "v$appVer"
+          }
+
+          $setupExe = "installer/Output/SISPRO_Setup_v${appVer}_win-x64.exe"
+          $checksumTxt = "installer/Output/checksums_sha256.txt"
+          if (-not (Test-Path $setupExe)) { throw "Falta el instalador '$setupExe'." }
+          if (-not (Test-Path $checksumTxt)) { throw "Falta '$checksumTxt'." }
+
+          $sha = (Get-FileHash $setupExe -Algorithm SHA256).Hash
+          $sizeBytes = (Get-Item $setupExe).Length
+          $notesFile = "docs/INFORME_ENTREGA_${tagName}.md"
+          $notesPath = "$env:RUNNER_TEMP\release_notes.md"
+
+          if (Test-Path $notesFile) {
+            $baseNotes = Get-Content $notesFile -Raw -Encoding UTF8
+          } else {
+            $baseNotes = "## SISPRO $tagName (.NET 10)`n`nInstalador corporativo autocontenido para Windows x64."
+          }
+
+          @"
+$baseNotes
+
+---
+
+### Artefactos Adjuntos (`$tagName`)
+- **Instalador:** ``SISPRO_Setup_v${appVer}_win-x64.exe`` ($sizeBytes bytes)
+- **SHA-256:** ``$sha``
+"@ | Set-Content -Path $notesPath -Encoding UTF8
+
+          $prevEap = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
+          gh release view $tagName *> $null
+          $releaseExists = ($LASTEXITCODE -eq 0)
+          $ErrorActionPreference = $prevEap
+
+          if ($releaseExists) {
+            gh release edit $tagName --title "SISPRO $tagName (.NET 10) — Instalador Corporativo" --notes-file $notesPath
+            gh release upload $tagName $setupExe $checksumTxt --clobber
+          } else {
+            gh release create $tagName $setupExe $checksumTxt --title "SISPRO $tagName (.NET 10) — Instalador Corporativo" --notes-file $notesPath --target $env:GITHUB_SHA
+          }

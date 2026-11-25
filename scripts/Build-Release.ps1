@@ -40,11 +40,13 @@ if (-not (Test-Path (Join-Path $pubDir "SISPRO.exe"))) {
 }
 
 if (-not $SkipInstaller) {
+    $isccCmd = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
     $isccCandidates = @(
         "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
-        "C:\Program Files\Inno Setup 6\ISCC.exe"
-    )
+        "C:\Program Files\Inno Setup 6\ISCC.exe",
+        ($isccCmd?.Source)
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
     $iscc = $isccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $iscc) {
         throw "No se encontró Inno Setup 6 (ISCC.exe)."
